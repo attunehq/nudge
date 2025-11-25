@@ -31,7 +31,7 @@ fn emit_response(response: Response) -> Result<()> {
         }
         Response::Interrupt(r) => {
             let json = serde_json::to_string(&r).context("serialize interrupt response")?;
-            println!("{json}");
+            eprintln!("{json}");
             std::process::exit(2);
         }
         _ => Ok(()),

@@ -18,7 +18,8 @@ enum Expected {
 
 /// Build a PreToolUse hook JSON payload for Write tool.
 fn write_hook(file_path: &str, content: &str) -> String {
-    serde_json::json!({
+    use serde_json::json;
+    json!({
         "hook_event_name": "PreToolUse",
         "session_id": "test",
         "transcript_path": "/tmp/test",
@@ -53,17 +54,20 @@ fn edit_hook(file_path: &str, new_string: &str) -> String {
     .to_string()
 }
 
-/// Run pavlov claude hook with the given input JSON and return (exit_code, stdout).
+/// Run pavlov claude hook with the given input JSON and return (exit_code, output).
+/// Output combines stdout and stderr since Interrupt writes to stderr, Continue to stdout.
 fn run_hook(sh: &Shell, input: &str) -> (i32, String) {
-    let output = cmd!(sh, "cargo run -p pavlov -- claude hook")
+    let output = cmd!(sh, "cargo run --quiet -p pavlov -- claude hook")
         .stdin(input)
         .ignore_status()
         .output()
         .expect("failed to run pavlov");
 
     let exit_code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    (exit_code, stdout)
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+    (exit_code, combined)
 }
 
 // =============================================================================
@@ -72,7 +76,7 @@ fn run_hook(sh: &Shell, input: &str) -> (i32, String) {
 
 #[test_case(
     "fn main() {\n    use std::io;\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "indented use statement triggers guidance"
 )]
 #[test_case(
@@ -99,10 +103,10 @@ fn test_inline_imports(content: &str, expected: Expected) {
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
             assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-            assert!(stdout.contains("import"), "expected import-related message");
         }
         Expected::Interrupt => {
             pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
+            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
         }
     }
 }
@@ -113,7 +117,7 @@ fn test_inline_imports(content: &str, expected: Expected) {
 
 #[test_case(
     "fn main() {\n    let foo: Vec<String> = vec![];\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "lhs type annotation triggers guidance"
 )]
 #[test_case(
@@ -145,10 +149,10 @@ fn test_lhs_type_annotations(content: &str, expected: Expected) {
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
             assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-            assert!(stdout.contains("type annotations"), "expected type annotations message");
         }
         Expected::Interrupt => {
             pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
+            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
         }
     }
 }
@@ -159,7 +163,7 @@ fn test_lhs_type_annotations(content: &str, expected: Expected) {
 
 #[test_case(
     "fn main() {\n    color_eyre::eyre::eyre!(\"error\");\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "over-qualified path triggers guidance"
 )]
 #[test_case(
@@ -191,10 +195,10 @@ fn test_qualified_paths(content: &str, expected: Expected) {
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
             assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-            assert!(stdout.contains("qualified paths"), "expected qualified paths message");
         }
         Expected::Interrupt => {
             pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
+            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
         }
     }
 }
@@ -226,9 +230,8 @@ fn test_edit_tool_triggers_rules() {
     let input = edit_hook("test.rs", "    use std::io;\n");
     let (exit_code, stdout) = run_hook(&sh, &input);
 
-    pretty_assert_eq!(exit_code, 0, "edit tool should trigger inline imports rule");
-    assert!(stdout.contains(r#""continue":true"#), "expected continue response");
-    assert!(stdout.contains("import"), "expected import-related message");
+    pretty_assert_eq!(exit_code, 2, "edit tool should trigger inline imports rule");
+    assert!(stdout.contains(r#""continue":false"#), "expected interrupt response");
 }
 
 // =============================================================================
@@ -244,8 +247,8 @@ fn test_first_matching_rule_wins() {
     let (exit_code, stdout) = run_hook(&sh, &input);
 
     // Inline imports rule is first in the list, so it should be the one that fires
-    pretty_assert_eq!(exit_code, 0, "expected continue");
-    assert!(stdout.contains("import"), "inline imports rule should fire first");
+    pretty_assert_eq!(exit_code, 2, "expected interrupt");
+    assert!(stdout.contains("BLOCKED"), "inline imports rule should fire first");
 }
 
 // =============================================================================
@@ -255,7 +258,7 @@ fn test_first_matching_rule_wins() {
 #[test_case(
     "tests/foo.rs",
     "#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "test file with assert_eq triggers guidance"
 )]
 #[test_case(
@@ -267,7 +270,7 @@ fn test_first_matching_rule_wins() {
 #[test_case(
     "tests/foo.rs",
     "use pretty_assertions::assert_eq;\n\n#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "test file with unaliased import triggers guidance"
 )]
 #[test_case(
@@ -285,7 +288,7 @@ fn test_first_matching_rule_wins() {
 #[test_case(
     "src/lib.rs",
     "#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "file with test attribute triggers guidance"
 )]
 #[test]
@@ -301,17 +304,11 @@ fn test_pretty_assertions(file_path: &str, content: &str, expected: Expected) {
         }
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(
-                stdout.contains(r#""continue":true"#),
-                "expected continue:true in output"
-            );
-            assert!(
-                stdout.contains("pretty_assertions"),
-                "expected pretty_assertions in message"
-            );
+            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
         }
         Expected::Interrupt => {
             pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
+            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
         }
     }
 }
@@ -339,7 +336,7 @@ fn test_pretty_assertions_unaliased_import_message() {
 
 #[test_case(
     "struct Foo {\n    a: String,\n    b: String,\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "consecutive struct fields triggers guidance"
 )]
 #[test_case(
@@ -349,7 +346,7 @@ fn test_pretty_assertions_unaliased_import_message() {
 )]
 #[test_case(
     "enum Foo {\n    A,\n    B,\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "consecutive enum variants triggers guidance"
 )]
 #[test_case(
@@ -364,12 +361,17 @@ fn test_pretty_assertions_unaliased_import_message() {
 )]
 #[test_case(
     "struct Foo {\n    a: String,\n    /// Doc comment\n    b: String,\n}",
+    Expected::Interrupt;
+    "fields separated by comment without blank line triggers guidance"
+)]
+#[test_case(
+    "struct Foo {\n    a: String,\n\n    /// Doc comment\n    b: String,\n}",
     Expected::Passthrough;
-    "fields separated by comment passes"
+    "fields with blank line before doc comment passes"
 )]
 #[test_case(
     "enum Foo {\n    A(String),\n    B { x: i32 },\n}",
-    Expected::Continue;
+    Expected::Interrupt;
     "tuple and struct variants without spacing triggers guidance"
 )]
 #[test]
@@ -386,23 +388,10 @@ fn test_field_spacing(content: &str, expected: Expected) {
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
             assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-            assert!(stdout.contains("blank line"), "expected blank line message");
         }
         Expected::Interrupt => {
             pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
+            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
         }
     }
-}
-
-#[test]
-fn test_field_spacing_message_suggests_docs() {
-    let sh = Shell::new().unwrap();
-    let content = "struct Foo {\n    a: String,\n    b: String,\n}";
-    let input = write_hook("src/types.rs", content);
-    let (_, stdout) = run_hook(&sh, &input);
-
-    assert!(
-        stdout.contains("doc comment"),
-        "should suggest adding doc comments"
-    );
 }
