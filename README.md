@@ -52,6 +52,11 @@ Pavlov runs automatically when Claude tries to write or edit files. No changes t
 
 ### Quick Test
 
+> [!TIP]
+> Use `HOME=/tmp/clean-claude claude` to run Claude Code without your user
+> settings if you have user-level configuration that might conflict with the
+> rules in Pavlov.
+
 Ask Claude to write code that triggers a rule. Try one of these prompts:
 
 **Trigger `no_inline_imports`:**

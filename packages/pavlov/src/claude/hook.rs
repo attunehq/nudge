@@ -113,6 +113,24 @@ pub enum Response {
     Continue(ContinueResponse),
 }
 
+/// Hook-specific output for PreToolUse hooks.
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PreToolUseOutput {
+    /// Must be "PreToolUse" for Claude Code to accept the response.
+    pub hook_event_name: PreToolUseEventName,
+}
+
+/// Marker type that serializes to "PreToolUse".
+#[derive(Debug, Default)]
+pub struct PreToolUseEventName;
+
+impl Serialize for PreToolUseEventName {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str("PreToolUse")
+    }
+}
+
 #[derive(Debug, Serialize, Builder)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]

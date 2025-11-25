@@ -5,7 +5,7 @@
 
 use regex::Regex;
 
-use crate::claude::hook::{ContinueResponse, Hook, PreToolUsePayload, Response};
+use crate::claude::hook::{ContinueResponse, Hook, PreToolUseOutput, PreToolUsePayload, Response};
 
 /// Evaluate all rules against a hook. First non-Passthrough response wins.
 pub fn evaluate_all(hook: &Hook) -> Response {
@@ -117,6 +117,7 @@ What to do:
     Response::Continue(
         ContinueResponse::builder()
             .system_message(message)
+            .hook_specific_output(serde_json::to_value(PreToolUseOutput::default()).unwrap())
             .build(),
     )
 }
@@ -138,7 +139,8 @@ fn no_lhs_type_annotations(hook: &Hook) -> Response {
         return Response::Passthrough;
     }
 
-    let pattern = Regex::new(r"^\s*let\s+(mut\s+)?[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*").expect("valid regex");
+    let pattern =
+        Regex::new(r"^\s*let\s+(mut\s+)?[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*").expect("valid regex");
 
     let lines: Vec<usize> = content
         .lines()
@@ -178,6 +180,7 @@ type annotations are syntactically required."#,
     Response::Continue(
         ContinueResponse::builder()
             .system_message(message)
+            .hook_specific_output(serde_json::to_value(PreToolUseOutput::default()).unwrap())
             .build(),
     )
 }
@@ -244,6 +247,7 @@ avoids ambiguity, proceed as-is."#,
     Response::Continue(
         ContinueResponse::builder()
             .system_message(message)
+            .hook_specific_output(serde_json::to_value(PreToolUseOutput::default()).unwrap())
             .build(),
     )
 }
@@ -298,9 +302,7 @@ fn prefer_pretty_assertions(hook: &Hook) -> Response {
         actions.push("- Replace `assert_eq!` with `pretty_assert_eq!` in your tests");
     } else {
         actions.push("- Ensure `pretty_assertions` is in dev-dependencies (run `cargo add pretty_assertions --dev` if needed)");
-        actions.push(
-            "- Add import: `use pretty_assertions::assert_eq as pretty_assert_eq;`",
-        );
+        actions.push("- Add import: `use pretty_assertions::assert_eq as pretty_assert_eq;`");
         actions.push("- Use `pretty_assert_eq!` instead of `assert_eq!`");
     }
 
@@ -332,6 +334,7 @@ fn test_something() {{
     Response::Continue(
         ContinueResponse::builder()
             .system_message(message)
+            .hook_specific_output(serde_json::to_value(PreToolUseOutput::default()).unwrap())
             .build(),
     )
 }
@@ -416,6 +419,7 @@ struct Config {{
     Response::Continue(
         ContinueResponse::builder()
             .system_message(message)
+            .hook_specific_output(serde_json::to_value(PreToolUseOutput::default()).unwrap())
             .build(),
     )
 }
