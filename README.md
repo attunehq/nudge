@@ -16,13 +16,13 @@ Pavlov uses Claude Code's [hooks system](https://docs.anthropic.com/en/docs/clau
 
 All current rules use **Continue** responses: the code is written, but guidance is injected into the conversation for Claude to consider. **Interrupt** is available for rules that should block code from being written.
 
-| Rule | Trigger |
-|------|---------|
-| No inline imports | `use` statements inside function bodies |
-| Field spacing | Consecutive struct fields/enum variants without blank lines |
-| LHS type annotations | `let foo: Type = ...` instead of turbofish |
-| Qualified paths | Over-qualified paths like `foo::bar::baz::func()` |
-| Pretty assertions | `assert_eq!` in tests without `pretty_assertions` |
+| Rule                 | Trigger                                                     |
+|----------------------|-------------------------------------------------------------|
+| No inline imports    | `use` statements inside function bodies                     |
+| Field spacing        | Consecutive struct fields/enum variants without blank lines |
+| LHS type annotations | `let foo: Type = ...` instead of turbofish                  |
+| Qualified paths      | Over-qualified paths like `foo::bar::baz::func()`           |
+| Pretty assertions    | `assert_eq!` in tests without `pretty_assertions`           |
 
 ## Setup
 
@@ -53,9 +53,8 @@ Pavlov runs automatically when Claude tries to write or edit files. No changes t
 ### Quick Test
 
 > [!TIP]
-> Use `HOME=/tmp/clean-claude claude` to run Claude Code without your user
-> settings if you have user-level configuration that might conflict with the
-> rules in Pavlov.
+> If your user settings conflict with Pavlov's rules, you may need to
+> temporarily rename `~/.claude/CLAUDE.md`.
 
 Ask Claude to write code that triggers a rule. Try one of these prompts:
 
