@@ -25,7 +25,8 @@ use owo_colors::OwoColorize;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use tap::Pipe;
-use tracing::info_span;
+
+use crate::outcome::Violation;
 
 /// A benchmark scenario testing a specific rule.
 ///
@@ -189,10 +190,14 @@ pub enum EvaluationCommand {
 }
 
 impl EvaluationCommand {
+    /// Evaluate this command and return any violations.
+    ///
+    /// Returns `Ok(vec![])` if the evaluation passes, `Ok(violations)` if it fails
+    /// with expectation violations, or `Err` if there's a fatal error (e.g., file not found).
     #[tracing::instrument]
-    pub fn run(&self, project: &Path) -> Result<()> {
+    pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
         match self {
-            EvaluationCommand::Command(command) => command.run(project),
+            EvaluationCommand::Command(command) => command.evaluate(project),
             EvaluationCommand::Equals(file) => file.equals(project),
             EvaluationCommand::Contains(file) => file.contains(project),
             EvaluationCommand::NotContains(file) => file.not_contains(project),
@@ -221,6 +226,8 @@ pub struct Command {
 }
 
 impl Command {
+    /// Run the command and return () on success, or an error on failure.
+    /// Used for setup commands where failure is fatal.
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
         std::process::Command::new(&self.binary)
@@ -243,6 +250,28 @@ impl Command {
                     .section(stderr.to_string().header("Stderr:"))
                 }
             })
+    }
+
+    /// Evaluate the command and return violations if it fails.
+    /// Used for evaluation commands where failure is a violation, not a fatal error.
+    #[tracing::instrument]
+    pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
+        let output = std::process::Command::new(&self.binary)
+            .args(&self.args)
+            .current_dir(project)
+            .output()
+            .with_context(|| format!("run command {:?} with args: {:?}", self.binary, self.args))?;
+
+        if output.status.success() {
+            Ok(vec![])
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Ok(vec![Violation::CommandFailed {
+                command: format!("{} {}", self.binary, self.args.join(" ")),
+                exit_code: output.status.code(),
+                stderr: Some(stderr.to_string()),
+            }])
+        }
     }
 }
 
@@ -379,14 +408,12 @@ impl FileEvaluation {
             .with_context(|| format!("parse glob pattern {pattern:?}"))?
             .map(|entry| {
                 let path = entry.context("read glob entry")?;
-                tracing::info_span!("FileEvaluation::read::glob_map", ?path).in_scope(|| {
-                    if path.is_file() {
-                        let content = read_to_string(&path).context("read file content")?;
-                        Ok(Some((path, content)))
-                    } else {
-                        Ok(None)
-                    }
-                })
+                if path.is_file() {
+                    let content = read_to_string(&path).context("read file content")?;
+                    Ok(Some((path, content)))
+                } else {
+                    Ok(None)
+                }
             })
             .filter_map(|t| t.transpose())
             .collect::<Result<Vec<_>>>()?;
@@ -400,41 +427,35 @@ impl FileEvaluation {
 
     /// Tests that all matched files' contents match the test exactly.
     #[tracing::instrument(name = "FileEvaluation::equals")]
-    fn equals(&self, project: &Path) -> Result<()> {
+    fn equals(&self, project: &Path) -> Result<Vec<Violation>> {
         let files = self.read(project)?;
-
-        for (path, content) in files {
-            info_span!("FileEvaluation::equals::file", ?path, ?content)
-                .in_scope(|| self.content.equals(&content))?;
-        }
-
-        Ok(())
+        let violations = files
+            .iter()
+            .filter_map(|(path, content)| self.content.check_equals(path, content))
+            .collect();
+        Ok(violations)
     }
 
     /// Tests that all matched files' contents contain a match for the regex pattern.
     #[tracing::instrument(name = "FileEvaluation::contains")]
-    fn contains(&self, project: &Path) -> Result<()> {
+    fn contains(&self, project: &Path) -> Result<Vec<Violation>> {
         let files = self.read(project)?;
-
-        for (path, content) in files {
-            info_span!("FileEvaluation::contains::file", ?path, ?content)
-                .in_scope(|| self.content.contains(&content))?;
-        }
-
-        Ok(())
+        let violations = files
+            .iter()
+            .filter_map(|(path, content)| self.content.check_contains(path, content))
+            .collect();
+        Ok(violations)
     }
 
     /// Tests that no matched files' contents contain a match for the regex pattern.
     #[tracing::instrument(name = "FileEvaluation::not_contains")]
-    fn not_contains(&self, project: &Path) -> Result<()> {
+    fn not_contains(&self, project: &Path) -> Result<Vec<Violation>> {
         let files = self.read(project)?;
-
-        for (path, content) in files {
-            info_span!("FileEvaluation::not_contains::file", ?path, ?content)
-                .in_scope(|| self.content.not_contains(&content))?;
-        }
-
-        Ok(())
+        let violations = files
+            .iter()
+            .filter_map(|(path, content)| self.content.check_not_contains(path, content))
+            .collect();
+        Ok(violations)
     }
 }
 
@@ -461,64 +482,82 @@ impl ContentTest {
             .pipe(Self)
     }
 
-    #[tracing::instrument(name = "ContentTest::equals")]
-    fn equals(&self, content: &str) -> Result<()> {
+    /// Check if content equals this test. Returns a violation if it doesn't match.
+    #[tracing::instrument(name = "ContentTest::check_equals")]
+    fn check_equals(&self, path: &Path, content: &str) -> Option<Violation> {
         match &self.0 {
-            Either::Left(test) => match test.find(content) {
-                Some(bounds) if bounds.start() == 0 && bounds.end() == content.len() => Ok(()),
-                Some(_) => bail!("content does not fully match regex"),
-                None => bail!("content does not match regex"),
+            Either::Left(regex) => match regex.find(content) {
+                Some(bounds) if bounds.start() == 0 && bounds.end() == content.len() => None,
+                _ => Some(Violation::ContentMismatch {
+                    path: path.to_path_buf(),
+                    expected: format!("regex: {}", regex.as_str()),
+                }),
             },
-            Either::Right(test) => {
-                if content == test {
-                    Ok(())
+            Either::Right(expected) => {
+                if content == expected {
+                    None
                 } else {
-                    bail!("content does not match string")
+                    Some(Violation::ContentMismatch {
+                        path: path.to_path_buf(),
+                        expected: format!("string: {expected:?}"),
+                    })
                 }
             }
         }
     }
 
-    #[tracing::instrument(name = "ContentTest::contains")]
-    fn contains(&self, content: &str) -> Result<()> {
+    /// Check if content contains this test. Returns a violation if it doesn't match.
+    #[tracing::instrument(name = "ContentTest::check_contains")]
+    fn check_contains(&self, path: &Path, content: &str) -> Option<Violation> {
         match &self.0 {
             Either::Left(regex) => {
                 if regex.is_match(content) {
-                    Ok(())
+                    None
                 } else {
-                    Err(eyre!("content does not match regex"))
-                        .section(format!("Pattern: {}", regex.as_str()).header("Expected:"))
+                    Some(Violation::RegexNotMatched {
+                        path: path.to_path_buf(),
+                        pattern: regex.as_str().to_string(),
+                    })
                 }
             }
             Either::Right(needle) => {
                 if content.contains(needle) {
-                    Ok(())
+                    None
                 } else {
-                    Err(eyre!("content does not contain string"))
-                        .section(format!("String: {needle:?}").header("Expected:"))
+                    Some(Violation::StringNotFound {
+                        path: path.to_path_buf(),
+                        needle: needle.clone(),
+                    })
                 }
             }
         }
     }
 
-    #[tracing::instrument(name = "ContentTest::not_contains")]
-    fn not_contains(&self, content: &str) -> Result<()> {
+    /// Check if content does NOT contain this test. Returns a violation if it matches.
+    #[tracing::instrument(name = "ContentTest::check_not_contains")]
+    fn check_not_contains(&self, path: &Path, content: &str) -> Option<Violation> {
         match &self.0 {
             Either::Left(regex) => {
                 if let Some(m) = regex.find(content) {
-                    Err(eyre!("content matches regex"))
-                        .section(format!("Pattern: {}", regex.as_str()).header("Regex:"))
-                        .section(format!("{:?}", m.as_str()).header("Matched:"))
+                    Some(Violation::regex_matched(
+                        path.to_path_buf(),
+                        regex.as_str(),
+                        content,
+                        m.as_str(),
+                    ))
                 } else {
-                    Ok(())
+                    None
                 }
             }
             Either::Right(needle) => {
                 if content.contains(needle) {
-                    Err(eyre!("content contains string"))
-                        .section(format!("{needle:?}").header("Found:"))
+                    Some(Violation::string_found(
+                        path.to_path_buf(),
+                        needle,
+                        content,
+                    ))
                 } else {
-                    Ok(())
+                    None
                 }
             }
         }

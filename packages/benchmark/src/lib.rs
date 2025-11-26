@@ -35,12 +35,13 @@ use std::{fs::read_to_string, path::Path};
 use color_eyre::Result;
 use color_eyre::eyre::Context;
 use tempfile::tempdir;
-use tracing::info_span;
 
 pub use crate::agent::{Agent, Guidance, ModelClaudeCode};
+pub use crate::outcome::{Outcome, Violation};
 pub use crate::scenario::Scenario;
 
 pub mod agent;
+pub mod outcome;
 pub mod scenario;
 
 /// Load all scenarios from the given directory.
@@ -70,20 +71,13 @@ pub fn load_scenarios(dir: &Path) -> Result<Vec<Scenario>> {
     Ok(scenarios)
 }
 
-#[tracing::instrument(
-    skip(scenario),
-    fields(
-        scenario.name = ?scenario.name,
-        project
-    )
-)]
-pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Result<()> {
+#[tracing::instrument(skip(scenario), fields(scenario = %scenario.name))]
+pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Result<Outcome> {
     let project = tempdir().context("create temporary project directory")?;
     let root = project.path();
-    tracing::Span::current().record("project", format!("{root:?}"));
 
     for command in &scenario.commands {
-        info_span!("evaluate::setup", ?command).in_scope(|| command.run(root))?;
+        command.run(root)?;
     }
 
     match guidance {
@@ -92,12 +86,20 @@ pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Resul
         Guidance::File => agent.write_context(root, &scenario.guidance),
     }?;
 
-    info_span!("evaluate::agent", ?scenario.prompt)
-        .in_scope(|| agent.run(root, &scenario.prompt))?;
+    agent.run(root, &scenario.prompt)?;
 
-    for command in &scenario.expected {
-        info_span!("evaluate::expectation", ?command).in_scope(|| command.run(root))?;
+    let violations =
+        scenario
+            .expected
+            .iter()
+            .try_fold(Vec::new(), |mut acc, command| -> Result<_> {
+                acc.extend(command.evaluate(root)?);
+                Ok(acc)
+            })?;
+
+    if violations.is_empty() {
+        Ok(Outcome::pass())
+    } else {
+        Ok(Outcome::fail(violations))
     }
-
-    Ok(())
 }

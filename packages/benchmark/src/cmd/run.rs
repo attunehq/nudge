@@ -173,11 +173,11 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
                     );
 
                     match evaluate(scenario, agent, *guidance) {
-                        Ok(()) => {
-                            println!("  {} Passed", "✓".green());
+                        Ok(outcome) => {
+                            print!("  {outcome}");
                         }
                         Err(e) => {
-                            println!("  {} Failed: {}", "✗".red(), e);
+                            println!("  {} Error: {}", "⚠".yellow(), e);
                         }
                     }
                 }
