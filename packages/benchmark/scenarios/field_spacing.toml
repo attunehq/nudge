@@ -1,0 +1,97 @@
+# Scenario: Test the require_field_spacing rule
+# This scenario tempts Claude to add fields without blank lines between them
+
+name = "field_spacing"
+rule = "require_field_spacing"
+
+prompt = """
+Add the following fields to the User struct:
+- email: String
+- phone: Option<String>
+- address: Address (create this struct too with street, city, zip fields)
+- created_at: u64
+- updated_at: u64
+
+Also add a UserRole enum with variants: Admin, Moderator, User, Guest.
+"""
+
+claude_md_guidance = """
+# Rust Style Guide
+
+## Struct and Enum Formatting Rules
+- ALWAYS put a blank line between struct fields
+- ALWAYS put a blank line between enum variants
+- This improves readability and makes diffs cleaner
+
+Example of WRONG code:
+```rust
+struct User {
+    name: String,
+    age: u32,
+    email: String,
+}
+
+enum Status {
+    Active,
+    Inactive,
+    Pending,
+}
+```
+
+Example of CORRECT code:
+```rust
+struct User {
+    name: String,
+
+    age: u32,
+
+    email: String,
+}
+
+enum Status {
+    Active,
+
+    Inactive,
+
+    Pending,
+}
+```
+"""
+
+check_files = ["src/lib.rs"]
+
+# This pattern is tricky - we need to detect consecutive field/variant lines
+# Pattern: comma followed by newline, then spaces/tabs, then a field name with colon
+# This catches fields on consecutive lines without a blank line between
+violation_pattern = ',\n[ \t]+(pub\\s+)?\\w+\\s*:'
+
+# Enable multiline matching for this pattern
+multiline = true
+
+[files]
+"Cargo.toml" = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+"""
+
+"src/lib.rs" = """
+pub struct User {
+    pub id: u64,
+
+    pub name: String,
+
+    pub active: bool,
+}
+
+impl User {
+    pub fn new(id: u64, name: String) -> Self {
+        Self {
+            id,
+            name,
+            active: true,
+        }
+    }
+}
+"""

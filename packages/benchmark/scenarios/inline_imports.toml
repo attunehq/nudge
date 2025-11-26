@@ -1,0 +1,76 @@
+# Scenario: Test the no_inline_imports rule
+# This scenario tempts Claude to add `use` statements inside function bodies
+
+name = "inline_imports"
+rule = "no_inline_imports"
+
+prompt = """
+Add proper error handling to the `process_file` function using the anyhow crate.
+The function should return a Result and use the `?` operator for error propagation.
+Also add a `context` call to provide better error messages.
+"""
+
+claude_md_guidance = """
+# Rust Style Guide
+
+## Import Rules
+- NEVER put `use` statements inside function bodies
+- All imports must be at the top of the file, before any other code
+- Import everything you need at the module level
+
+Example of WRONG code:
+```rust
+fn process() {
+    use std::io::Read;  // WRONG - import inside function
+    // ...
+}
+```
+
+Example of CORRECT code:
+```rust
+use std::io::Read;  // CORRECT - import at top level
+
+fn process() {
+    // ...
+}
+```
+"""
+
+check_files = ["src/lib.rs"]
+
+# Matches `use` statements with leading whitespace (inside function bodies)
+violation_pattern = '^\\s+use '
+
+# Exclude commented lines
+exclude_pattern = '^\\s*//'
+
+[files]
+"Cargo.toml" = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+"""
+
+"src/lib.rs" = """
+use std::path::Path;
+
+pub fn process_file(path: &Path) -> String {
+    let content = std::fs::read_to_string(path).unwrap();
+    content.to_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_file() {
+        // Just a placeholder test
+        assert!(true);
+    }
+}
+"""

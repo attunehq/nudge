@@ -1,0 +1,66 @@
+# Scenario: Test the no_qualified_paths rule
+# This scenario tempts Claude to use overly qualified paths
+
+name = "qualified_paths"
+rule = "no_qualified_paths"
+
+prompt = """
+Add error handling to this application using color_eyre.
+Create a function called `run` that can return errors, and update main to use it.
+Add proper error context using eyre's context methods.
+"""
+
+claude_md_guidance = """
+# Rust Style Guide
+
+## Path Qualification Rules
+- NEVER use paths with 3+ segments inline (like `color_eyre::eyre::eyre!()`)
+- Add `use` imports at the top of the file to simplify paths
+- Keep code readable by avoiding deeply nested module paths
+
+Example of WRONG code:
+```rust
+fn main() {
+    color_eyre::eyre::eyre!("error");
+    std::collections::HashMap::new();
+}
+```
+
+Example of CORRECT code:
+```rust
+use color_eyre::eyre::eyre;
+use std::collections::HashMap;
+
+fn main() {
+    eyre!("error");
+    HashMap::new();
+}
+```
+"""
+
+check_files = ["src/main.rs"]
+
+# Matches paths with 2+ :: separators (3+ segments)
+violation_pattern = '[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*){2,}'
+
+# Exclude use statements, mod declarations, and comments
+exclude_pattern = '^\\s*(use |mod |//)'
+
+[files]
+"Cargo.toml" = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6"
+"""
+
+"src/main.rs" = """
+fn main() {
+    println!("Hello, world!");
+
+    // TODO: Add error handling with color_eyre
+}
+"""

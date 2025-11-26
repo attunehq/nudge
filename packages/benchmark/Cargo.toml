@@ -1,0 +1,26 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.53", features = ["env", "derive", "cargo"] }
+color-eyre = "0.6.5"
+regex = "1.12.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+tempfile = "3.20"
+glob = "0.3"
+toml = "0.8"
+tracing = "0.1.41"
+tracing-error = "0.2.1"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+uuid = { version = "1.16", features = ["v4"] }
+
+# For running claude CLI
+xshell = "0.2.7"
+
+# Reuse pavlov's rule patterns
+pavlov = { path = "../pavlov" }
+serde_plain = "1.0.2"
+bon = "3.8.1"
