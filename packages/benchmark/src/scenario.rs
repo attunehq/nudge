@@ -482,18 +482,20 @@ impl ContentTest {
     #[tracing::instrument(name = "ContentTest::contains")]
     fn contains(&self, content: &str) -> Result<()> {
         match &self.0 {
-            Either::Left(test) => {
-                if test.is_match(content) {
+            Either::Left(regex) => {
+                if regex.is_match(content) {
                     Ok(())
                 } else {
-                    bail!("content does not match regex")
+                    Err(eyre!("content does not match regex"))
+                        .section(format!("Pattern: {}", regex.as_str()).header("Expected:"))
                 }
             }
-            Either::Right(test) => {
-                if content.contains(test) {
+            Either::Right(needle) => {
+                if content.contains(needle) {
                     Ok(())
                 } else {
-                    bail!("content does not match string")
+                    Err(eyre!("content does not contain string"))
+                        .section(format!("String: {needle:?}").header("Expected:"))
                 }
             }
         }
@@ -502,16 +504,19 @@ impl ContentTest {
     #[tracing::instrument(name = "ContentTest::not_contains")]
     fn not_contains(&self, content: &str) -> Result<()> {
         match &self.0 {
-            Either::Left(test) => {
-                if test.is_match(content) {
-                    bail!("content matches regex")
+            Either::Left(regex) => {
+                if let Some(m) = regex.find(content) {
+                    Err(eyre!("content matches regex"))
+                        .section(format!("Pattern: {}", regex.as_str()).header("Regex:"))
+                        .section(format!("{:?}", m.as_str()).header("Matched:"))
                 } else {
                     Ok(())
                 }
             }
-            Either::Right(test) => {
-                if content.contains(test) {
-                    bail!("content matches string")
+            Either::Right(needle) => {
+                if content.contains(needle) {
+                    Err(eyre!("content contains string"))
+                        .section(format!("{needle:?}").header("Found:"))
                 } else {
                     Ok(())
                 }

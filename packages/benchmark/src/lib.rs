@@ -30,6 +30,8 @@
 //! The scenarios in this benchmark are designed to evaluate the effectiveness
 //! of the Pavlov approach compared to other approaches.
 
+use std::{fs::read_to_string, path::Path};
+
 use color_eyre::Result;
 use color_eyre::eyre::Context;
 use tempfile::tempdir;
@@ -40,6 +42,33 @@ pub use crate::scenario::Scenario;
 
 pub mod agent;
 pub mod scenario;
+
+/// Load all scenarios from the given directory.
+///
+/// Scenarios are loaded from `.toml` files in the directory and sorted by name.
+pub fn load_scenarios(dir: &Path) -> Result<Vec<Scenario>> {
+    let mut scenarios = Vec::new();
+
+    let entries = dir
+        .read_dir()
+        .with_context(|| format!("read scenarios directory: {dir:?}"))?;
+
+    for entry in entries {
+        let entry = entry.context("read directory entry")?;
+        let path = entry.path();
+
+        if path.extension().is_some_and(|ext| ext == "toml") {
+            let content =
+                read_to_string(&path).with_context(|| format!("read scenario file: {path:?}"))?;
+            let scenario = toml::from_str::<Scenario>(&content)
+                .with_context(|| format!("parse scenario file: {path:?}"))?;
+            scenarios.push(scenario);
+        }
+    }
+
+    scenarios.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(scenarios)
+}
 
 #[tracing::instrument(
     skip(scenario),
