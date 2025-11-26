@@ -100,6 +100,7 @@ dependencies = [
  "color-eyre",
  "either",
  "glob",
+ "owo-colors",
  "regex",
  "serde",
  "serde_json",

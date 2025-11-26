@@ -9,6 +9,7 @@
 //! - Expectation: what is the final state we want to see in the project?
 
 use std::{
+    fmt::{self, Display, Formatter},
     fs::{create_dir_all, read_to_string, write},
     path::{Path, PathBuf},
 };
@@ -20,12 +21,11 @@ use color_eyre::{
 };
 use either::Either;
 use glob::glob;
+use owo_colors::OwoColorize;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use tap::Pipe;
 use tracing::info_span;
-
-use crate::agent::Agent;
 
 /// A benchmark scenario testing a specific rule.
 ///
@@ -49,9 +49,10 @@ pub struct Scenario {
     #[builder(into)]
     pub name: String,
 
-    /// The agent being evaluated.
+    /// An optional description of what this scenario tests.
     #[builder(into)]
-    pub agent: Agent,
+    #[serde(default)]
+    pub description: Option<String>,
 
     /// The commands to run to set up the environment.
     ///
@@ -77,12 +78,17 @@ pub struct Scenario {
     #[builder(into)]
     pub commands: Vec<SetupCommand>,
 
-    /// The guidance to provide to the agent before running the prompt.
+    /// The guidance content to provide to the agent.
     ///
-    /// This is to the agent what `Environment` is to the project: in effect,
-    /// this is how we set up the agent itself to be able to run.
+    /// This should contain the content for the agent's context file (e.g.,
+    /// `CLAUDE.md` for Claude Code). Whether this guidance is actually applied
+    /// depends on the runtime `Guidance` mode passed to `evaluate()`.
+    ///
+    /// **Important:** Always use this field for guidance content rather than
+    /// setup commands, so that evaluators can choose to exclude guidance at
+    /// runtime to test agent behavior with and without guidance.
     #[builder(into)]
-    pub guidance: Guidance,
+    pub guidance: String,
 
     /// The prompt to give to the agent.
     #[builder(into)]
@@ -107,31 +113,6 @@ pub struct Scenario {
     /// ```
     #[builder(into)]
     pub expected: Vec<EvaluationCommand>,
-}
-
-/// The guidance to provide to the agent before running the prompt.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type", content = "content", rename_all = "snake_case")]
-pub enum Guidance {
-    /// Provide no guidance to the agent.
-    None,
-
-    /// Set up Pavlov in the environment.
-    Pavlov,
-
-    /// Write a context file to the environment.
-    ///
-    /// The specific implementation of the context file depends on the agent
-    /// being evaluated; for example when evaluating `Agent::ClaudeCode` this
-    /// will write a `CLAUDE.md` file to the environment with the specified
-    /// content.
-    File(String),
-}
-
-impl From<&Guidance> for Guidance {
-    fn from(value: &Guidance) -> Self {
-        value.clone()
-    }
 }
 
 /// A command to run in an environment when it is being created.
@@ -547,4 +528,197 @@ impl<'de> Deserialize<'de> for ContentTest {
         let content = String::deserialize(deserializer)?;
         Ok(Self::new(content))
     }
+}
+
+impl std::fmt::Display for ContentTest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Either::Left(regex) => write!(f, "{}", regex.as_str()),
+            Either::Right(string) => write!(f, "{string}"),
+        }
+    }
+}
+
+impl ContentTest {
+    /// Returns whether this test is a regex pattern.
+    pub fn is_regex(&self) -> bool {
+        self.0.is_left()
+    }
+}
+
+// ============================================================================
+// Display implementations for pretty-printing scenarios
+// ============================================================================
+
+impl Display for Scenario {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        // Name
+        writeln!(f, "{}", "name:".green().bold())?;
+        write_indented(f, &self.name, 1)?;
+        writeln!(f)?;
+
+        // Description (if present)
+        if let Some(description) = &self.description {
+            writeln!(f, "{}", "description:".green().bold())?;
+            write_indented(f, description, 1)?;
+            writeln!(f)?;
+        }
+
+        // Guidance
+        writeln!(f, "{}", "guidance:".green().bold())?;
+        write_indented(f, &self.guidance, 1)?;
+        writeln!(f)?;
+
+        // Prompt
+        writeln!(f, "{}", "prompt:".green().bold())?;
+        write_indented(f, &self.prompt, 1)?;
+        writeln!(f)?;
+
+        // Commands
+        writeln!(f, "{}", "commands:".green().bold())?;
+        for command in &self.commands {
+            write_setup_command(f, command, 1)?;
+        }
+        writeln!(f)?;
+
+        // Expected
+        writeln!(f, "{}", "expected:".green().bold())?;
+        for expected in &self.expected {
+            write_eval_command(f, expected, 1)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for SetupCommand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write_setup_command(f, self, 0)
+    }
+}
+
+impl Display for EvaluationCommand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write_eval_command(f, self, 0)
+    }
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.binary, self.args.join(" "))
+    }
+}
+
+impl Display for WriteFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)
+    }
+}
+
+impl Display for AppendFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)
+    }
+}
+
+impl Display for FileEvaluation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.path)
+    }
+}
+
+// Helper functions for formatted output
+
+fn indent(level: usize) -> String {
+    "  ".repeat(level)
+}
+
+fn write_indented(f: &mut Formatter<'_>, text: &str, level: usize) -> fmt::Result {
+    let prefix = indent(level);
+    for line in text.lines() {
+        writeln!(f, "{prefix}{line}")?;
+    }
+    Ok(())
+}
+
+fn write_setup_command(f: &mut Formatter<'_>, cmd: &SetupCommand, level: usize) -> fmt::Result {
+    let prefix = indent(level);
+    match cmd {
+        SetupCommand::Command(c) => {
+            writeln!(
+                f,
+                "{}{} {} {}",
+                prefix,
+                "-".cyan(),
+                "command:".yellow(),
+                c.to_string().white()
+            )
+        }
+        SetupCommand::Write(file) => {
+            writeln!(
+                f,
+                "{}{} {} {}",
+                prefix,
+                "-".cyan(),
+                "write:".yellow(),
+                file.path.white()
+            )?;
+            write_indented(f, &file.content, level + 2)
+        }
+        SetupCommand::Append(file) => {
+            writeln!(
+                f,
+                "{}{} {} {}",
+                prefix,
+                "-".cyan(),
+                "append:".yellow(),
+                file.path.white()
+            )?;
+            if let Some(sep) = &file.separator {
+                writeln!(f, "{}  {} {}", prefix, "separator:".dimmed(), sep.dimmed())?;
+            }
+            write_indented(f, &file.content, level + 2)
+        }
+    }
+}
+
+fn write_eval_command(f: &mut Formatter<'_>, cmd: &EvaluationCommand, level: usize) -> fmt::Result {
+    let prefix = indent(level);
+    match cmd {
+        EvaluationCommand::Command(c) => {
+            writeln!(
+                f,
+                "{}{} {} {}",
+                prefix,
+                "-".cyan(),
+                "command:".yellow(),
+                c.to_string().white()
+            )
+        }
+        EvaluationCommand::Equals(file) => write_file_eval(f, &prefix, "equals", file),
+        EvaluationCommand::Contains(file) => write_file_eval(f, &prefix, "contains", file),
+        EvaluationCommand::NotContains(file) => write_file_eval(f, &prefix, "not_contains", file),
+    }
+}
+
+fn write_file_eval(
+    f: &mut Formatter<'_>,
+    prefix: &str,
+    kind: &str,
+    file: &FileEvaluation,
+) -> fmt::Result {
+    let kind_label = if file.content.is_regex() {
+        format!("{kind} (regex):")
+    } else {
+        format!("{kind}:")
+    };
+    writeln!(
+        f,
+        "{}{} {} {}",
+        prefix,
+        "-".cyan(),
+        kind_label.yellow(),
+        file.path.white()
+    )?;
+    writeln!(f, "{}  {}", prefix, file.content.to_string().dimmed())
 }

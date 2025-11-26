@@ -20,3 +20,4 @@ serde_plain = "1.0.2"
 bon = "3.8.1"
 either = { version = "1.15.0", features = ["serde"] }
 tap = "1.0.1"
+owo-colors = "4.2.3"

@@ -2,40 +2,9 @@
 # This scenario tempts Claude to use overly qualified paths
 
 name = "qualified_paths"
+description = "Tests that deeply nested paths are imported instead of used inline"
 
-[agent]
-type = "ClaudeCode"
-model = "sonnet"
-
-[[commands]]
-type = "write"
-[commands.content]
-path = "Cargo.toml"
-content = """
-[package]
-name = "test-repo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-color-eyre = "0.6"
-"""
-
-[[commands]]
-type = "write"
-[commands.content]
-path = "src/main.rs"
-content = """
-fn main() {
-    println!("Hello, world!");
-
-    // TODO: Add error handling with color_eyre
-}
-"""
-
-[guidance]
-type = "file"
-content = """
+guidance = """
 # Rust Style Guide
 
 ## Path Qualification Rules
@@ -67,6 +36,32 @@ prompt = """
 Add error handling to this application using color_eyre.
 Create a function called `run` that can return errors, and update main to use it.
 Add proper error context using eyre's context methods.
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6"
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/main.rs"
+content = """
+fn main() {
+    println!("Hello, world!");
+
+    // TODO: Add error handling with color_eyre
+}
 """
 
 # Matches paths with 2+ :: separators (3+ segments), excluding use/mod statements and comments

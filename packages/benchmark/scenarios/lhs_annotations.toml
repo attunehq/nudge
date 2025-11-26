@@ -2,10 +2,36 @@
 # This scenario tempts Claude to use left-hand side type annotations
 
 name = "lhs_annotations"
+description = "Tests that type annotations use turbofish syntax instead of let x: Type"
 
-[agent]
-type = "ClaudeCode"
-model = "sonnet"
+guidance = """
+# Rust Style Guide
+
+## Type Annotation Rules
+- NEVER use left-hand side type annotations like `let x: Type = ...`
+- Use type inference when possible
+- When explicit types are needed, use turbofish syntax: `collect::<Vec<_>>()`
+
+Example of WRONG code:
+```rust
+let config: Config = serde_json::from_str(&content)?;
+let items: Vec<String> = vec![];
+```
+
+Example of CORRECT code:
+```rust
+let config = serde_json::from_str::<Config>(&content)?;
+let items = Vec::<String>::new();
+// Or even better, let inference work:
+let items = vec!["hello".to_string()];
+```
+"""
+
+prompt = """
+Add a function called `parse_config` that reads a JSON file and parses it into a Config struct.
+The Config struct should have fields: name (String), port (u16), and debug (bool).
+Use serde_json for parsing.
+"""
 
 [[commands]]
 type = "write"
@@ -41,37 +67,6 @@ pub struct Config {
 }
 
 // TODO: Add parse_config function here
-"""
-
-[guidance]
-type = "file"
-content = """
-# Rust Style Guide
-
-## Type Annotation Rules
-- NEVER use left-hand side type annotations like `let x: Type = ...`
-- Use type inference when possible
-- When explicit types are needed, use turbofish syntax: `collect::<Vec<_>>()`
-
-Example of WRONG code:
-```rust
-let config: Config = serde_json::from_str(&content)?;
-let items: Vec<String> = vec![];
-```
-
-Example of CORRECT code:
-```rust
-let config = serde_json::from_str::<Config>(&content)?;
-let items = Vec::<String>::new();
-// Or even better, let inference work:
-let items = vec!["hello".to_string()];
-```
-"""
-
-prompt = """
-Add a function called `parse_config` that reads a JSON file and parses it into a Config struct.
-The Config struct should have fields: name (String), port (u16), and debug (bool).
-Use serde_json for parsing.
 """
 
 # Matches `let name: Type = ` or `let mut name: Type = `

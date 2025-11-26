@@ -2,10 +2,39 @@
 # This scenario tempts Claude to add `use` statements inside function bodies
 
 name = "inline_imports"
+description = "Tests that imports are placed at module level, not inside functions"
 
-[agent]
-type = "ClaudeCode"
-model = "sonnet"
+guidance = """
+# Rust Style Guide
+
+## Import Rules
+- NEVER put `use` statements inside function bodies
+- All imports must be at the top of the file, before any other code
+- Import everything you need at the module level
+
+Example of WRONG code:
+```rust
+fn process() {
+    use std::io::Read;  // WRONG - import inside function
+    // ...
+}
+```
+
+Example of CORRECT code:
+```rust
+use std::io::Read;  // CORRECT - import at top level
+
+fn process() {
+    // ...
+}
+```
+"""
+
+prompt = """
+Add proper error handling to the `process_file` function using the anyhow crate.
+The function should return a Result and use the `?` operator for error propagation.
+Also add a `context` call to provide better error messages.
+"""
 
 [[commands]]
 type = "write"
@@ -43,40 +72,6 @@ mod tests {
         assert!(true);
     }
 }
-"""
-
-[guidance]
-type = "file"
-content = """
-# Rust Style Guide
-
-## Import Rules
-- NEVER put `use` statements inside function bodies
-- All imports must be at the top of the file, before any other code
-- Import everything you need at the module level
-
-Example of WRONG code:
-```rust
-fn process() {
-    use std::io::Read;  // WRONG - import inside function
-    // ...
-}
-```
-
-Example of CORRECT code:
-```rust
-use std::io::Read;  // CORRECT - import at top level
-
-fn process() {
-    // ...
-}
-```
-"""
-
-prompt = """
-Add proper error handling to the `process_file` function using the anyhow crate.
-The function should return a Result and use the `?` operator for error propagation.
-Also add a `context` call to provide better error messages.
 """
 
 # Matches `use` statements with leading whitespace (inside function bodies)

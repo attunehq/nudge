@@ -106,3 +106,23 @@ pub enum ModelClaudeCode {
 
 derive_fromstr_from_deserialize!(ModelClaudeCode);
 derive_display_from_serialize!(ModelClaudeCode);
+
+/// The type of guidance to provide to the agent before running the prompt.
+///
+/// This is a runtime choice that determines how the scenario's guidance content
+/// is applied (or whether it's applied at all).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Guidance {
+    /// Provide no guidance to the agent.
+    #[default]
+    None,
+
+    /// Set up Pavlov in the environment.
+    Pavlov,
+
+    /// Write the scenario's guidance content to the agent's context file.
+    ///
+    /// The specific context file depends on the agent type. For example,
+    /// `Agent::ClaudeCode` writes to `CLAUDE.md`.
+    File,
+}

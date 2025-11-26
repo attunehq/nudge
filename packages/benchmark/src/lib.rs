@@ -33,10 +33,10 @@
 use color_eyre::Result;
 use color_eyre::eyre::Context;
 use tempfile::tempdir;
-use tracing::debug;
+use tracing::info_span;
 
-pub use crate::agent::{Agent, ModelClaudeCode};
-pub use crate::scenario::{Guidance, Scenario};
+pub use crate::agent::{Agent, Guidance, ModelClaudeCode};
+pub use crate::scenario::Scenario;
 
 pub mod agent;
 pub mod scenario;
@@ -45,40 +45,29 @@ pub mod scenario;
     skip(scenario),
     fields(
         scenario.name = ?scenario.name,
-        scenario.agent = ?scenario.agent,
         project
     )
 )]
-pub fn evaluate(scenario: &Scenario) -> Result<()> {
+pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Result<()> {
     let project = tempdir().context("create temporary project directory")?;
     let root = project.path();
     tracing::Span::current().record("project", format!("{root:?}"));
 
     for command in &scenario.commands {
-        debug!(scenario.command = ?command, "running setup command");
-        command
-            .run(root)
-            .with_context(|| format!("run command {command:?} in {root:?}"))?;
+        info_span!("evaluate::setup", ?command).in_scope(|| command.run(root))?;
     }
 
-    debug!(?scenario.guidance, "configuring agent guidance");
-    match &scenario.guidance {
+    match guidance {
         Guidance::None => Ok(()),
-        Guidance::Pavlov => scenario.agent.configure_pavlov(root),
-        Guidance::File(content) => scenario.agent.write_context(root, content),
+        Guidance::Pavlov => agent.configure_pavlov(root),
+        Guidance::File => agent.write_context(root, &scenario.guidance),
     }?;
 
-    debug!(?scenario.prompt, "running agent");
-    scenario
-        .agent
-        .run(root, &scenario.prompt)
-        .with_context(|| format!("run agent on {root:?}"))?;
+    info_span!("evaluate::agent", ?scenario.prompt)
+        .in_scope(|| agent.run(root, &scenario.prompt))?;
 
     for command in &scenario.expected {
-        debug!(scenario.expected = ?command, "running expectation");
-        command
-            .run(root)
-            .with_context(|| format!("evaluate expectation {command:?} in {root:?}"))?;
+        info_span!("evaluate::expectation", ?command).in_scope(|| command.run(root))?;
     }
 
     Ok(())

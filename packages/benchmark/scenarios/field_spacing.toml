@@ -2,49 +2,9 @@
 # This scenario tempts Claude to add fields without blank lines between them
 
 name = "field_spacing"
+description = "Tests that struct fields and enum variants have blank lines between them"
 
-[agent]
-type = "ClaudeCode"
-model = "sonnet"
-
-[[commands]]
-type = "write"
-[commands.content]
-path = "Cargo.toml"
-content = """
-[package]
-name = "test-repo"
-version = "0.1.0"
-edition = "2021"
-"""
-
-[[commands]]
-type = "write"
-[commands.content]
-path = "src/lib.rs"
-content = """
-pub struct User {
-    pub id: u64,
-
-    pub name: String,
-
-    pub active: bool,
-}
-
-impl User {
-    pub fn new(id: u64, name: String) -> Self {
-        Self {
-            id,
-            name,
-            active: true,
-        }
-    }
-}
-"""
-
-[guidance]
-type = "file"
-content = """
+guidance = """
 # Rust Style Guide
 
 ## Struct and Enum Formatting Rules
@@ -96,6 +56,41 @@ Add the following fields to the User struct:
 - updated_at: u64
 
 Also add a UserRole enum with variants: Admin, Moderator, User, Guest.
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
+pub struct User {
+    pub id: u64,
+
+    pub name: String,
+
+    pub active: bool,
+}
+
+impl User {
+    pub fn new(id: u64, name: String) -> Self {
+        Self {
+            id,
+            name,
+            active: true,
+        }
+    }
+}
 """
 
 # Pattern: comma followed by newline, then spaces/tabs, then a field name with colon
