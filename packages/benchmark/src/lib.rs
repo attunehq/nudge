@@ -43,6 +43,7 @@ pub use crate::scenario::Scenario;
 pub mod agent;
 pub mod outcome;
 pub mod scenario;
+pub mod snippet;
 
 /// Load all scenarios from the given directory.
 ///

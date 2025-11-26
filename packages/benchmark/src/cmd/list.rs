@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use benchmark::load_scenarios;
 use clap::Args;
 use color_eyre::{Result, eyre::eyre};
-use owo_colors::OwoColorize;
+use color_print::cformat;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -22,18 +22,14 @@ pub fn main(config: Config) -> Result<()> {
 
     match &config.name {
         None => {
-            println!("{}", "Available scenarios:".bold());
+            println!("{}", cformat!("<bold>Available scenarios:</>"));
             for scenario in scenarios {
+                let name = &scenario.name;
                 let description = scenario
                     .description
                     .as_deref()
                     .unwrap_or("No description");
-                println!(
-                    "  {} {}: {}",
-                    "-".cyan(),
-                    scenario.name.green(),
-                    description.dimmed()
-                );
+                println!("  {}", cformat!("<cyan>-</> <green>{name}</>: <dim>{description}</>"));
             }
         }
         Some(name) => {

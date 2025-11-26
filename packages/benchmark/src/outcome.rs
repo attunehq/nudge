@@ -6,10 +6,14 @@
 //! - JSON serialization for reports
 //! - Aggregation across multiple runs
 
+use std::ops::Range;
 use std::path::PathBuf;
 
-use owo_colors::OwoColorize;
+use bon::Builder;
+use color_print::cformat;
 use serde::{Deserialize, Serialize};
+
+use crate::snippet::Snippet;
 
 /// The outcome of a single benchmark evaluation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,9 +62,9 @@ impl Outcome {
 impl std::fmt::Display for Outcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Pass => write!(f, "{} Passed", "✓".green()),
+            Self::Pass => write!(f, "{}", cformat!("<green>✓</> Passed")),
             Self::Fail { violations } => {
-                writeln!(f, "{} Failed", "✗".red())?;
+                writeln!(f, "{}", cformat!("<red>✗</> Failed"))?;
                 for violation in violations {
                     write!(f, "{violation}")?;
                 }
@@ -70,177 +74,180 @@ impl std::fmt::Display for Outcome {
     }
 }
 
+/// A regex pattern matched when it shouldn't have (not_contains failed).
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct RegexMatched {
+    /// The file where the match was found.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The regex pattern that matched.
+    #[builder(into)]
+    pub pattern: String,
+
+    /// The full source content of the file.
+    #[builder(into)]
+    pub source: String,
+
+    /// The byte range of the match within the source.
+    pub span: Range<usize>,
+}
+
+/// A regex pattern didn't match when it should have (contains failed).
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct RegexNotMatched {
+    /// The file that was checked.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The regex pattern that didn't match.
+    #[builder(into)]
+    pub pattern: String,
+}
+
+/// A string was found when it shouldn't have been (not_contains failed).
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct StringFound {
+    /// The file where the string was found.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The string that was found.
+    #[builder(into)]
+    pub needle: String,
+
+    /// The full source content of the file.
+    #[builder(into)]
+    pub source: String,
+
+    /// The byte range of the match within the source.
+    pub span: Range<usize>,
+}
+
+/// A string wasn't found when it should have been (contains failed).
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct StringNotFound {
+    /// The file that was checked.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The string that wasn't found.
+    #[builder(into)]
+    pub needle: String,
+}
+
+/// File content didn't match expected content exactly (equals failed).
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct ContentMismatch {
+    /// The file that was checked.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// Description of what was expected.
+    #[builder(into)]
+    pub expected: String,
+}
+
+/// A command failed during evaluation.
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct CommandFailed {
+    /// The command that failed.
+    #[builder(into)]
+    pub command: String,
+
+    /// The exit code, if available.
+    pub exit_code: Option<i32>,
+
+    /// Stderr output, if any.
+    #[builder(into)]
+    pub stderr: Option<String>,
+}
+
 /// A specific violation that caused an expectation to fail.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Violation {
     /// A regex pattern matched when it shouldn't have (not_contains failed).
-    RegexMatched {
-        /// The file where the match was found.
-        path: PathBuf,
-
-        /// The regex pattern that matched.
-        pattern: String,
-
-        /// The text that matched the pattern.
-        matched: String,
-
-        /// Line number where the match starts (1-indexed).
-        line: usize,
-    },
+    RegexMatched(RegexMatched),
 
     /// A regex pattern didn't match when it should have (contains failed).
-    RegexNotMatched {
-        /// The file that was checked.
-        path: PathBuf,
-
-        /// The regex pattern that didn't match.
-        pattern: String,
-    },
+    RegexNotMatched(RegexNotMatched),
 
     /// A string was found when it shouldn't have been (not_contains failed).
-    StringFound {
-        /// The file where the string was found.
-        path: PathBuf,
-
-        /// The string that was found.
-        needle: String,
-
-        /// Line number where the string was found (1-indexed).
-        line: usize,
-    },
+    StringFound(StringFound),
 
     /// A string wasn't found when it should have been (contains failed).
-    StringNotFound {
-        /// The file that was checked.
-        path: PathBuf,
-
-        /// The string that wasn't found.
-        needle: String,
-    },
+    StringNotFound(StringNotFound),
 
     /// File content didn't match expected content exactly (equals failed).
-    ContentMismatch {
-        /// The file that was checked.
-        path: PathBuf,
-
-        /// Description of what was expected.
-        expected: String,
-    },
+    ContentMismatch(ContentMismatch),
 
     /// A command failed during evaluation.
-    CommandFailed {
-        /// The command that failed.
-        command: String,
-
-        /// The exit code, if available.
-        exit_code: Option<i32>,
-
-        /// Stderr output, if any.
-        stderr: Option<String>,
-    },
+    CommandFailed(CommandFailed),
 }
 
-impl Violation {
-    /// Create a RegexMatched violation, computing the line number from content.
-    pub fn regex_matched(path: PathBuf, pattern: &str, content: &str, matched: &str) -> Self {
-        let line = Self::find_line_number(content, matched);
-        Self::RegexMatched {
-            path,
-            pattern: pattern.to_string(),
-            matched: matched.to_string(),
-            line,
-        }
-    }
-
-    /// Create a StringFound violation, computing the line number from content.
-    pub fn string_found(path: PathBuf, needle: &str, content: &str) -> Self {
-        let line = content
-            .find(needle)
-            .map(|pos| Self::find_line_number(content, &content[pos..pos + needle.len()]))
-            .unwrap_or(1);
-        Self::StringFound {
-            path,
-            needle: needle.to_string(),
-            line,
-        }
-    }
-
-    fn find_line_number(content: &str, matched: &str) -> usize {
-        let match_start = matched.as_ptr() as usize - content.as_ptr() as usize;
-        content[..match_start].lines().count() + 1
-    }
-}
 
 impl std::fmt::Display for Violation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RegexMatched {
-                path,
-                pattern,
-                matched,
-                line,
-            } => {
-                writeln!(
-                    f,
-                    "    {} {} {}",
-                    "regex matched:".yellow(),
-                    path.display().to_string().dimmed(),
-                    format!("line {line}").dimmed()
-                )?;
-                writeln!(f, "      {} {}", "pattern:".green().bold(), pattern.dimmed())?;
-                writeln!(f, "      {} {:?}", "matched:".green().bold(), matched.dimmed())
+            Self::RegexMatched(matched) => {
+                let snippet = Snippet::new(&matched.source)
+                    .render()
+                    .highlight(matched.span.clone())
+                    .finish()
+                    .to_string();
+                let pattern = &matched.pattern;
+                let path = matched.path.display();
+                writeln!(f, "{}", cformat!("<yellow>regex matched:</> <dim>{pattern}</>"))?;
+                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
+                write!(f, "{snippet}")
             }
-            Self::RegexNotMatched { path, pattern } => {
-                writeln!(
-                    f,
-                    "    {} {}",
-                    "regex not matched:".yellow(),
-                    path.display().to_string().dimmed()
-                )?;
-                writeln!(f, "      {} {}", "pattern:".green().bold(), pattern.dimmed())
+            Self::RegexNotMatched(not_matched) => {
+                let pattern = &not_matched.pattern;
+                let path = not_matched.path.display();
+                writeln!(f, "{}", cformat!("<yellow>regex not matched:</> <dim>{pattern}</>"))?;
+                write!(f, "{}", cformat!("<dim>--></> {path}"))
             }
-            Self::StringFound { path, needle, line } => {
-                writeln!(
-                    f,
-                    "    {} {} {}",
-                    "string found:".yellow(),
-                    path.display().to_string().dimmed(),
-                    format!("line {line}").dimmed()
-                )?;
-                writeln!(f, "      {} {:?}", "string:".green().bold(), needle.dimmed())
+            Self::StringFound(found) => {
+                let snippet = Snippet::new(&found.source)
+                    .render()
+                    .highlight(found.span.clone())
+                    .finish()
+                    .to_string();
+                let needle = &found.needle;
+                let path = found.path.display();
+                writeln!(f, "{}", cformat!("<yellow>string found:</> <dim>{needle:?}</>"))?;
+                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
+                write!(f, "{snippet}")
             }
-            Self::StringNotFound { path, needle } => {
-                writeln!(
-                    f,
-                    "    {} {}",
-                    "string not found:".yellow(),
-                    path.display().to_string().dimmed()
-                )?;
-                writeln!(f, "      {} {:?}", "expected:".green().bold(), needle.dimmed())
+            Self::StringNotFound(not_found) => {
+                let needle = &not_found.needle;
+                let path = not_found.path.display();
+                writeln!(f, "{}", cformat!("<yellow>string not found:</> <dim>{needle:?}</>"))?;
+                write!(f, "{}", cformat!("<dim>--></> {path}"))
             }
-            Self::ContentMismatch { path, expected } => {
-                writeln!(
-                    f,
-                    "    {} {}",
-                    "content mismatch:".yellow(),
-                    path.display().to_string().dimmed()
-                )?;
-                writeln!(f, "      {} {}", "expected:".green().bold(), expected.dimmed())
+            Self::ContentMismatch(mismatch) => {
+                let expected = &mismatch.expected;
+                let path = mismatch.path.display();
+                writeln!(f, "{}", cformat!("<yellow>content mismatch:</> <dim>{expected}</>"))?;
+                write!(f, "{}", cformat!("<dim>--></> {path}"))
             }
-            Self::CommandFailed {
-                command,
-                exit_code,
-                stderr,
-            } => {
-                writeln!(f, "    {} {}", "command failed:".yellow(), command.dimmed())?;
-                if let Some(code) = exit_code {
-                    writeln!(f, "      {} {}", "exit code:".green().bold(), code)?;
+            Self::CommandFailed(failed) => {
+                let command = &failed.command;
+                write!(f, "{}", cformat!("<yellow>command failed:</> <dim>{command}</>"))?;
+                if let Some(code) = failed.exit_code {
+                    write!(f, " (exit code {code})")?;
                 }
-                if let Some(err) = stderr {
-                    if !err.is_empty() {
-                        writeln!(f, "      {} {}", "stderr:".green().bold(), err.dimmed())?;
-                    }
+                if let Some(err) = &failed.stderr
+                    && !err.is_empty()
+                {
+                    write!(f, "{}", cformat!("\n<dim>stderr:</> {err}"))?;
                 }
                 Ok(())
             }

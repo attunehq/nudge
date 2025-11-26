@@ -1,10 +1,9 @@
 //! Generate report from existing benchmark results.
 
-use std::io::stdout;
 use std::path::PathBuf;
 
 use clap::{Args, ValueEnum};
-use color_eyre::eyre::{Result, WrapErr};
+use color_eyre::eyre::Result;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Format {
@@ -25,6 +24,6 @@ pub struct Config {
     format: Format,
 }
 
-pub fn main(config: Config) -> Result<()> {
+pub fn main(_: Config) -> Result<()> {
     Ok(())
 }

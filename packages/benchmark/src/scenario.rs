@@ -19,14 +19,17 @@ use color_eyre::{
     Result, Section, SectionExt,
     eyre::{Context, bail, eyre},
 };
+use color_print::cformat;
 use either::Either;
 use glob::glob;
-use owo_colors::OwoColorize;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use tap::Pipe;
 
-use crate::outcome::Violation;
+use crate::outcome::{
+    CommandFailed, ContentMismatch, RegexMatched, RegexNotMatched, StringFound, StringNotFound,
+    Violation,
+};
 
 /// A benchmark scenario testing a specific rule.
 ///
@@ -254,6 +257,10 @@ impl Command {
 
     /// Evaluate the command and return violations if it fails.
     /// Used for evaluation commands where failure is a violation, not a fatal error.
+    //
+    // Note: this returns a vec of violations so that it has the same API shape
+    // as the other evaluation command methods, not because it can actually
+    // return multiple violations (although it may in the future).
     #[tracing::instrument]
     pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
         let output = std::process::Command::new(&self.binary)
@@ -266,11 +273,13 @@ impl Command {
             Ok(vec![])
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Ok(vec![Violation::CommandFailed {
-                command: format!("{} {}", self.binary, self.args.join(" ")),
-                exit_code: output.status.code(),
-                stderr: Some(stderr.to_string()),
-            }])
+            Ok(vec![Violation::CommandFailed(
+                CommandFailed::builder()
+                    .command(format!("{} {}", self.binary, self.args.join(" ")))
+                    .maybe_exit_code(output.status.code())
+                    .stderr(stderr.to_string())
+                    .build(),
+            )])
         }
     }
 }
@@ -343,10 +352,10 @@ impl AppendFile {
         let existing = read_to_string(&path).ok();
         let mut content = existing.unwrap_or_default();
 
-        if !content.is_empty() {
-            if let Some(separator) = &self.separator {
-                content.push_str(separator);
-            }
+        if !content.is_empty()
+            && let Some(separator) = &self.separator
+        {
+            content.push_str(separator);
         }
 
         content.push_str(&self.content);
@@ -488,19 +497,23 @@ impl ContentTest {
         match &self.0 {
             Either::Left(regex) => match regex.find(content) {
                 Some(bounds) if bounds.start() == 0 && bounds.end() == content.len() => None,
-                _ => Some(Violation::ContentMismatch {
-                    path: path.to_path_buf(),
-                    expected: format!("regex: {}", regex.as_str()),
-                }),
+                _ => Some(Violation::ContentMismatch(
+                    ContentMismatch::builder()
+                        .path(path)
+                        .expected(format!("regex: {}", regex.as_str()))
+                        .build(),
+                )),
             },
             Either::Right(expected) => {
                 if content == expected {
                     None
                 } else {
-                    Some(Violation::ContentMismatch {
-                        path: path.to_path_buf(),
-                        expected: format!("string: {expected:?}"),
-                    })
+                    Some(Violation::ContentMismatch(
+                        ContentMismatch::builder()
+                            .path(path)
+                            .expected(format!("string: {expected:?}"))
+                            .build(),
+                    ))
                 }
             }
         }
@@ -514,20 +527,24 @@ impl ContentTest {
                 if regex.is_match(content) {
                     None
                 } else {
-                    Some(Violation::RegexNotMatched {
-                        path: path.to_path_buf(),
-                        pattern: regex.as_str().to_string(),
-                    })
+                    Some(Violation::RegexNotMatched(
+                        RegexNotMatched::builder()
+                            .path(path)
+                            .pattern(regex.as_str())
+                            .build(),
+                    ))
                 }
             }
             Either::Right(needle) => {
                 if content.contains(needle) {
                     None
                 } else {
-                    Some(Violation::StringNotFound {
-                        path: path.to_path_buf(),
-                        needle: needle.clone(),
-                    })
+                    Some(Violation::StringNotFound(
+                        StringNotFound::builder()
+                            .path(path)
+                            .needle(needle)
+                            .build(),
+                    ))
                 }
             }
         }
@@ -537,29 +554,26 @@ impl ContentTest {
     #[tracing::instrument(name = "ContentTest::check_not_contains")]
     fn check_not_contains(&self, path: &Path, content: &str) -> Option<Violation> {
         match &self.0 {
-            Either::Left(regex) => {
-                if let Some(m) = regex.find(content) {
-                    Some(Violation::regex_matched(
-                        path.to_path_buf(),
-                        regex.as_str(),
-                        content,
-                        m.as_str(),
-                    ))
-                } else {
-                    None
-                }
-            }
-            Either::Right(needle) => {
-                if content.contains(needle) {
-                    Some(Violation::string_found(
-                        path.to_path_buf(),
-                        needle,
-                        content,
-                    ))
-                } else {
-                    None
-                }
-            }
+            Either::Left(regex) => regex.find(content).map(|m| {
+                Violation::RegexMatched(
+                    RegexMatched::builder()
+                        .path(path)
+                        .pattern(regex.as_str())
+                        .source(content)
+                        .span(m.range())
+                        .build(),
+                )
+            }),
+            Either::Right(needle) => content.find(needle).map(|pos| {
+                Violation::StringFound(
+                    StringFound::builder()
+                        .path(path)
+                        .needle(needle)
+                        .source(content)
+                        .span(pos..pos + needle.len())
+                        .build(),
+                )
+            }),
         }
     }
 }
@@ -589,44 +603,39 @@ impl ContentTest {
         self.0.is_left()
     }
 }
-
-// ============================================================================
-// Display implementations for pretty-printing scenarios
-// ============================================================================
-
 impl Display for Scenario {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Name
-        writeln!(f, "{}", "name:".green().bold())?;
+        writeln!(f, "{}", cformat!("<green,bold>name:</>"))?;
         write_indented(f, &self.name, 1)?;
         writeln!(f)?;
 
         // Description (if present)
         if let Some(description) = &self.description {
-            writeln!(f, "{}", "description:".green().bold())?;
+            writeln!(f, "{}", cformat!("<green,bold>description:</>"))?;
             write_indented(f, description, 1)?;
             writeln!(f)?;
         }
 
         // Guidance
-        writeln!(f, "{}", "guidance:".green().bold())?;
+        writeln!(f, "{}", cformat!("<green,bold>guidance:</>"))?;
         write_indented(f, &self.guidance, 1)?;
         writeln!(f)?;
 
         // Prompt
-        writeln!(f, "{}", "prompt:".green().bold())?;
+        writeln!(f, "{}", cformat!("<green,bold>prompt:</>"))?;
         write_indented(f, &self.prompt, 1)?;
         writeln!(f)?;
 
         // Commands
-        writeln!(f, "{}", "commands:".green().bold())?;
+        writeln!(f, "{}", cformat!("<green,bold>commands:</>"))?;
         for command in &self.commands {
             write_setup_command(f, command, 1)?;
         }
         writeln!(f)?;
 
         // Expected
-        writeln!(f, "{}", "expected:".green().bold())?;
+        writeln!(f, "{}", cformat!("<green,bold>expected:</>"))?;
         for expected in &self.expected {
             write_eval_command(f, expected, 1)?;
         }
@@ -689,37 +698,35 @@ fn write_setup_command(f: &mut Formatter<'_>, cmd: &SetupCommand, level: usize) 
     let prefix = indent(level);
     match cmd {
         SetupCommand::Command(c) => {
+            let cmd_str = c.to_string();
             writeln!(
                 f,
-                "{}{} {} {}",
-                prefix,
-                "-".cyan(),
-                "command:".yellow(),
-                c.to_string().white()
+                "{prefix}{}",
+                cformat!("<cyan>-</> <yellow>command:</> {cmd_str}")
             )
         }
         SetupCommand::Write(file) => {
+            let path = &file.path;
             writeln!(
                 f,
-                "{}{} {} {}",
-                prefix,
-                "-".cyan(),
-                "write:".yellow(),
-                file.path.white()
+                "{prefix}{}",
+                cformat!("<cyan>-</> <yellow>write:</> {path}")
             )?;
             write_indented(f, &file.content, level + 2)
         }
         SetupCommand::Append(file) => {
+            let path = &file.path;
             writeln!(
                 f,
-                "{}{} {} {}",
-                prefix,
-                "-".cyan(),
-                "append:".yellow(),
-                file.path.white()
+                "{prefix}{}",
+                cformat!("<cyan>-</> <yellow>append:</> {path}")
             )?;
             if let Some(sep) = &file.separator {
-                writeln!(f, "{}  {} {}", prefix, "separator:".dimmed(), sep.dimmed())?;
+                writeln!(
+                    f,
+                    "{prefix}  {}",
+                    cformat!("<dim>separator:</> <dim>{sep}</>")
+                )?;
             }
             write_indented(f, &file.content, level + 2)
         }
@@ -730,13 +737,11 @@ fn write_eval_command(f: &mut Formatter<'_>, cmd: &EvaluationCommand, level: usi
     let prefix = indent(level);
     match cmd {
         EvaluationCommand::Command(c) => {
+            let cmd_str = c.to_string();
             writeln!(
                 f,
-                "{}{} {} {}",
-                prefix,
-                "-".cyan(),
-                "command:".yellow(),
-                c.to_string().white()
+                "{prefix}{}",
+                cformat!("<cyan>-</> <yellow>command:</> {cmd_str}")
             )
         }
         EvaluationCommand::Equals(file) => write_file_eval(f, &prefix, "equals", file),
@@ -756,13 +761,12 @@ fn write_file_eval(
     } else {
         format!("{kind}:")
     };
+    let path = &file.path;
+    let content = file.content.to_string();
     writeln!(
         f,
-        "{}{} {} {}",
-        prefix,
-        "-".cyan(),
-        kind_label.yellow(),
-        file.path.white()
+        "{prefix}{}",
+        cformat!("<cyan>-</> <yellow>{kind_label}</> {path}")
     )?;
-    writeln!(f, "{}  {}", prefix, file.content.to_string().dimmed())
+    writeln!(f, "{prefix}  {}", cformat!("<dim>{content}</>"))
 }

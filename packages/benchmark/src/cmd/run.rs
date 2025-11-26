@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use benchmark::{Agent, Guidance, ModelClaudeCode, Scenario, evaluate, load_scenarios};
 use clap::Args;
 use color_eyre::{Result, eyre::eyre};
-use owo_colors::OwoColorize;
+use color_print::cformat;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -63,40 +63,34 @@ impl ResolvedConfig {
     }
 
     fn print_summary(&self) {
-        println!("{}", "Benchmark Configuration".bold().underline());
+        println!("{}", cformat!("<bold,underline>Benchmark Configuration</>"));
+        let scenarios = self
+            .scenarios
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("  {}", cformat!("<cyan>Scenarios:</> {scenarios}"));
+        let agents = self
+            .agents
+            .iter()
+            .map(|a| a.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("  {}", cformat!("<cyan>Agents:</> {agents}"));
+        let guidances = self
+            .guidances
+            .iter()
+            .map(|g| g.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!("  {}", cformat!("<cyan>Guidance modes:</> {guidances}"));
+        let runs = self.runs;
+        let combinations = self.combinations();
+        let total = self.total_runs();
         println!(
-            "  {} {}",
-            "Scenarios:".cyan(),
-            self.scenarios
-                .iter()
-                .map(|s| s.name.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        println!(
-            "  {} {}",
-            "Agents:".cyan(),
-            self.agents
-                .iter()
-                .map(|a| a.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        println!(
-            "  {} {}",
-            "Guidance modes:".cyan(),
-            self.guidances
-                .iter()
-                .map(|g| g.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        println!(
-            "  {} {} runs × {} combinations = {} total",
-            "Runs:".cyan(),
-            self.runs,
-            self.combinations(),
-            self.total_runs()
+            "  {}",
+            cformat!("<cyan>Runs:</> {runs} runs × {combinations} combinations = {total} total")
         );
         println!();
     }
@@ -116,28 +110,29 @@ pub fn main(config: Config) -> Result<()> {
 }
 
 fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
-    println!("{}", "Dry run: listing all combinations:".yellow().bold());
+    println!("{}", cformat!("<yellow,bold>Dry run: listing all combinations:</>"));
 
     let mut run_number = 0;
+    let total_runs = config.total_runs();
+    let runs = config.runs;
     for scenario in &config.scenarios {
         for agent in &config.agents {
             for guidance in &config.guidances {
-                for run in 1..=config.runs {
+                for run in 1..=runs {
                     run_number += 1;
+                    let scenario_name = &scenario.name;
+                    let agent_name = agent.name();
+                    let model = agent.model();
+                    let guidance_str = guidance.to_string();
                     println!(
-                        "  [{}/{}] {} {} × {} {} × {} {} × {} {} × {} {}",
-                        run_number,
-                        config.total_runs(),
-                        "Run:".green().bold(),
-                        format!("{}/{}", run, config.runs).dimmed(),
-                        "Scenario:".green().bold(),
-                        scenario.name.dimmed(),
-                        "Agent:".green().bold(),
-                        agent.name().dimmed(),
-                        "Model:".green().bold(),
-                        agent.model().dimmed(),
-                        "Guidance:".green().bold(),
-                        guidance.to_string().dimmed(),
+                        "  [{run_number}/{total_runs}] {}",
+                        cformat!(
+                            "<green,bold>Run:</> <dim>{run}/{runs}</> × \
+                            <green,bold>Scenario:</> <dim>{scenario_name}</> × \
+                            <green,bold>Agent:</> <dim>{agent_name}</> × \
+                            <green,bold>Model:</> <dim>{model}</> × \
+                            <green,bold>Guidance:</> <dim>{guidance_str}</>"
+                        )
                     );
                 }
             }
@@ -149,27 +144,28 @@ fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
 
 fn main_run(config: &ResolvedConfig) -> Result<()> {
     let mut run_number = 0;
+    let total_runs = config.total_runs();
+    let runs = config.runs;
 
     for scenario in &config.scenarios {
         for agent in &config.agents {
             for guidance in &config.guidances {
-                for run in 1..=config.runs {
+                for run in 1..=runs {
                     run_number += 1;
+                    let scenario_name = &scenario.name;
+                    let agent_name = agent.name();
+                    let model = agent.model();
+                    let guidance_str = guidance.to_string();
                     println!(
-                        "{} [{}/{}] {} {} × {} {} × {} {} × {} {} × {} {}",
-                        "Running".green().bold(),
-                        run_number,
-                        config.total_runs(),
-                        "Run:".green().bold(),
-                        format!("{}/{}", run, config.runs).dimmed(),
-                        "Scenario:".green().bold(),
-                        scenario.name.dimmed(),
-                        "Agent:".green().bold(),
-                        agent.name().dimmed(),
-                        "Model:".green().bold(),
-                        agent.model().dimmed(),
-                        "Guidance:".green().bold(),
-                        guidance.to_string().dimmed(),
+                        "{} [{run_number}/{total_runs}] {}",
+                        cformat!("<green,bold>Running</>"),
+                        cformat!(
+                            "<green,bold>Run:</> <dim>{run}/{runs}</> × \
+                            <green,bold>Scenario:</> <dim>{scenario_name}</> × \
+                            <green,bold>Agent:</> <dim>{agent_name}</> × \
+                            <green,bold>Model:</> <dim>{model}</> × \
+                            <green,bold>Guidance:</> <dim>{guidance_str}</>"
+                        )
                     );
 
                     match evaluate(scenario, agent, *guidance) {
@@ -177,7 +173,7 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
                             print!("  {outcome}");
                         }
                         Err(e) => {
-                            println!("  {} Error: {}", "⚠".yellow(), e);
+                            println!("  {}", cformat!("<yellow>⚠</> Error: {e}"));
                         }
                     }
                 }
@@ -186,7 +182,7 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
     }
 
     println!();
-    println!("{}", "Benchmark complete.".bold());
+    println!("{}", cformat!("<bold>Benchmark complete.</>"));
 
     Ok(())
 }
