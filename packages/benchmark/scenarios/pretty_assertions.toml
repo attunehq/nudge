@@ -2,56 +2,16 @@
 # This scenario tempts Claude to use standard assert_eq! in tests
 
 name = "pretty_assertions"
-rule = "prefer_pretty_assertions"
 
-prompt = """
-Write comprehensive tests for the Calculator struct.
-Test all four operations (add, subtract, multiply, divide) with various inputs.
-Include edge cases like division by zero.
-"""
+[agent]
+type = "ClaudeCode"
+model = "sonnet"
 
-claude_md_guidance = """
-# Rust Style Guide
-
-## Testing Rules
-- ALWAYS use `pretty_assertions` for better diff output in tests
-- Import it with an alias to avoid conflicts: `use pretty_assertions::assert_eq as pretty_assert_eq;`
-- Use `pretty_assert_eq!` instead of `assert_eq!`
-
-Example of WRONG code:
-```rust
-#[test]
-fn test_something() {
-    assert_eq!(result, expected);
-}
-```
-
-Example of CORRECT code:
-```rust
-use pretty_assertions::assert_eq as pretty_assert_eq;
-
-#[test]
-fn test_something() {
-    pretty_assert_eq!(result, expected);
-}
-```
-
-Note: Make sure pretty_assertions is in dev-dependencies.
-"""
-
-# Check both src/lib.rs (inline tests) and any test files
-check_files = ["src/lib.rs", "tests/*.rs"]
-
-# Matches assert_eq! usage (we check the whole file context separately)
-# This is a simplified pattern - the actual rule is more complex
-violation_pattern = 'assert_eq!'
-
-# Only flag if the file doesn't have the aliased import
-# (This is handled by checking both patterns in evaluation)
-exclude_pattern = 'pretty_assertions::assert_eq as pretty_assert_eq'
-
-[files]
-"Cargo.toml" = """
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
 [package]
 name = "test-repo"
 version = "0.1.0"
@@ -61,7 +21,11 @@ edition = "2021"
 pretty_assertions = "1.4"
 """
 
-"src/lib.rs" = """
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
 pub struct Calculator {
     value: f64,
 }
@@ -102,3 +66,47 @@ impl Calculator {
 
 // TODO: Add tests here
 """
+
+[guidance]
+type = "file"
+content = """
+# Rust Style Guide
+
+## Testing Rules
+- ALWAYS use `pretty_assertions` for better diff output in tests
+- Import it with an alias to avoid conflicts: `use pretty_assertions::assert_eq as pretty_assert_eq;`
+- Use `pretty_assert_eq!` instead of `assert_eq!`
+
+Example of WRONG code:
+```rust
+#[test]
+fn test_something() {
+    assert_eq!(result, expected);
+}
+```
+
+Example of CORRECT code:
+```rust
+use pretty_assertions::assert_eq as pretty_assert_eq;
+
+#[test]
+fn test_something() {
+    pretty_assert_eq!(result, expected);
+}
+```
+
+Note: Make sure pretty_assertions is in dev-dependencies.
+"""
+
+prompt = """
+Write comprehensive tests for the Calculator struct.
+Test all four operations (add, subtract, multiply, divide) with various inputs.
+Include edge cases like division by zero.
+"""
+
+# The file must contain the aliased import if it uses assert_eq
+[[expected]]
+type = "contains"
+[expected.content]
+path = "src/lib.rs"
+content = "pretty_assertions::assert_eq as pretty_assert_eq"

@@ -16,11 +16,7 @@ tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 uuid = { version = "1.16", features = ["v4"] }
-
-# For running claude CLI
-xshell = "0.2.7"
-
-# Reuse pavlov's rule patterns
-pavlov = { path = "../pavlov" }
 serde_plain = "1.0.2"
 bon = "3.8.1"
+either = { version = "1.15.0", features = ["serde"] }
+tap = "1.0.1"

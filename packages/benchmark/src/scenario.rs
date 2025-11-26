@@ -8,14 +8,22 @@
 //! - Prompt: what prompt do we give to the agent?
 //! - Expectation: what is the final state we want to see in the project?
 
-use std::path::Path;
+use std::{
+    fs::{create_dir_all, read_to_string, write},
+    path::{Path, PathBuf},
+};
 
 use bon::Builder;
 use color_eyre::{
     Result, Section, SectionExt,
-    eyre::{Context, eyre},
+    eyre::{Context, bail, eyre},
 };
-use serde::Deserialize;
+use either::Either;
+use glob::glob;
+use regex::Regex;
+use serde::{Deserialize, Deserializer};
+use tap::Pipe;
+use tracing::info_span;
 
 use crate::agent::Agent;
 
@@ -204,9 +212,9 @@ impl EvaluationCommand {
     pub fn run(&self, project: &Path) -> Result<()> {
         match self {
             EvaluationCommand::Command(command) => command.run(project),
-            EvaluationCommand::Equals(file) => file.run_eq(project),
-            EvaluationCommand::Contains(file) => file.run_contains(project),
-            EvaluationCommand::NotContains(file) => file.run_not_contains(project),
+            EvaluationCommand::Equals(file) => file.equals(project),
+            EvaluationCommand::Contains(file) => file.contains(project),
+            EvaluationCommand::NotContains(file) => file.not_contains(project),
         }
     }
 }
@@ -280,7 +288,11 @@ impl WriteFile {
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
         let path = project.join(&self.path);
-        std::fs::write(&path, &self.content).with_context(|| format!("write content to {path:?}"))
+        if let Some(parent) = path.parent() {
+            create_dir_all(parent)
+                .with_context(|| format!("create parent directories for {path:?}"))?;
+        }
+        write(&path, &self.content).with_context(|| format!("write content to {path:?}"))
     }
 }
 
@@ -313,15 +325,22 @@ impl AppendFile {
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
         let path = project.join(&self.path);
-        let mut content = std::fs::read_to_string(&path)
-            .with_context(|| format!("read content from {path:?}"))?;
+        if let Some(parent) = path.parent() {
+            create_dir_all(parent)
+                .with_context(|| format!("create parent directories for {path:?}"))?;
+        }
 
-        if let Some(separator) = &self.separator {
-            content.push_str(separator);
+        let existing = read_to_string(&path).ok();
+        let mut content = existing.unwrap_or_default();
+
+        if !content.is_empty() {
+            if let Some(separator) = &self.separator {
+                content.push_str(separator);
+            }
         }
 
         content.push_str(&self.content);
-        std::fs::write(&path, content).with_context(|| format!("append content to {path:?}"))
+        write(&path, content).with_context(|| format!("write content to {path:?}"))
     }
 }
 
@@ -355,56 +374,177 @@ pub struct FileEvaluation {
     /// variant supported by the `regex` crate; this content is tested for
     /// whether it "matches" (in the regular expression sense) against the file
     /// contents according to the evaluation operation being performed.
+    ///
+    /// If the content fails to compile as a regex, the evaluation proceeds
+    /// assuming it is a string; in this case the content is tested against the
+    /// file contents using string operations.
     #[builder(into)]
-    pub content: String,
+    pub content: ContentTest,
 }
 
 impl FileEvaluation {
-    #[tracing::instrument]
-    fn read(&self, project: &Path) -> Result<String> {
+    /// Reads all files matching the glob pattern and returns their paths and contents.
+    ///
+    /// The `path` field supports glob patterns like `**/*.rs` or `src/*.rs`.
+    /// If no files match, returns an error.
+    #[tracing::instrument(name = "FileEvaluation::read")]
+    fn read(&self, project: &Path) -> Result<Vec<(PathBuf, String)>> {
         let path = project.join(&self.path);
-        std::fs::read_to_string(&path).with_context(|| format!("read content from {path:?}"))
+        let pattern = path
+            .to_str()
+            .ok_or_else(|| eyre!("invalid path pattern: {path:?}"))?;
+
+        let files = glob(pattern)
+            .with_context(|| format!("parse glob pattern {pattern:?}"))?
+            .map(|entry| {
+                let path = entry.context("read glob entry")?;
+                tracing::info_span!("FileEvaluation::read::glob_map", ?path).in_scope(|| {
+                    if path.is_file() {
+                        let content = read_to_string(&path).context("read file content")?;
+                        Ok(Some((path, content)))
+                    } else {
+                        Ok(None)
+                    }
+                })
+            })
+            .filter_map(|t| t.transpose())
+            .collect::<Result<Vec<_>>>()?;
+
+        if files.is_empty() {
+            bail!("no files matched pattern {pattern:?}");
+        }
+
+        Ok(files)
     }
 
-    #[tracing::instrument]
-    fn run_eq(&self, project: &Path) -> Result<()> {
-        let content = self.read(project)?;
-        if content == self.content {
-            Ok(())
-        } else {
-            Err(eyre!("file content does not match expected content"))
-                .section(content.header("File content:"))
-                .with_section(|| self.content.clone().header("Expected content:"))
+    /// Tests that all matched files' contents match the test exactly.
+    #[tracing::instrument(name = "FileEvaluation::equals")]
+    fn equals(&self, project: &Path) -> Result<()> {
+        let files = self.read(project)?;
+
+        for (path, content) in files {
+            info_span!("FileEvaluation::equals::file", ?path, ?content)
+                .in_scope(|| self.content.equals(&content))?;
         }
+
+        Ok(())
     }
 
-    #[tracing::instrument]
-    fn run_contains(&self, project: &Path) -> Result<()> {
-        let content = self.read(project)?;
-        if content.contains(&self.content) {
-            Ok(())
-        } else {
-            Err(eyre!("file content does not contain expected content"))
-                .section(content.header("File content:"))
-                .with_section(|| self.content.clone().header("Expected content:"))
+    /// Tests that all matched files' contents contain a match for the regex pattern.
+    #[tracing::instrument(name = "FileEvaluation::contains")]
+    fn contains(&self, project: &Path) -> Result<()> {
+        let files = self.read(project)?;
+
+        for (path, content) in files {
+            info_span!("FileEvaluation::contains::file", ?path, ?content)
+                .in_scope(|| self.content.contains(&content))?;
         }
+
+        Ok(())
     }
 
-    #[tracing::instrument]
-    fn run_not_contains(&self, project: &Path) -> Result<()> {
-        let content = self.read(project)?;
-        if content.contains(&self.content) {
-            Err(eyre!("file content contains unexpected content"))
-                .section(content.header("File content:"))
-                .with_section(|| self.content.clone().header("Unexpected content:"))
-        } else {
-            Ok(())
+    /// Tests that no matched files' contents contain a match for the regex pattern.
+    #[tracing::instrument(name = "FileEvaluation::not_contains")]
+    fn not_contains(&self, project: &Path) -> Result<()> {
+        let files = self.read(project)?;
+
+        for (path, content) in files {
+            info_span!("FileEvaluation::not_contains::file", ?path, ?content)
+                .in_scope(|| self.content.not_contains(&content))?;
         }
+
+        Ok(())
     }
 }
 
 impl From<&FileEvaluation> for FileEvaluation {
     fn from(value: &FileEvaluation) -> Self {
         value.clone()
+    }
+}
+
+/// Test that the content matches a test case, which is either evaluated as a
+/// regex or a string.
+///
+/// If the content is able to compile as regex it is evaluated as a regex.
+/// Otherwise it is evaluated as a string.
+#[derive(Debug, Clone)]
+pub struct ContentTest(Either<Regex, String>);
+
+impl ContentTest {
+    pub fn new(content: impl Into<String>) -> Self {
+        let content = content.into();
+        Regex::new(&content)
+            .map(Either::Left)
+            .unwrap_or_else(|_| Either::Right(content))
+            .pipe(Self)
+    }
+
+    #[tracing::instrument(name = "ContentTest::equals")]
+    fn equals(&self, content: &str) -> Result<()> {
+        match &self.0 {
+            Either::Left(test) => match test.find(content) {
+                Some(bounds) if bounds.start() == 0 && bounds.end() == content.len() => Ok(()),
+                Some(_) => bail!("content does not fully match regex"),
+                None => bail!("content does not match regex"),
+            },
+            Either::Right(test) => {
+                if content == test {
+                    Ok(())
+                } else {
+                    bail!("content does not match string")
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(name = "ContentTest::contains")]
+    fn contains(&self, content: &str) -> Result<()> {
+        match &self.0 {
+            Either::Left(test) => {
+                if test.is_match(content) {
+                    Ok(())
+                } else {
+                    bail!("content does not match regex")
+                }
+            }
+            Either::Right(test) => {
+                if content.contains(test) {
+                    Ok(())
+                } else {
+                    bail!("content does not match string")
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(name = "ContentTest::not_contains")]
+    fn not_contains(&self, content: &str) -> Result<()> {
+        match &self.0 {
+            Either::Left(test) => {
+                if test.is_match(content) {
+                    bail!("content matches regex")
+                } else {
+                    Ok(())
+                }
+            }
+            Either::Right(test) => {
+                if content.contains(test) {
+                    bail!("content matches string")
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContentTest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let content = String::deserialize(deserializer)?;
+        Ok(Self::new(content))
     }
 }

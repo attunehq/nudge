@@ -2,15 +2,52 @@
 # This scenario tempts Claude to add `use` statements inside function bodies
 
 name = "inline_imports"
-rule = "no_inline_imports"
 
-prompt = """
-Add proper error handling to the `process_file` function using the anyhow crate.
-The function should return a Result and use the `?` operator for error propagation.
-Also add a `context` call to provide better error messages.
+[agent]
+type = "ClaudeCode"
+model = "sonnet"
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
 """
 
-claude_md_guidance = """
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
+use std::path::Path;
+
+pub fn process_file(path: &Path) -> String {
+    let content = std::fs::read_to_string(path).unwrap();
+    content.to_uppercase()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_process_file() {
+        // Just a placeholder test
+        assert!(true);
+    }
+}
+"""
+
+[guidance]
+type = "file"
+content = """
 # Rust Style Guide
 
 ## Import Rules
@@ -36,41 +73,16 @@ fn process() {
 ```
 """
 
-check_files = ["src/lib.rs"]
+prompt = """
+Add proper error handling to the `process_file` function using the anyhow crate.
+The function should return a Result and use the `?` operator for error propagation.
+Also add a `context` call to provide better error messages.
+"""
 
 # Matches `use` statements with leading whitespace (inside function bodies)
-violation_pattern = '^\\s+use '
-
-# Exclude commented lines
-exclude_pattern = '^\\s*//'
-
-[files]
-"Cargo.toml" = """
-[package]
-name = "test-repo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-anyhow = "1.0"
-"""
-
-"src/lib.rs" = """
-use std::path::Path;
-
-pub fn process_file(path: &Path) -> String {
-    let content = std::fs::read_to_string(path).unwrap();
-    content.to_uppercase()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_file() {
-        // Just a placeholder test
-        assert!(true);
-    }
-}
-"""
+# but excludes module-level `use super::*` in test modules
+[[expected]]
+type = "not_contains"
+[expected.content]
+path = "src/lib.rs"
+content = '^\s{4,}use (?!super::)'

@@ -98,19 +98,19 @@ dependencies = [
  "bon",
  "clap",
  "color-eyre",
+ "either",
  "glob",
- "pavlov",
  "regex",
  "serde",
  "serde_json",
  "serde_plain",
+ "tap",
  "tempfile",
  "toml",
  "tracing",
  "tracing-error",
  "tracing-subscriber",
  "uuid",
- "xshell",
 ]
 
 [[package]]
@@ -269,6 +269,15 @@ name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
+name = "either"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "equivalent"
@@ -704,6 +713,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 
 [[package]]
 name = "tempfile"

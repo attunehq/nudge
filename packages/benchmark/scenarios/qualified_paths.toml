@@ -2,15 +2,40 @@
 # This scenario tempts Claude to use overly qualified paths
 
 name = "qualified_paths"
-rule = "no_qualified_paths"
 
-prompt = """
-Add error handling to this application using color_eyre.
-Create a function called `run` that can return errors, and update main to use it.
-Add proper error context using eyre's context methods.
+[agent]
+type = "ClaudeCode"
+model = "sonnet"
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6"
 """
 
-claude_md_guidance = """
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/main.rs"
+content = """
+fn main() {
+    println!("Hello, world!");
+
+    // TODO: Add error handling with color_eyre
+}
+"""
+
+[guidance]
+type = "file"
+content = """
 # Rust Style Guide
 
 ## Path Qualification Rules
@@ -38,29 +63,15 @@ fn main() {
 ```
 """
 
-check_files = ["src/main.rs"]
-
-# Matches paths with 2+ :: separators (3+ segments)
-violation_pattern = '[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*){2,}'
-
-# Exclude use statements, mod declarations, and comments
-exclude_pattern = '^\\s*(use |mod |//)'
-
-[files]
-"Cargo.toml" = """
-[package]
-name = "test-repo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-color-eyre = "0.6"
+prompt = """
+Add error handling to this application using color_eyre.
+Create a function called `run` that can return errors, and update main to use it.
+Add proper error context using eyre's context methods.
 """
 
-"src/main.rs" = """
-fn main() {
-    println!("Hello, world!");
-
-    // TODO: Add error handling with color_eyre
-}
-"""
+# Matches paths with 2+ :: separators (3+ segments), excluding use/mod statements and comments
+[[expected]]
+type = "not_contains"
+[expected.content]
+path = "src/main.rs"
+content = '[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*){2,}'

@@ -2,15 +2,50 @@
 # This scenario tempts Claude to use left-hand side type annotations
 
 name = "lhs_annotations"
-rule = "no_lhs_type_annotations"
 
-prompt = """
-Add a function called `parse_config` that reads a JSON file and parses it into a Config struct.
-The Config struct should have fields: name (String), port (u16), and debug (bool).
-Use serde_json for parsing.
+[agent]
+type = "ClaudeCode"
+model = "sonnet"
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 """
 
-claude_md_guidance = """
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
+use std::path::Path;
+
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct Config {
+    pub name: String,
+
+    pub port: u16,
+
+    pub debug: bool,
+}
+
+// TODO: Add parse_config function here
+"""
+
+[guidance]
+type = "file"
+content = """
 # Rust Style Guide
 
 ## Type Annotation Rules
@@ -33,39 +68,15 @@ let items = vec!["hello".to_string()];
 ```
 """
 
-check_files = ["src/lib.rs"]
+prompt = """
+Add a function called `parse_config` that reads a JSON file and parses it into a Config struct.
+The Config struct should have fields: name (String), port (u16), and debug (bool).
+Use serde_json for parsing.
+"""
 
 # Matches `let name: Type = ` or `let mut name: Type = `
-violation_pattern = '^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*'
-
-# Exclude comments
-exclude_pattern = '^\\s*//'
-
-[files]
-"Cargo.toml" = """
-[package]
-name = "test-repo"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-"""
-
-"src/lib.rs" = """
-use std::path::Path;
-
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-pub struct Config {
-    pub name: String,
-
-    pub port: u16,
-
-    pub debug: bool,
-}
-
-// TODO: Add parse_config function here
-"""
+[[expected]]
+type = "not_contains"
+[expected.content]
+path = "src/lib.rs"
+content = '^\s*let\s+(mut\s+)?[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*'

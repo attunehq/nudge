@@ -26,18 +26,5 @@ pub struct Config {
 }
 
 pub fn main(config: Config) -> Result<()> {
-    // let report = Report::load(&config.input)
-    //     .wrap_err_with(|| format!("Failed to load {}", config.input.display()))?;
-
-    // match config.format {
-    //     Format::Markdown => report.print_markdown(stdout())?,
-    //     Format::Csv => report.print_csv(stdout())?,
-    //     Format::Chart => report.print_chart(stdout())?,
-    //     Format::Json => {
-    //         let json = serde_json::to_string_pretty(&report)?;
-    //         println!("{}", json);
-    //     }
-    // }
-
     Ok(())
 }
