@@ -37,6 +37,10 @@ use crate::agent::Agent;
 #[derive(Debug, Clone, Deserialize, Builder)]
 #[non_exhaustive]
 pub struct Scenario {
+    /// The name of the scenario.
+    #[builder(into)]
+    pub name: String,
+
     /// The agent being evaluated.
     #[builder(into)]
     pub agent: Agent,

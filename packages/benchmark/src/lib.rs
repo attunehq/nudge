@@ -33,6 +33,7 @@
 use color_eyre::Result;
 use color_eyre::eyre::Context;
 use tempfile::tempdir;
+use tracing::debug;
 
 pub use crate::agent::{Agent, ModelClaudeCode};
 pub use crate::scenario::{Guidance, Scenario};
@@ -40,29 +41,41 @@ pub use crate::scenario::{Guidance, Scenario};
 pub mod agent;
 pub mod scenario;
 
-#[tracing::instrument]
+#[tracing::instrument(
+    skip(scenario),
+    fields(
+        scenario.name = ?scenario.name,
+        scenario.agent = ?scenario.agent,
+        project
+    )
+)]
 pub fn evaluate(scenario: &Scenario) -> Result<()> {
     let project = tempdir().context("create temporary project directory")?;
     let root = project.path();
+    tracing::Span::current().record("project", format!("{root:?}"));
 
     for command in &scenario.commands {
+        debug!(scenario.command = ?command, "running setup command");
         command
             .run(root)
             .with_context(|| format!("run command {command:?} in {root:?}"))?;
     }
 
+    debug!(?scenario.guidance, "configuring agent guidance");
     match &scenario.guidance {
         Guidance::None => Ok(()),
         Guidance::Pavlov => scenario.agent.configure_pavlov(root),
         Guidance::File(content) => scenario.agent.write_context(root, content),
     }?;
 
+    debug!(?scenario.prompt, "running agent");
     scenario
         .agent
         .run(root, &scenario.prompt)
         .with_context(|| format!("run agent on {root:?}"))?;
 
     for command in &scenario.expected {
+        debug!(scenario.expected = ?command, "running expectation");
         command
             .run(root)
             .with_context(|| format!("evaluate expectation {command:?} in {root:?}"))?;
