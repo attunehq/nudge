@@ -20,16 +20,11 @@ use color_eyre::{
     eyre::{Context, bail, eyre},
 };
 use color_print::cformat;
-use either::Either;
 use glob::glob;
-use regex::Regex;
-use serde::{Deserialize, Deserializer};
-use tap::Pipe;
+use serde::Deserialize;
 
-use crate::outcome::{
-    CommandFailed, ContentMismatch, RegexMatched, RegexNotMatched, StringFound, StringNotFound,
-    Violation,
-};
+use crate::matcher::{MatchString, Matcher};
+use crate::outcome::{CommandFailed, ContentMismatch, RegexMatched, RegexNotMatched, Violation};
 
 /// A benchmark scenario testing a specific rule.
 ///
@@ -398,7 +393,7 @@ pub struct FileEvaluation {
     /// assuming it is a string; in this case the content is tested against the
     /// file contents using string operations.
     #[builder(into)]
-    pub content: ContentTest,
+    pub content: MatchString,
 }
 
 impl FileEvaluation {
@@ -440,7 +435,19 @@ impl FileEvaluation {
         let files = self.read(project)?;
         let violations = files
             .iter()
-            .filter_map(|(path, content)| self.content.check_equals(path, content))
+            .filter_map(|(path, content)| {
+                if self.content.is_exact_match(content) {
+                    None
+                } else {
+                    let expected = format!("regex: {}", self.content.as_str());
+                    Some(Violation::ContentMismatch(
+                        ContentMismatch::builder()
+                            .path(path)
+                            .expected(expected)
+                            .build(),
+                    ))
+                }
+            })
             .collect();
         Ok(violations)
     }
@@ -451,7 +458,18 @@ impl FileEvaluation {
         let files = self.read(project)?;
         let violations = files
             .iter()
-            .filter_map(|(path, content)| self.content.check_contains(path, content))
+            .filter_map(|(path, content)| {
+                if self.content.is_match(content) {
+                    None
+                } else {
+                    Some(Violation::RegexNotMatched(
+                        RegexNotMatched::builder()
+                            .path(path)
+                            .pattern(self.content.as_str())
+                            .build(),
+                    ))
+                }
+            })
             .collect();
         Ok(violations)
     }
@@ -462,7 +480,18 @@ impl FileEvaluation {
         let files = self.read(project)?;
         let violations = files
             .iter()
-            .filter_map(|(path, content)| self.content.check_not_contains(path, content))
+            .filter_map(|(path, content)| {
+                self.content.find(content).map(|span| {
+                    Violation::RegexMatched(
+                        RegexMatched::builder()
+                            .path(path)
+                            .pattern(self.content.as_str())
+                            .source(content)
+                            .span(span)
+                            .build(),
+                    )
+                })
+            })
             .collect();
         Ok(violations)
     }
@@ -474,135 +503,6 @@ impl From<&FileEvaluation> for FileEvaluation {
     }
 }
 
-/// Test that the content matches a test case, which is either evaluated as a
-/// regex or a string.
-///
-/// If the content is able to compile as regex it is evaluated as a regex.
-/// Otherwise it is evaluated as a string.
-#[derive(Debug, Clone)]
-pub struct ContentTest(Either<Regex, String>);
-
-impl ContentTest {
-    pub fn new(content: impl Into<String>) -> Self {
-        let content = content.into();
-        Regex::new(&content)
-            .map(Either::Left)
-            .unwrap_or_else(|_| Either::Right(content))
-            .pipe(Self)
-    }
-
-    /// Check if content equals this test. Returns a violation if it doesn't match.
-    #[tracing::instrument(name = "ContentTest::check_equals")]
-    fn check_equals(&self, path: &Path, content: &str) -> Option<Violation> {
-        match &self.0 {
-            Either::Left(regex) => match regex.find(content) {
-                Some(bounds) if bounds.start() == 0 && bounds.end() == content.len() => None,
-                _ => Some(Violation::ContentMismatch(
-                    ContentMismatch::builder()
-                        .path(path)
-                        .expected(format!("regex: {}", regex.as_str()))
-                        .build(),
-                )),
-            },
-            Either::Right(expected) => {
-                if content == expected {
-                    None
-                } else {
-                    Some(Violation::ContentMismatch(
-                        ContentMismatch::builder()
-                            .path(path)
-                            .expected(format!("string: {expected:?}"))
-                            .build(),
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Check if content contains this test. Returns a violation if it doesn't match.
-    #[tracing::instrument(name = "ContentTest::check_contains")]
-    fn check_contains(&self, path: &Path, content: &str) -> Option<Violation> {
-        match &self.0 {
-            Either::Left(regex) => {
-                if regex.is_match(content) {
-                    None
-                } else {
-                    Some(Violation::RegexNotMatched(
-                        RegexNotMatched::builder()
-                            .path(path)
-                            .pattern(regex.as_str())
-                            .build(),
-                    ))
-                }
-            }
-            Either::Right(needle) => {
-                if content.contains(needle) {
-                    None
-                } else {
-                    Some(Violation::StringNotFound(
-                        StringNotFound::builder()
-                            .path(path)
-                            .needle(needle)
-                            .build(),
-                    ))
-                }
-            }
-        }
-    }
-
-    /// Check if content does NOT contain this test. Returns a violation if it matches.
-    #[tracing::instrument(name = "ContentTest::check_not_contains")]
-    fn check_not_contains(&self, path: &Path, content: &str) -> Option<Violation> {
-        match &self.0 {
-            Either::Left(regex) => regex.find(content).map(|m| {
-                Violation::RegexMatched(
-                    RegexMatched::builder()
-                        .path(path)
-                        .pattern(regex.as_str())
-                        .source(content)
-                        .span(m.range())
-                        .build(),
-                )
-            }),
-            Either::Right(needle) => content.find(needle).map(|pos| {
-                Violation::StringFound(
-                    StringFound::builder()
-                        .path(path)
-                        .needle(needle)
-                        .source(content)
-                        .span(pos..pos + needle.len())
-                        .build(),
-                )
-            }),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ContentTest {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let content = String::deserialize(deserializer)?;
-        Ok(Self::new(content))
-    }
-}
-
-impl std::fmt::Display for ContentTest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            Either::Left(regex) => write!(f, "{}", regex.as_str()),
-            Either::Right(string) => write!(f, "{string}"),
-        }
-    }
-}
-
-impl ContentTest {
-    /// Returns whether this test is a regex pattern.
-    pub fn is_regex(&self) -> bool {
-        self.0.is_left()
-    }
-}
 impl Display for Scenario {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Name
@@ -756,11 +656,7 @@ fn write_file_eval(
     kind: &str,
     file: &FileEvaluation,
 ) -> fmt::Result {
-    let kind_label = if file.content.is_regex() {
-        format!("{kind} (regex):")
-    } else {
-        format!("{kind}:")
-    };
+    let kind_label = format!("{kind} (regex):");
     let path = &file.path;
     let content = file.content.to_string();
     writeln!(

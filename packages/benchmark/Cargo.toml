@@ -21,3 +21,5 @@ bon = "3.8.1"
 either = { version = "1.15.0", features = ["serde"] }
 tap = "1.0.1"
 color-print = "0.3.7"
+tree-sitter = "0.25.10"
+tree-sitter-rust = "0.24.0"

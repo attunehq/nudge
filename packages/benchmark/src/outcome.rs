@@ -13,6 +13,7 @@ use bon::Builder;
 use color_print::cformat;
 use serde::{Deserialize, Serialize};
 
+use crate::cst::{CstQueryNotMatched, CstValidationFailed};
 use crate::snippet::Snippet;
 
 /// The outcome of a single benchmark evaluation.
@@ -190,6 +191,12 @@ pub enum Violation {
 
     /// A command failed during evaluation.
     CommandFailed(CommandFailed),
+
+    /// A CST validation failed on one or more matches.
+    CstValidationFailed(CstValidationFailed),
+
+    /// A CST query didn't match when it should have (contains failed).
+    CstQueryNotMatched(CstQueryNotMatched),
 }
 
 
@@ -248,6 +255,45 @@ impl std::fmt::Display for Violation {
                     && !err.is_empty()
                 {
                     write!(f, "{}", cformat!("\n<dim>stderr:</> {err}"))?;
+                }
+                Ok(())
+            }
+            Self::CstValidationFailed(failed) => {
+                let snippet = Snippet::new(&failed.source)
+                    .render()
+                    .highlight(failed.span.clone())
+                    .finish()
+                    .to_string();
+                let query = &failed.query;
+                let path = failed.path.display();
+                let count = failed.failure_count;
+                let expected = &failed.expected;
+                let lang = format!("{:?}", failed.language).to_lowercase();
+                writeln!(
+                    f,
+                    "{}",
+                    cformat!("<yellow>cst validation failed:</> <dim>({lang}) {query}</>")
+                )?;
+                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
+                writeln!(
+                    f,
+                    "{}",
+                    cformat!("<dim>expected:</> {expected} ({count} failure(s))")
+                )?;
+                write!(f, "{snippet}")
+            }
+            Self::CstQueryNotMatched(not_matched) => {
+                let query = &not_matched.query;
+                let path = not_matched.path.display();
+                let lang = format!("{:?}", not_matched.language).to_lowercase();
+                writeln!(
+                    f,
+                    "{}",
+                    cformat!("<yellow>cst query not matched:</> <dim>({lang}) {query}</>")
+                )?;
+                write!(f, "{}", cformat!("<dim>--></> {path}"))?;
+                if let Some(err) = &not_matched.error {
+                    write!(f, "{}", cformat!("\n<dim>error:</> {err}"))?;
                 }
                 Ok(())
             }
