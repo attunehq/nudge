@@ -481,7 +481,8 @@ impl FileEvaluation {
         let violations = files
             .iter()
             .filter_map(|(path, content)| {
-                self.content.find(content).map(|span| {
+                let matches = self.content.find(content);
+                matches.spans().next().map(|span| {
                     Violation::RegexMatched(
                         RegexMatched::builder()
                             .path(path)

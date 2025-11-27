@@ -6,11 +6,11 @@
 use std::ops::Range;
 
 use bon::Builder;
-use color_eyre::eyre::{bail, eyre};
 use color_eyre::Result;
+use color_eyre::eyre::{bail, eyre};
 use serde::{Deserialize, Serialize};
 
-use crate::matcher::{LabeledCapture, MatchString, Matcher};
+use crate::matcher::{LabeledSpan, MatchString, Span};
 
 /// Validation to apply to matcher results.
 ///
@@ -29,34 +29,34 @@ pub enum Validator {
 
     /// The text between captures should contain the pattern.
     /// If it does not, the match is considered a violation.
-    Contains(BetweenCaptures),
+    Contains(ValidationTarget),
 
     /// The text between captures should NOT contain the pattern.
     /// If it does, the match is considered a violation.
-    NotContains(BetweenCaptures),
+    NotContains(ValidationTarget),
 
     /// The text between captures should equal the pattern exactly.
     /// If it does not, the match is considered a violation.
-    Equals(BetweenCaptures),
+    Equals(ValidationTarget),
 }
 
 /// Parameters for validating text between two captures.
 #[derive(Debug, Clone, Serialize, Deserialize, Builder)]
 #[non_exhaustive]
-pub struct BetweenCaptures {
-    /// The name of the first capture, which starts the validation range.
-    /// The validated text starts at the END of this capture.
+pub struct ValidationTarget {
+    /// The label of the first capture, which starts the validation range.
+    /// The validated text starts at the end of this capture.
     #[builder(into)]
     pub from: String,
 
-    /// The name of the second capture, which ends the validation range.
-    /// The validated text ends at the START of this capture.
+    /// The label of the second capture, which ends the validation range.
+    /// The validated text ends at the start of this capture.
     #[builder(into)]
     pub to: String,
 
-    /// The pattern to validate against the text between captures.
+    /// The content to validate against the text between captures.
     ///
-    /// Supports regular expressions. The pattern is checked according to
+    /// Supports regular expressions. The content is checked according to
     /// the validation type (contains, not_contains, equals).
     #[builder(into)]
     pub pattern: MatchString,
@@ -72,7 +72,7 @@ pub struct Failure {
     pub actual: String,
 
     /// The byte range of the text that was checked.
-    pub span: Range<usize>,
+    pub span: Span,
 }
 
 impl Validator {
@@ -81,7 +81,7 @@ impl Validator {
     /// Returns `Ok(None)` if validation passes.
     /// Returns `Ok(Some(failure))` if validation fails.
     /// Returns `Err` if the captures are malformed (missing labels, etc).
-    pub fn validate(&self, source: &str, captures: &[LabeledCapture]) -> Result<Option<Failure>> {
+    pub fn validate(&self, source: &str, captures: &[LabeledSpan]) -> Result<Option<Failure>> {
         match self {
             Validator::Exists => Ok(None),
 
@@ -141,7 +141,7 @@ impl Validator {
 /// Extract text between two named captures.
 fn extract<'a>(
     source: &'a str,
-    captures: &[LabeledCapture],
+    captures: &[LabeledSpan],
     from: &str,
     to: &str,
 ) -> Result<(&'a str, Range<usize>)> {
@@ -172,14 +172,14 @@ mod tests {
     #[test]
     fn test_exists_always_passes() {
         let validator = Validator::Exists;
-        let captures = vec![LabeledCapture::new("foo", 0..5)];
+        let captures = vec![LabeledSpan::new("foo", 0..5)];
         assert!(validator.validate("hello", &captures).unwrap().is_none());
     }
 
     #[test]
     fn test_not_exists_always_fails() {
         let validator = Validator::NotExists;
-        let captures = vec![LabeledCapture::new("foo", 0..5)];
+        let captures = vec![LabeledSpan::new("foo", 0..5)];
         assert!(validator.validate("hello", &captures).unwrap().is_some());
     }
 
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn test_contains_between_captures() {
         let validator = Validator::Contains(
-            BetweenCaptures::builder()
+            ValidationTarget::builder()
                 .from("a")
                 .to("b")
                 .pattern(MatchString::new("\n\n").unwrap())
@@ -202,8 +202,8 @@ mod tests {
 
         let source = "hello\n\nworld";
         let captures = vec![
-            LabeledCapture::new("a", 0..5),  // "hello"
-            LabeledCapture::new("b", 7..12), // "world"
+            LabeledSpan::new("a", 0..5),  // "hello"
+            LabeledSpan::new("b", 7..12), // "world"
         ];
 
         // Between "hello" and "world" is "\n\n" - should pass
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn test_contains_fails_when_missing() {
         let validator = Validator::Contains(
-            BetweenCaptures::builder()
+            ValidationTarget::builder()
                 .from("a")
                 .to("b")
                 .pattern(MatchString::new("\n\n").unwrap())
@@ -222,8 +222,8 @@ mod tests {
 
         let source = "hello\nworld";
         let captures = vec![
-            LabeledCapture::new("a", 0..5),  // "hello"
-            LabeledCapture::new("b", 6..11), // "world"
+            LabeledSpan::new("a", 0..5),  // "hello"
+            LabeledSpan::new("b", 6..11), // "world"
         ];
 
         // Between "hello" and "world" is "\n" - should fail

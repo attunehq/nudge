@@ -67,7 +67,7 @@ use color_eyre::{Section, SectionExt};
 use serde::{Deserialize, Serialize};
 use tree_sitter::{Language, Parser, Query, QueryCursor, StreamingIterator};
 
-use crate::matcher::{MatchString, Matcher};
+use crate::matcher::MatchString;
 use crate::outcome::Violation;
 
 /// Supported languages for CST parsing.
