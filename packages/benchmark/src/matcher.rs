@@ -168,6 +168,28 @@ impl Matches {
             Matches::Labeled(matches) => Some(matches.iter()),
         }
     }
+
+    /// Filter labeled matches using a predicate on the captures.
+    ///
+    /// This is useful for filtering matches based on text between captures.
+    /// Unlabeled matches pass through unchanged since they have no captures.
+    pub fn filter_labeled(self, predicate: impl Fn(&[LabeledSpan]) -> bool) -> Self {
+        match self {
+            Matches::None => Matches::None,
+            Matches::Unlabeled(spans) => Matches::Unlabeled(spans),
+            Matches::Labeled(matches) => {
+                let filtered = matches
+                    .into_iter()
+                    .filter(|m| predicate(&m.captures))
+                    .collect::<Vec<_>>();
+                if filtered.is_empty() {
+                    Matches::None
+                } else {
+                    Matches::Labeled(filtered)
+                }
+            }
+        }
+    }
 }
 
 /// A span from a matcher.

@@ -260,6 +260,12 @@ impl EvaluationCommand {
                         .with_section(|| test.matcher.language.to_string().header("Language:"))
                         .with_section(|| path.to_string_lossy().to_string().header("Path:"))
                         .with_section(|| content.to_string().header("Content:"))?;
+
+                    let matches = match &test.between {
+                        Some(filter) => matches.filter_labeled(|cap| filter.matches(&content, cap)),
+                        None => matches,
+                    };
+
                     if matches.is_empty() {
                         violations.push(Violation::QueryNotMatched(
                             QueryNotMatched::builder()
@@ -285,6 +291,15 @@ impl EvaluationCommand {
                         .with_section(|| test.matcher.language.to_string().header("Language:"))
                         .with_section(|| path.to_string_lossy().to_string().header("Path:"))
                         .with_section(|| content.to_string().header("Content:"))?;
+
+                    // Apply between filter if present
+                    let matches = match &test.between {
+                        Some(filter) => {
+                            matches.filter_labeled(|captures| filter.matches(&content, captures))
+                        }
+                        None => matches,
+                    };
+
                     if !matches.is_empty() {
                         violations.push(Violation::QueryMatched(
                             QueryMatched::builder()
@@ -521,6 +536,96 @@ impl Display for AppendFile {
     }
 }
 
+/// A filter that checks text between two captures.
+///
+/// This allows validation of whitespace, comments, or other content that
+/// exists between AST nodes but isn't captured by tree-sitter queries.
+#[derive(Debug, Clone, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct BetweenFilter {
+    /// The label of the capture that starts the region.
+    ///
+    /// The validated text starts at the end of this capture.
+    #[builder(into)]
+    pub from: String,
+
+    /// The label of the capture that ends the region.
+    ///
+    /// The validated text ends at the start of this capture.
+    #[builder(into)]
+    pub to: String,
+
+    /// If set, only matches where the between-text contains this string pass.
+    #[builder(into)]
+    #[serde(default)]
+    pub contains: Option<String>,
+
+    /// If set, only matches where the between-text does NOT contain this string pass.
+    #[builder(into)]
+    #[serde(default)]
+    pub not_contains: Option<String>,
+}
+
+impl BetweenFilter {
+    /// Check if a match passes this filter.
+    ///
+    /// Returns `true` if the match passes, `false` if it should be filtered out.
+    pub fn matches(&self, source: &str, captures: &[crate::matcher::LabeledSpan]) -> bool {
+        let Some(between) = self.extract_between(source, captures) else {
+            return false;
+        };
+
+        let contains_ok = self
+            .contains
+            .as_ref()
+            .map(|c| between.contains(c.as_str()))
+            .unwrap_or(true);
+
+        let not_contains_ok = self
+            .not_contains
+            .as_ref()
+            .map(|c| !between.contains(c.as_str()))
+            .unwrap_or(true);
+
+        contains_ok && not_contains_ok
+    }
+
+    /// Extract the text between the two captures.
+    fn extract_between<'a>(
+        &self,
+        source: &'a str,
+        captures: &[crate::matcher::LabeledSpan],
+    ) -> Option<&'a str> {
+        let from = captures.iter().find(|c| c.label == self.from)?;
+        let to = captures.iter().find(|c| c.label == self.to)?;
+
+        let start = from.end();
+        let end = to.start();
+
+        if start <= end {
+            Some(&source[start..end])
+        } else {
+            None
+        }
+    }
+}
+
+impl Display for BetweenFilter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let from = &self.from;
+        let to = &self.to;
+        cwriteln!(f, "<cyan>-</> <yellow>from:</> {from}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>to:</> {to}")?;
+        if let Some(contains) = &self.contains {
+            cwriteln!(f, "<cyan>-</> <yellow>contains:</> {contains:?}")?;
+        }
+        if let Some(not_contains) = &self.not_contains {
+            cwriteln!(f, "<cyan>-</> <yellow>not_contains:</> {not_contains:?}")?;
+        }
+        Ok(())
+    }
+}
+
 /// A file to evaluate and the content with which to evaluate it.
 #[derive(Debug, Clone, Deserialize, Builder)]
 #[non_exhaustive]
@@ -542,6 +647,16 @@ pub struct FileEvaluation {
     /// The matcher used to select content out of evaluation files to evaluate.
     #[builder(into)]
     pub matcher: CodeMatcher,
+
+    /// Optional filter to apply to matches based on text between captures.
+    ///
+    /// When set, matches are filtered based on the text between two named
+    /// captures. This allows validation of content that exists between AST
+    /// nodes but isn't directly queryable via tree-sitter (e.g., whitespace,
+    /// blank lines, comments).
+    #[builder(into)]
+    #[serde(default)]
+    pub between: Option<BetweenFilter>,
 }
 
 impl FileEvaluation {
@@ -592,6 +707,10 @@ impl Display for FileEvaluation {
         cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
         cwriteln!(f, "<cyan>-</> <yellow>language:</> {language}")?;
         cwriteln!(f, "<cyan>-</> <yellow>query:</> {query}")?;
+        if let Some(between) = &self.between {
+            cwriteln!(f, "<cyan>-</> <yellow>between:</>")?;
+            write!(f, "{}", between.to_string().indent(2))?;
+        }
         Ok(())
     }
 }
