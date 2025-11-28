@@ -1,7 +1,12 @@
-use std::ops::Range;
+use std::{
+    fmt::{Display, Formatter},
+    ops::Range,
+};
 
 use color_eyre::Result;
 
+use color_print::cwriteln;
+use serde::{Deserialize, Serialize};
 pub use string::RegexMatcher as MatchString;
 
 pub mod code;
@@ -27,7 +32,7 @@ impl<T, M: Matcher<T>> FallibleMatcher<T> for M {
 }
 
 /// A single match from a matcher.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Match {
     /// The overall span of this match.
@@ -82,7 +87,7 @@ impl Match {
 }
 
 /// Results from running a matcher against a target.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Matches {
     /// No matches were found.
     ///
@@ -166,7 +171,7 @@ impl Matches {
 }
 
 /// A span from a matcher.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Span(Range<usize>);
 
 impl Span {
@@ -209,8 +214,14 @@ impl From<&Span> for Span {
     }
 }
 
+impl Display for Span {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}..{}", self.start(), self.end())
+    }
+}
+
 /// A labeled span from a matcher.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LabeledSpan {
     /// The name/label of this capture.
     pub label: String,
@@ -253,5 +264,16 @@ impl<S: Into<String>, R: Into<Span>> From<(S, R)> for LabeledSpan {
 impl From<&LabeledSpan> for LabeledSpan {
     fn from(span: &LabeledSpan) -> Self {
         span.clone()
+    }
+}
+
+impl Display for LabeledSpan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let label = &self.label;
+        let span = &self.span;
+        cwriteln!(f, "<yellow>labeled span:</>")?;
+        cwriteln!(f, "<cyan>-</> <yellow>label:</> {label}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>span:</> <dim>{span}</>")?;
+        Ok(())
     }
 }

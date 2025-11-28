@@ -128,3 +128,117 @@ impl<'de> Deserialize<'de> for RegexMatcher {
         RegexMatcher::new(pattern).map_err(serde::de::Error::custom)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_no_groups_returns_unlabeled() {
+        let matcher = RegexMatcher::new(r"hello").unwrap();
+        let matches = matcher.find("hello world hello");
+
+        match matches {
+            Matches::Unlabeled(spans) => {
+                assert_eq!(spans.len(), 2);
+                assert_eq!(spans[0].range(), 0..5);
+                assert_eq!(spans[1].range(), 12..17);
+            }
+            _ => panic!("expected Unlabeled, got {:?}", matches),
+        }
+    }
+
+    #[test]
+    fn test_unnamed_groups_returns_labeled_with_dollar_indices() {
+        let matcher = RegexMatcher::new(r"(\w+)\s+(\d+)").unwrap();
+        let matches = matcher.find("foo 123");
+
+        match matches {
+            Matches::Labeled(ref ms) => {
+                assert_eq!(ms.len(), 1);
+                let m = &ms[0];
+
+                // Overall span
+                assert_eq!(m.span.range(), 0..7);
+
+                // Should have $0 (whole match), $1 (first group), $2 (second group)
+                let labels: Vec<_> = m.captures.iter().map(|c| c.label.as_str()).collect();
+                assert!(labels.contains(&"$0"), "missing $0, got {:?}", labels);
+                assert!(labels.contains(&"$1"), "missing $1, got {:?}", labels);
+                assert!(labels.contains(&"$2"), "missing $2, got {:?}", labels);
+
+                // Check spans
+                let dollar_1 = m.captures.iter().find(|c| c.label == "$1").unwrap();
+                assert_eq!(dollar_1.range(), 0..3); // "foo"
+
+                let dollar_2 = m.captures.iter().find(|c| c.label == "$2").unwrap();
+                assert_eq!(dollar_2.range(), 4..7); // "123"
+            }
+            _ => panic!("expected Labeled, got {:?}", matches),
+        }
+    }
+
+    #[test]
+    fn test_named_groups_returns_labeled_with_names_and_indices() {
+        let matcher = RegexMatcher::new(r"(?P<word>\w+)\s+(?P<num>\d+)").unwrap();
+        let matches = matcher.find("foo 123");
+
+        match matches {
+            Matches::Labeled(ref ms) => {
+                assert_eq!(ms.len(), 1);
+                let m = &ms[0];
+
+                // Should have named labels AND dollar indices
+                let labels: Vec<_> = m.captures.iter().map(|c| c.label.as_str()).collect();
+                assert!(labels.contains(&"word"), "missing 'word', got {:?}", labels);
+                assert!(labels.contains(&"num"), "missing 'num', got {:?}", labels);
+                assert!(labels.contains(&"$0"), "missing $0, got {:?}", labels);
+                assert!(labels.contains(&"$1"), "missing $1, got {:?}", labels);
+                assert!(labels.contains(&"$2"), "missing $2, got {:?}", labels);
+
+                // Check named captures have correct spans
+                let word = m.captures.iter().find(|c| c.label == "word").unwrap();
+                assert_eq!(word.range(), 0..3); // "foo"
+
+                let num = m.captures.iter().find(|c| c.label == "num").unwrap();
+                assert_eq!(num.range(), 4..7); // "123"
+            }
+            _ => panic!("expected Labeled, got {:?}", matches),
+        }
+    }
+
+    #[test]
+    fn test_multiple_matches() {
+        let matcher = RegexMatcher::new(r"(?P<n>\d+)").unwrap();
+        let matches = matcher.find("a1b2c3");
+
+        match matches {
+            Matches::Labeled(ref ms) => {
+                assert_eq!(ms.len(), 3);
+
+                assert_eq!(ms[0].span.range(), 1..2); // "1"
+                assert_eq!(ms[1].span.range(), 3..4); // "2"
+                assert_eq!(ms[2].span.range(), 5..6); // "3"
+
+                // Each match should have the 'n' label
+                for m in ms {
+                    assert!(m.captures.iter().any(|c| c.label == "n"));
+                }
+            }
+            _ => panic!("expected Labeled, got {:?}", matches),
+        }
+    }
+
+    #[test]
+    fn test_no_matches_returns_unlabeled_empty() {
+        let matcher = RegexMatcher::new(r"xyz").unwrap();
+        let matches = matcher.find("hello world");
+
+        match matches {
+            Matches::Unlabeled(spans) => {
+                assert!(spans.is_empty());
+            }
+            _ => panic!("expected Unlabeled, got {:?}", matches),
+        }
+    }
+}

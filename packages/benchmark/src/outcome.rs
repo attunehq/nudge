@@ -6,14 +6,16 @@
 //! - JSON serialization for reports
 //! - Aggregation across multiple runs
 
-use std::ops::Range;
+use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 use bon::Builder;
-use color_print::cformat;
+use color_print::{cformat, cwriteln};
 use serde::{Deserialize, Serialize};
 
-use crate::cst::{CstQueryNotMatched, CstValidationFailed};
+use crate::ext::indent;
+use crate::matcher::Matches;
+use crate::matcher::code::Language;
 use crate::snippet::Snippet;
 
 /// The outcome of a single benchmark evaluation.
@@ -75,85 +77,6 @@ impl std::fmt::Display for Outcome {
     }
 }
 
-/// A regex pattern matched when it shouldn't have (not_contains failed).
-#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
-#[non_exhaustive]
-pub struct RegexMatched {
-    /// The file where the match was found.
-    #[builder(into)]
-    pub path: PathBuf,
-
-    /// The regex pattern that matched.
-    #[builder(into)]
-    pub pattern: String,
-
-    /// The full source content of the file.
-    #[builder(into)]
-    pub source: String,
-
-    /// The byte range of the match within the source.
-    pub span: Range<usize>,
-}
-
-/// A regex pattern didn't match when it should have (contains failed).
-#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
-#[non_exhaustive]
-pub struct RegexNotMatched {
-    /// The file that was checked.
-    #[builder(into)]
-    pub path: PathBuf,
-
-    /// The regex pattern that didn't match.
-    #[builder(into)]
-    pub pattern: String,
-}
-
-/// A string was found when it shouldn't have been (not_contains failed).
-#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
-#[non_exhaustive]
-pub struct StringFound {
-    /// The file where the string was found.
-    #[builder(into)]
-    pub path: PathBuf,
-
-    /// The string that was found.
-    #[builder(into)]
-    pub needle: String,
-
-    /// The full source content of the file.
-    #[builder(into)]
-    pub source: String,
-
-    /// The byte range of the match within the source.
-    pub span: Range<usize>,
-}
-
-/// A string wasn't found when it should have been (contains failed).
-#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
-#[non_exhaustive]
-pub struct StringNotFound {
-    /// The file that was checked.
-    #[builder(into)]
-    pub path: PathBuf,
-
-    /// The string that wasn't found.
-    #[builder(into)]
-    pub needle: String,
-}
-
-/// File content didn't match expected content exactly (equals failed).
-#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
-#[non_exhaustive]
-pub struct ContentMismatch {
-    /// The file that was checked.
-    #[builder(into)]
-    pub path: PathBuf,
-
-    /// Description of what was expected.
-    #[builder(into)]
-    pub expected: String,
-}
-
 /// A command failed during evaluation.
 #[derive(Debug, Clone, Serialize, Deserialize, Builder)]
 #[non_exhaustive]
@@ -168,135 +91,133 @@ pub struct CommandFailed {
     /// Stderr output, if any.
     #[builder(into)]
     pub stderr: Option<String>,
+
+    /// Stdout output, if any.
+    #[builder(into)]
+    pub stdout: Option<String>,
+}
+
+impl Display for CommandFailed {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let command = &self.command;
+        let exit_code = self.exit_code.unwrap_or_default();
+        let stderr = self.stderr.as_deref().unwrap_or("<none>");
+        let stdout = self.stdout.as_deref().unwrap_or("<none>");
+        cwriteln!(f, "<yellow>command failed:</> <dim>{command}</>")?;
+        cwriteln!(f, "<cyan>-</> <yellow>exit code:</> {exit_code}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>stderr:</>")?;
+        cwriteln!(f, "<dim>{}</>", stderr.indent(2))?;
+        cwriteln!(f, "<cyan>-</> <yellow>stdout:</>")?;
+        cwriteln!(f, "<dim>{}</>", stdout.indent(2))?;
+        Ok(())
+    }
+}
+
+/// A query match didn't exist when it should have.
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct QueryNotMatched {
+    /// The query that didn't match.
+    #[builder(into)]
+    pub query: String,
+
+    /// The path to the file that was checked.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The language of the file that was checked.
+    pub language: String,
+
+    /// The content of the file that was checked.
+    #[builder(into)]
+    pub content: String,
+}
+
+impl Display for QueryNotMatched {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let query = &self.query;
+        let path = self.path.display();
+        let language = &self.language;
+        let content = &self.content;
+        cwriteln!(f, "<yellow>query did not match:</>")?;
+        cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>language:</> {language}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>query:</>")?;
+        cwriteln!(f, "<dim>{}</>", query.indent(2))?;
+        cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
+        cwriteln!(f, "<dim>{}</>", content.indent(2))?;
+        Ok(())
+    }
+}
+
+/// A query match existed when it shouldn't have.
+#[derive(Debug, Clone, Serialize, Deserialize, Builder)]
+#[non_exhaustive]
+pub struct QueryMatched {
+    /// The query that matched.
+    #[builder(into)]
+    pub query: String,
+
+    /// The path to the file that was checked.
+    #[builder(into)]
+    pub path: PathBuf,
+
+    /// The language of the file that was checked.
+    pub language: Language,
+
+    /// The content of the file that was checked.
+    #[builder(into)]
+    pub content: String,
+
+    /// The matches that were found.
+    #[builder(into)]
+    pub matches: Matches,
+}
+
+impl Display for QueryMatched {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let query = &self.query;
+        let path = self.path.display();
+        let language = &self.language;
+        let snippet = Snippet::new(&self.content);
+        let content = snippet.render_highlighted(self.matches.spans());
+        let tree = snippet
+            .render_syntax_tree(self.language)
+            .unwrap_or_else(|err| cformat!("<red>error rendering syntax tree:</> {err:?}"));
+
+        cwriteln!(f, "<yellow>query matched:</>")?;
+        cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>language:</> {language}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>query:</>")?;
+        cwriteln!(f, "<dim>{}</>", query.indent(2))?;
+        cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
+        cwriteln!(f, "{}", tree.indent(2))?;
+        cwriteln!(f, "<cyan>-</> <yellow>matched:</>")?;
+        cwriteln!(f, "{}", content.indent(2))?;
+        Ok(())
+    }
 }
 
 /// A specific violation that caused an expectation to fail.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Violation {
-    /// A regex pattern matched when it shouldn't have (not_contains failed).
-    RegexMatched(RegexMatched),
-
-    /// A regex pattern didn't match when it should have (contains failed).
-    RegexNotMatched(RegexNotMatched),
-
-    /// A string was found when it shouldn't have been (not_contains failed).
-    StringFound(StringFound),
-
-    /// A string wasn't found when it should have been (contains failed).
-    StringNotFound(StringNotFound),
-
-    /// File content didn't match expected content exactly (equals failed).
-    ContentMismatch(ContentMismatch),
-
-    /// A command failed during evaluation.
+    /// An evaluation command failed.
     CommandFailed(CommandFailed),
 
-    /// A CST validation failed on one or more matches.
-    CstValidationFailed(CstValidationFailed),
+    /// An evaluation command expected a query match to exist, but it didn't.
+    QueryNotMatched(QueryNotMatched),
 
-    /// A CST query didn't match when it should have (contains failed).
-    CstQueryNotMatched(CstQueryNotMatched),
+    /// An evaluation command expected a query match to not exist, but it did.
+    QueryMatched(QueryMatched),
 }
-
 
 impl std::fmt::Display for Violation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RegexMatched(matched) => {
-                let snippet = Snippet::new(&matched.source)
-                    .render()
-                    .highlight(matched.span.clone())
-                    .finish()
-                    .to_string();
-                let pattern = &matched.pattern;
-                let path = matched.path.display();
-                writeln!(f, "{}", cformat!("<yellow>regex matched:</> <dim>{pattern}</>"))?;
-                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
-                write!(f, "{snippet}")
-            }
-            Self::RegexNotMatched(not_matched) => {
-                let pattern = &not_matched.pattern;
-                let path = not_matched.path.display();
-                writeln!(f, "{}", cformat!("<yellow>regex not matched:</> <dim>{pattern}</>"))?;
-                write!(f, "{}", cformat!("<dim>--></> {path}"))
-            }
-            Self::StringFound(found) => {
-                let snippet = Snippet::new(&found.source)
-                    .render()
-                    .highlight(found.span.clone())
-                    .finish()
-                    .to_string();
-                let needle = &found.needle;
-                let path = found.path.display();
-                writeln!(f, "{}", cformat!("<yellow>string found:</> <dim>{needle:?}</>"))?;
-                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
-                write!(f, "{snippet}")
-            }
-            Self::StringNotFound(not_found) => {
-                let needle = &not_found.needle;
-                let path = not_found.path.display();
-                writeln!(f, "{}", cformat!("<yellow>string not found:</> <dim>{needle:?}</>"))?;
-                write!(f, "{}", cformat!("<dim>--></> {path}"))
-            }
-            Self::ContentMismatch(mismatch) => {
-                let expected = &mismatch.expected;
-                let path = mismatch.path.display();
-                writeln!(f, "{}", cformat!("<yellow>content mismatch:</> <dim>{expected}</>"))?;
-                write!(f, "{}", cformat!("<dim>--></> {path}"))
-            }
-            Self::CommandFailed(failed) => {
-                let command = &failed.command;
-                write!(f, "{}", cformat!("<yellow>command failed:</> <dim>{command}</>"))?;
-                if let Some(code) = failed.exit_code {
-                    write!(f, " (exit code {code})")?;
-                }
-                if let Some(err) = &failed.stderr
-                    && !err.is_empty()
-                {
-                    write!(f, "{}", cformat!("\n<dim>stderr:</> {err}"))?;
-                }
-                Ok(())
-            }
-            Self::CstValidationFailed(failed) => {
-                let snippet = Snippet::new(&failed.source)
-                    .render()
-                    .highlight(failed.span.clone())
-                    .finish()
-                    .to_string();
-                let query = &failed.query;
-                let path = failed.path.display();
-                let count = failed.failure_count;
-                let expected = &failed.expected;
-                let lang = format!("{:?}", failed.language).to_lowercase();
-                writeln!(
-                    f,
-                    "{}",
-                    cformat!("<yellow>cst validation failed:</> <dim>({lang}) {query}</>")
-                )?;
-                writeln!(f, "{}", cformat!("<dim>--></> {path}"))?;
-                writeln!(
-                    f,
-                    "{}",
-                    cformat!("<dim>expected:</> {expected} ({count} failure(s))")
-                )?;
-                write!(f, "{snippet}")
-            }
-            Self::CstQueryNotMatched(not_matched) => {
-                let query = &not_matched.query;
-                let path = not_matched.path.display();
-                let lang = format!("{:?}", not_matched.language).to_lowercase();
-                writeln!(
-                    f,
-                    "{}",
-                    cformat!("<yellow>cst query not matched:</> <dim>({lang}) {query}</>")
-                )?;
-                write!(f, "{}", cformat!("<dim>--></> {path}"))?;
-                if let Some(err) = &not_matched.error {
-                    write!(f, "{}", cformat!("\n<dim>error:</> {err}"))?;
-                }
-                Ok(())
-            }
+            Self::CommandFailed(failed) => failed.fmt(f),
+            Self::QueryNotMatched(not_matched) => not_matched.fmt(f),
+            Self::QueryMatched(matched) => matched.fmt(f),
         }
     }
 }

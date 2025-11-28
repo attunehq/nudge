@@ -1,312 +1,253 @@
-//! Source code snippet rendering with highlighted spans.
-//!
-//! This module provides utilities for displaying source code excerpts with
-//! specific byte ranges highlighted, useful for showing where violations occur.
-//!
-//! # Example
-//!
-//! ```
-//! use benchmark::snippet::Snippet;
-//!
-//! let source = "fn main() {\n    println!(\"hello\");\n}\n";
-//! let snippet = Snippet::new(source);
-//!
-//! // Render with highlight at the same range as display
-//! let rendered = snippet.render().display(16..31).highlight(16..31).finish();
-//! println!("{rendered}");
-//! ```
+//! Source code rendering types and helpers.
 
-use std::fmt::{Formatter, Write};
-use std::ops::Range;
+use std::{
+    borrow::Cow,
+    fmt::{Display, Formatter},
+};
 
-use bon::bon;
-use color_print::cformat;
+use bon::Builder;
+use color_eyre::{Result, eyre::Context};
+use color_print::{cformat, cwrite};
+use extfn::extfn;
+use tap::Pipe;
+use tree_sitter::Node;
 
-/// Default number of context lines to show before and after the highlighted span.
-pub const DEFAULT_CONTEXT_LINES: usize = 3;
+use crate::{
+    ext::indent,
+    matcher::{Span, code::Language},
+};
 
 /// A snippet of source content to be rendered.
 ///
 /// Create snippet instances from the full source code (e.g. a full file) and
 /// then use the methods on the type to render parts of the content.
 #[derive(Debug, Clone)]
-pub struct Snippet {
-    /// The source content from which snippets can be rendered.
-    source: String,
-}
+pub struct Snippet<'a>(Cow<'a, str>);
 
-#[bon]
-impl Snippet {
+impl<'a> Snippet<'a> {
     /// Create a new snippet from a source content string.
-    pub fn new(source: impl Into<String>) -> Self {
-        Self {
-            source: source.into(),
-        }
+    pub fn new(source: impl Into<Cow<'a, str>>) -> Self {
+        Self(source.into())
     }
 
     /// Get the originally provided source content.
     pub fn source(&self) -> &str {
-        &self.source
+        &self.0
     }
 
-    /// Render the snippet with a highlighted range.
-    ///
-    /// Returns a builder that can be used to configure the rendering options.
-    /// Call `.finish()` to get the final `RenderedSnippet`.
-    ///
-    /// If `highlight` extends beyond `display`, `display` will be automatically
-    /// expanded to include the full highlighted range.
-    #[builder(finish_fn = finish)]
-    pub fn render(
+    /// Render the content of the snippet with the provided ranges highlighted.
+    pub fn render_highlighted(
         &self,
-        /// The byte range to display.
-        /// If not provided, the entire source content is displayed.
-        #[builder(default = 0..self.self_receiver.source.len())]
-        display: Range<usize>,
-        /// The byte range to highlight.
-        /// If not provided, no highlighting is done.
-        #[builder(default = 0..0)]
-        highlight: Range<usize>,
-        /// The number of context lines to display before and after the displayed range.
-        /// If not provided, defaults to [`DEFAULT_CONTEXT_LINES`].
-        #[builder(default = DEFAULT_CONTEXT_LINES)]
-        context_lines: usize,
-        /// The indentation level (number of spaces) to use for the snippet.
-        /// If not provided, no indentation is applied.
-        #[builder(default = 0)]
-        indent: usize,
-    ) -> RenderedSnippet<'_> {
-        // Expand display to include highlighted range if needed
-        let display = if highlight.is_empty() {
-            display
-        } else {
-            let start = display.start.min(highlight.start);
-            let end = display.end.max(highlight.end);
-            start..end
-        };
-
-        RenderedSnippet {
-            source: &self.source,
-            display,
-            highlight,
-            context_lines,
-            indent,
+        highlight: impl IntoIterator<Item = impl Into<Span>>,
+    ) -> String {
+        let mut source = self.0.to_string();
+        for span in highlight {
+            let span = span.into();
+            let start = span.start();
+            let end = span.end();
+            let content = &source[start..end];
+            let highlighted = cformat!("<bg:yellow,black>{content}</>");
+            source.replace_range(span.range(), &highlighted);
         }
+        render_line_numbers(source)
+    }
+
+    /// Render the content of the snippet.
+    pub fn render(&self) -> String {
+        render_line_numbers(self.source())
+    }
+
+    /// Render the syntax tree of the snippet, parsed with the given language.
+    ///
+    /// This displays the source code with line numbers, followed by an indented
+    /// tree view showing:
+    /// - Field name (if present), e.g. `name:`, `body:`
+    /// - Node kind (what you'd match in a query)
+    /// - Position as `[line:col-line:col]` (1-indexed)
+    /// - Source text for small nodes
+    ///
+    /// This is useful for understanding the tree structure when writing
+    /// tree-sitter queries.
+    pub fn render_syntax_tree(&self, language: Language) -> Result<String> {
+        let source = self.source();
+        let tree = language.parse_code(source).context("parse syntax tree")?;
+        tree.root_node()
+            .to_syntax_nodes(source, 0, None)
+            .pipe_as_ref(RenderSyntaxTree)
+            .to_string()
+            .pipe(Ok)
     }
 }
 
-/// A rendered snippet of source content, created by calling [`Snippet::render`].
-#[derive(Debug, Clone)]
-pub struct RenderedSnippet<'a> {
-    /// The source content.
-    source: &'a str,
+/// A parsed syntax node from the syntax tree.
+///
+/// Nodes are represented in a tree structure in treesitter, but this struct
+/// flattens them into a linear structure using `depth` and the order of this
+/// node inside the parent container. It's intended to be used for rendering.
+///
+/// ## Rendering with `Display`
+///
+/// The default `Display` implementation renders the node with ignoring its
+/// `span` and `depth` fields. If you plan to render multiple nodes, you
+/// probably want to wrap your collection in [`RenderSyntaxTree`] for display.
+#[derive(Debug, Clone, Builder)]
+#[non_exhaustive]
+pub struct SyntaxNode<'a> {
+    /// The span of the overall node in the source code.
+    ///
+    /// `text` is the equivalent of selecting `span` from the source code.
+    #[builder(into)]
+    pub span: Span,
 
-    /// The byte range to display.
-    display: Range<usize>,
+    /// The depth of the node in the syntax tree.
+    ///
+    /// This is mainly intended to be used for indentation when rendering, but
+    /// it can technically also be used to reconstruct the tree structure in
+    /// combination with the ordering of nodes within a parent container.
+    pub depth: usize,
 
-    /// The byte range to highlight.
-    highlight: Range<usize>,
+    /// The kind of the node.
+    ///
+    /// This is the type of the node, as defined in the treesitter grammar.
+    /// For example, `"function_item"` or `"identifier"`.
+    #[builder(into)]
+    pub kind: String,
 
-    /// The number of context lines to display before and after the displayed range.
-    context_lines: usize,
+    /// The field name of the node.
+    ///
+    /// This is the name of the field that this node is a child of, if any.
+    /// For example, if the node is a child of a `function_item`, it might
+    /// contain the fields `name`, `parameters`, `return_type`, and `body`.
+    #[builder(into)]
+    pub field_name: Option<String>,
 
-    /// The indentation level to use for the snippet.
-    indent: usize,
+    /// The text of the node.
+    ///
+    /// This is the text content of the node. Note that parent nodes contain the
+    /// full text content of all their children: e.g. `function_item` contains
+    /// the full text of the function it declares even though it has children
+    /// that contain smaller sections of the function body.
+    #[builder(default = "")]
+    pub text: &'a str,
 }
 
-impl<'a> RenderedSnippet<'a> {
-    /// Get the source content.
-    pub fn source(&self) -> &'a str {
-        self.source
-    }
-}
-
-impl std::fmt::Display for RenderedSnippet<'_> {
+impl<'a> Display for SyntaxNode<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let lines = self.source.lines().collect::<Vec<_>>();
-        if lines.is_empty() {
-            return Ok(());
+        let field = self
+            .field_name
+            .as_deref()
+            .map(|name| format!("{name}: "))
+            .unwrap_or_default();
+        let kind = self.kind.as_str();
+        let text = self.text;
+        if text.len() <= 40 && !text.contains('\n') {
+            cwrite!(f, "<cyan>{field}</><green>{kind}</> <dim>{text}</>")
+        } else {
+            cwrite!(f, "<cyan>{field}</><green>{kind}</> <dim>..</>")
         }
+    }
+}
 
-        // Build a map of line index -> (start_byte, end_byte)
-        let line_ranges = compute_line_ranges(self.source, &lines);
+/// Wrap a collection of syntax nodes for rendering in a tree structure,
+/// preserving the original order and indentation.
+#[derive(Debug, Clone)]
+pub struct RenderSyntaxTree<'n, 'c>(pub &'c [SyntaxNode<'n>]);
 
-        // Find which lines the display range covers
-        let display_start_line = find_line_for_byte(&line_ranges, self.display.start);
-        let display_end_line = find_line_for_byte(&line_ranges, self.display.end.saturating_sub(1));
+impl<'n, 'c> RenderSyntaxTree<'n, 'c> {
+    /// Create a new render syntax tree from a vector of syntax nodes.
+    pub fn new(nodes: &'c [SyntaxNode<'n>]) -> Self {
+        Self(nodes)
+    }
+}
 
-        // Calculate the window of lines to display (with context)
-        let window_start = display_start_line.saturating_sub(self.context_lines);
-        let window_end = (display_end_line + self.context_lines).min(lines.len() - 1);
-
-        // Calculate the width needed for line numbers
-        let line_num_width = (window_end + 1).to_string().len();
-
-        // Build indent string
-        let indent = " ".repeat(self.indent);
-
-        // Render each line in the window
-        for line_idx in window_start..=window_end {
-            let line = lines[line_idx];
-            let (line_start, line_end) = line_ranges[line_idx];
-
-            // Format line number with indent
-            f.write_str(&indent)?;
-            let line_num = line_idx + 1;
-            write!(f, "{}", cformat!("<dim>{line_num:>line_num_width$} │ </>"))?;
-
-            // Render the line content with highlighting
-            render_line_with_highlight(f, line, line_start, line_end, &self.highlight)?;
-            f.write_char('\n')?;
+impl<'n, 'c> Display for RenderSyntaxTree<'n, 'c> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for node in self.0 {
+            writeln!(f, "{}", node.to_string().indent(node.depth * 2))?;
         }
-
         Ok(())
     }
 }
 
-/// Compute the byte ranges for each line in the source.
-fn compute_line_ranges(source: &str, lines: &[&str]) -> Vec<(usize, usize)> {
-    let mut ranges = Vec::with_capacity(lines.len());
-    let mut pos = 0;
+/// Recursively build a flat collection of syntax nodes from a treesitter node.
+#[extfn]
+fn to_syntax_nodes<'a>(
+    self: Node<'_>,
+    source: &'a str,
+    depth: usize,
+    field_name: Option<&str>,
+) -> Vec<SyntaxNode<'a>> {
+    let mut nodes = Vec::new();
 
-    for line in lines {
-        let start = pos;
-        let end = pos + line.len();
-        ranges.push((start, end));
-        pos = end + 1; // +1 for the newline character
-    }
+    // let pos = format!(
+    //     "[{:}:{:}-{:}:{:}]",
+    //     start.row + 1,
+    //     start.column + 1,
+    //     end.row + 1,
+    //     end.column + 1
+    // );
 
-    // Handle case where source doesn't end with newline
-    if let Some(last) = ranges.last_mut() {
-        last.1 = last.1.min(source.len());
-    }
+    // We only show text for smaller nodes that don't contain newlines, because
+    // this is meant to help users identify how parsed nodes correspond to
+    // source code and in treesitter many nodes contain the content of their
+    // children.
+    // let text = self
+    //     .utf8_text(source.as_bytes())
+    //     .ok()
+    //     .filter(|t| t.len() <= 40 && !t.contains('\n'))
+    //     .map(|t| format!(" {t:?}"))
+    //     .unwrap_or_default();
 
-    ranges
-}
+    // Format with optional field name prefix
+    // let field_prefix = field_name.map(|f| format!("{f}: ")).unwrap_or_default();
+    // let position = cformat!("<dim>{pos}</> ");
+    // let node = cformat!("<cyan>{field_prefix}</><green>{kind}</> {text}\n").indent(depth * 2);
+    // output.push_str(&position);
+    // output.push_str(&node);
 
-/// Find which line contains a given byte offset.
-fn find_line_for_byte(line_ranges: &[(usize, usize)], byte: usize) -> usize {
-    for (i, (start, end)) in line_ranges.iter().enumerate() {
-        if byte >= *start && byte <= *end {
-            return i;
+    let node = self.to_syntax_node(source, depth, field_name);
+    nodes.push(node);
+
+    let mut cursor = self.walk();
+    if cursor.goto_first_child() {
+        loop {
+            let child = cursor.node();
+            let field_name = cursor.field_name();
+            let children = child.to_syntax_nodes(source, depth + 1, field_name);
+            nodes.extend(children);
+
+            if !cursor.goto_next_sibling() {
+                break;
+            }
         }
     }
-    // Default to last line if byte is past the end
-    line_ranges.len().saturating_sub(1)
+    nodes
 }
 
-/// Render a single line with the span highlighted.
-fn render_line_with_highlight(
-    f: &mut Formatter<'_>,
-    line: &str,
-    line_start: usize,
-    line_end: usize,
-    highlight: &Range<usize>,
-) -> std::fmt::Result {
-    // Check if this line overlaps with the highlight at all
-    if highlight.is_empty() || highlight.end <= line_start || highlight.start >= line_end {
-        // No overlap - just output the line as-is
-        f.write_str(line)?;
-        return Ok(());
-    }
-
-    // Calculate the portion of this line that's highlighted
-    let highlight_start = highlight.start.saturating_sub(line_start).min(line.len());
-    let highlight_end = highlight.end.saturating_sub(line_start).min(line.len());
-
-    // Output: [before][highlighted][after]
-    let before = &line[..highlight_start];
-    let highlighted = &line[highlight_start..highlight_end];
-    let after = &line[highlight_end..];
-
-    f.write_str(before)?;
-    write!(f, "{}", cformat!("<bg:yellow,black>{highlighted}</>"))?;
-    f.write_str(after)?;
-
-    Ok(())
+/// Convert a treesitter node to a syntax node.
+#[extfn]
+fn to_syntax_node<'a>(
+    self: Node<'_>,
+    source: &'a str,
+    depth: usize,
+    field_name: Option<&str>,
+) -> SyntaxNode<'a> {
+    SyntaxNode::builder()
+        .span(self.byte_range())
+        .depth(depth)
+        .kind(self.kind())
+        .maybe_field_name(field_name)
+        .text(self.utf8_text(source.as_bytes()).unwrap_or_default())
+        .build()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_single_line_highlight() {
-        let snippet = Snippet::new("hello world");
-        let result = snippet
-            .render()
-            .display(0..11)
-            .highlight(6..11)
-            .context_lines(0)
-            .finish()
-            .to_string();
-
-        // Should highlight "world"
-        assert!(result.contains("world"));
-    }
-
-    #[test]
-    fn test_multiline_highlight() {
-        let snippet = Snippet::new("line one\nline two\nline three");
-        let result = snippet
-            .render()
-            .display(5..15)
-            .highlight(5..15)
-            .context_lines(0)
-            .finish()
-            .to_string();
-
-        // Span covers "one\nline t"
-        assert!(result.contains("1 │"));
-        assert!(result.contains("2 │"));
-    }
-
-    #[test]
-    fn test_context_lines() {
-        let snippet = Snippet::new("a\nb\nc\nd\ne\nf\ng");
-        let result = snippet
-            .render()
-            .display(4..5)
-            .highlight(4..5)
-            .context_lines(2)
-            .finish()
-            .to_string();
-
-        // Should show lines b, c, d, e (2 before, the line, 2 after)
-        assert!(result.contains("2 │"));
-        assert!(result.contains("3 │"));
-        assert!(result.contains("4 │"));
-        assert!(result.contains("5 │"));
-    }
-
-    #[test]
-    fn test_highlight_expands_display() {
-        let snippet = Snippet::new("line one\nline two\nline three");
-        // Display only covers line 1, but highlight covers lines 1-2
-        let result = snippet
-            .render()
-            .display(0..8)
-            .highlight(5..15)
-            .context_lines(0)
-            .finish()
-            .to_string();
-
-        // Should show both lines because highlight expanded display
-        assert!(result.contains("1 │"));
-        assert!(result.contains("2 │"));
-    }
-
-    #[test]
-    fn test_no_highlight() {
-        let snippet = Snippet::new("hello world");
-        let result = snippet
-            .render()
-            .display(0..11)
-            .context_lines(0)
-            .finish()
-            .to_string();
-
-        // Should just show the line without any highlighting
-        assert!(result.contains("hello world"));
-    }
+fn render_line_numbers(source: impl AsRef<str>) -> String {
+    let source = source.as_ref();
+    let lines = source.lines().zip(1..).collect::<Vec<_>>();
+    let max_width = lines.len().to_string().len();
+    lines
+        .iter()
+        .map(|(line, number)| cformat!("<dim>{number:>max_width$} |</> {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }

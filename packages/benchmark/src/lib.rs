@@ -41,12 +41,11 @@ pub use crate::outcome::{Outcome, Violation};
 pub use crate::scenario::Scenario;
 
 pub mod agent;
-pub mod cst;
+pub mod ext;
 pub mod matcher;
 pub mod outcome;
 pub mod scenario;
 pub mod snippet;
-pub mod validator;
 
 /// Load all scenarios from the given directory.
 ///

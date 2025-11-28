@@ -19,12 +19,20 @@ use color_eyre::{
     Result, Section, SectionExt,
     eyre::{Context, bail, eyre},
 };
-use color_print::cformat;
+use color_print::{cformat, cwriteln};
 use glob::glob;
 use serde::Deserialize;
+use tap::Pipe;
 
-use crate::matcher::{MatchString, Matcher};
-use crate::outcome::{CommandFailed, ContentMismatch, RegexMatched, RegexNotMatched, Violation};
+use crate::{
+    ext::indent,
+    matcher::code::CodeMatcher,
+    outcome::{QueryMatched, QueryNotMatched},
+};
+use crate::{
+    matcher::FallibleMatcher,
+    outcome::{CommandFailed, Violation},
+};
 
 /// A benchmark scenario testing a specific rule.
 ///
@@ -114,6 +122,41 @@ pub struct Scenario {
     pub expected: Vec<EvaluationCommand>,
 }
 
+impl Display for Scenario {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let name = &self.name;
+        let description = self.description.as_deref().unwrap_or("<no description>");
+        let guidance = &self.guidance;
+        let prompt = &self.prompt;
+        let commands = self
+            .commands
+            .iter()
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .indent(2);
+        let expected = self
+            .expected
+            .iter()
+            .map(|e| e.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .indent(2);
+        let metadata = [
+            cformat!("<green,bold>name:</> {name}"),
+            cformat!("<green,bold>description:</> {description}"),
+            cformat!("<green,bold>guidance:</> {guidance}"),
+            cformat!("<green,bold>prompt:</> {prompt}"),
+            cformat!("<green,bold>commands:</> {commands}"),
+            cformat!("<green,bold>expected:</> {expected}"),
+        ];
+        for meta in metadata {
+            writeln!(f, "{meta}")?;
+        }
+        Ok(())
+    }
+}
+
 /// A command to run in an environment when it is being created.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", content = "content", rename_all = "snake_case")]
@@ -148,6 +191,29 @@ impl SetupCommand {
     }
 }
 
+impl Display for SetupCommand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SetupCommand::Command(command) => {
+                let metadata = command.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>command:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+            SetupCommand::Write(file) => {
+                let metadata = file.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>write:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+            SetupCommand::Append(file) => {
+                let metadata = file.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>append:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl From<&SetupCommand> for SetupCommand {
     fn from(value: &SetupCommand) -> Self {
         value.clone()
@@ -161,30 +227,14 @@ pub enum EvaluationCommand {
     /// Run the specified command in the environment.
     ///
     /// If the command exits with a non-zero exit code, the scenario is
-    /// considered failed; any output from the command is included in the
-    /// failure report.
+    /// considered failed.
     Command(Command),
 
-    /// Test that the file at the specified path equals the provided content.
-    ///
-    /// If the file does not exist, the scenario is considered failed.
-    /// If the file contents do not match the provided content, the scenario is
-    /// considered failed.
-    Equals(FileEvaluation),
+    /// Validate there are matches for the specified query.
+    Exists(FileEvaluation),
 
-    /// Test that the file at the specified path contains the provided content.
-    ///
-    /// If the file does not exist, the scenario is considered failed.
-    /// If the file contents do not contain the provided content, the scenario is
-    /// considered failed.
-    Contains(FileEvaluation),
-
-    /// Test that the file at the specified path does not contain the provided content.
-    ///
-    /// If the file does not exist, the scenario is considered failed.
-    /// If the file contents contain the provided content, the scenario is
-    /// considered failed.
-    NotContains(FileEvaluation),
+    /// Validate there are no matches for the specified query.
+    NotExists(FileEvaluation),
 }
 
 impl EvaluationCommand {
@@ -195,10 +245,60 @@ impl EvaluationCommand {
     #[tracing::instrument]
     pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
         match self {
-            EvaluationCommand::Command(command) => command.evaluate(project),
-            EvaluationCommand::Equals(file) => file.equals(project),
-            EvaluationCommand::Contains(file) => file.contains(project),
-            EvaluationCommand::NotContains(file) => file.not_contains(project),
+            EvaluationCommand::Command(test) => test
+                .evaluate(project)
+                .map(|v| v.into_iter().collect::<Vec<_>>()),
+            EvaluationCommand::Exists(test) => {
+                let files = test.read(project)?;
+                let mut violations = Vec::new();
+                for (path, content) in files {
+                    let matches = test
+                        .matcher
+                        .find(&content)
+                        .context("find matches for query")
+                        .with_section(|| test.matcher.query.as_str().to_string().header("Query:"))
+                        .with_section(|| test.matcher.language.to_string().header("Language:"))
+                        .with_section(|| path.to_string_lossy().to_string().header("Path:"))
+                        .with_section(|| content.to_string().header("Content:"))?;
+                    if matches.is_empty() {
+                        violations.push(Violation::QueryNotMatched(
+                            QueryNotMatched::builder()
+                                .path(path)
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language.to_string())
+                                .content(content)
+                                .build(),
+                        ));
+                    }
+                }
+                Ok(violations)
+            }
+            EvaluationCommand::NotExists(test) => {
+                let files = test.read(project)?;
+                let mut violations = Vec::new();
+                for (path, content) in files {
+                    let matches = test
+                        .matcher
+                        .find(&content)
+                        .context("find matches for query")
+                        .with_section(|| test.matcher.query.as_str().to_string().header("Query:"))
+                        .with_section(|| test.matcher.language.to_string().header("Language:"))
+                        .with_section(|| path.to_string_lossy().to_string().header("Path:"))
+                        .with_section(|| content.to_string().header("Content:"))?;
+                    if !matches.is_empty() {
+                        violations.push(Violation::QueryMatched(
+                            QueryMatched::builder()
+                                .path(path)
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language)
+                                .content(content)
+                                .matches(matches)
+                                .build(),
+                        ));
+                    }
+                }
+                Ok(violations)
+            }
         }
     }
 }
@@ -206,6 +306,29 @@ impl EvaluationCommand {
 impl From<&EvaluationCommand> for EvaluationCommand {
     fn from(value: &EvaluationCommand) -> Self {
         value.clone()
+    }
+}
+
+impl Display for EvaluationCommand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            EvaluationCommand::Command(command) => {
+                let metadata = command.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>command:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+            EvaluationCommand::Exists(query) => {
+                let metadata = query.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>exists:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+            EvaluationCommand::NotExists(query) => {
+                let metadata = query.to_string().indent(2);
+                cwriteln!(f, "<cyan>-</> <yellow>not_exists:</>")?;
+                writeln!(f, "{metadata}")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -252,12 +375,8 @@ impl Command {
 
     /// Evaluate the command and return violations if it fails.
     /// Used for evaluation commands where failure is a violation, not a fatal error.
-    //
-    // Note: this returns a vec of violations so that it has the same API shape
-    // as the other evaluation command methods, not because it can actually
-    // return multiple violations (although it may in the future).
     #[tracing::instrument]
-    pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
+    pub fn evaluate(&self, project: &Path) -> Result<Option<Violation>> {
         let output = std::process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
@@ -265,16 +384,19 @@ impl Command {
             .with_context(|| format!("run command {:?} with args: {:?}", self.binary, self.args))?;
 
         if output.status.success() {
-            Ok(vec![])
+            Ok(None)
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Ok(vec![Violation::CommandFailed(
-                CommandFailed::builder()
-                    .command(format!("{} {}", self.binary, self.args.join(" ")))
-                    .maybe_exit_code(output.status.code())
-                    .stderr(stderr.to_string())
-                    .build(),
-            )])
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            CommandFailed::builder()
+                .command(format!("{} {}", self.binary, self.args.join(" ")))
+                .maybe_exit_code(output.status.code())
+                .stderr(stderr)
+                .stdout(stdout)
+                .build()
+                .pipe(Violation::CommandFailed)
+                .pipe(Some)
+                .pipe(Ok)
         }
     }
 }
@@ -282,6 +404,16 @@ impl Command {
 impl From<&Command> for Command {
     fn from(value: &Command) -> Self {
         value.clone()
+    }
+}
+
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let binary = &self.binary;
+        let args = self.args.join("\n").indent(2);
+        cwriteln!(f, "<cyan>-</> <yellow>binary:</> {binary}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>arguments:</> {args}")?;
+        Ok(())
     }
 }
 
@@ -313,6 +445,17 @@ impl WriteFile {
 impl From<&WriteFile> for WriteFile {
     fn from(value: &WriteFile) -> Self {
         value.clone()
+    }
+}
+
+impl Display for WriteFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let path = &self.path;
+        let content = self.content.clone().indent(2);
+        cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
+        cwriteln!(f, "<dim>{content}</>")?;
+        Ok(())
     }
 }
 
@@ -364,11 +507,25 @@ impl From<&AppendFile> for AppendFile {
     }
 }
 
+impl Display for AppendFile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let path = &self.path;
+        let content = self.content.clone().indent(2);
+        let separator = self.separator.as_deref().unwrap_or("<none>").indent(2);
+        cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>separator:</>")?;
+        cwriteln!(f, "<dim>{separator}</>")?;
+        cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
+        cwriteln!(f, "<dim>{content}</>")?;
+        Ok(())
+    }
+}
+
 /// A file to evaluate and the content with which to evaluate it.
 #[derive(Debug, Clone, Deserialize, Builder)]
 #[non_exhaustive]
 pub struct FileEvaluation {
-    /// The path to the file to evaluate, relative to the environment root.
+    /// The path to the file(s) to evaluate, relative to the environment root.
     ///
     /// This path supports glob patterns, including "globstars":
     /// - `*.rs` matches all `.rs` files in the root directory.
@@ -382,18 +539,9 @@ pub struct FileEvaluation {
     #[builder(into)]
     pub path: String,
 
-    /// The content to evaluate the file against.
-    ///
-    /// This content supports regular expressions using the RE2 regex syntax
-    /// variant supported by the `regex` crate; this content is tested for
-    /// whether it "matches" (in the regular expression sense) against the file
-    /// contents according to the evaluation operation being performed.
-    ///
-    /// If the content fails to compile as a regex, the evaluation proceeds
-    /// assuming it is a string; in this case the content is tested against the
-    /// file contents using string operations.
+    /// The matcher used to select content out of evaluation files to evaluate.
     #[builder(into)]
-    pub content: MatchString,
+    pub matcher: CodeMatcher,
 }
 
 impl FileEvaluation {
@@ -428,74 +576,6 @@ impl FileEvaluation {
 
         Ok(files)
     }
-
-    /// Tests that all matched files' contents match the test exactly.
-    #[tracing::instrument(name = "FileEvaluation::equals")]
-    fn equals(&self, project: &Path) -> Result<Vec<Violation>> {
-        let files = self.read(project)?;
-        let violations = files
-            .iter()
-            .filter_map(|(path, content)| {
-                if self.content.is_exact_match(content) {
-                    None
-                } else {
-                    let expected = format!("regex: {}", self.content.as_str());
-                    Some(Violation::ContentMismatch(
-                        ContentMismatch::builder()
-                            .path(path)
-                            .expected(expected)
-                            .build(),
-                    ))
-                }
-            })
-            .collect();
-        Ok(violations)
-    }
-
-    /// Tests that all matched files' contents contain a match for the regex pattern.
-    #[tracing::instrument(name = "FileEvaluation::contains")]
-    fn contains(&self, project: &Path) -> Result<Vec<Violation>> {
-        let files = self.read(project)?;
-        let violations = files
-            .iter()
-            .filter_map(|(path, content)| {
-                if self.content.is_match(content) {
-                    None
-                } else {
-                    Some(Violation::RegexNotMatched(
-                        RegexNotMatched::builder()
-                            .path(path)
-                            .pattern(self.content.as_str())
-                            .build(),
-                    ))
-                }
-            })
-            .collect();
-        Ok(violations)
-    }
-
-    /// Tests that no matched files' contents contain a match for the regex pattern.
-    #[tracing::instrument(name = "FileEvaluation::not_contains")]
-    fn not_contains(&self, project: &Path) -> Result<Vec<Violation>> {
-        let files = self.read(project)?;
-        let violations = files
-            .iter()
-            .filter_map(|(path, content)| {
-                let matches = self.content.find(content);
-                matches.spans().next().map(|span| {
-                    Violation::RegexMatched(
-                        RegexMatched::builder()
-                            .path(path)
-                            .pattern(self.content.as_str())
-                            .source(content)
-                            .span(span)
-                            .build(),
-                    )
-                })
-            })
-            .collect();
-        Ok(violations)
-    }
 }
 
 impl From<&FileEvaluation> for FileEvaluation {
@@ -504,166 +584,14 @@ impl From<&FileEvaluation> for FileEvaluation {
     }
 }
 
-impl Display for Scenario {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // Name
-        writeln!(f, "{}", cformat!("<green,bold>name:</>"))?;
-        write_indented(f, &self.name, 1)?;
-        writeln!(f)?;
-
-        // Description (if present)
-        if let Some(description) = &self.description {
-            writeln!(f, "{}", cformat!("<green,bold>description:</>"))?;
-            write_indented(f, description, 1)?;
-            writeln!(f)?;
-        }
-
-        // Guidance
-        writeln!(f, "{}", cformat!("<green,bold>guidance:</>"))?;
-        write_indented(f, &self.guidance, 1)?;
-        writeln!(f)?;
-
-        // Prompt
-        writeln!(f, "{}", cformat!("<green,bold>prompt:</>"))?;
-        write_indented(f, &self.prompt, 1)?;
-        writeln!(f)?;
-
-        // Commands
-        writeln!(f, "{}", cformat!("<green,bold>commands:</>"))?;
-        for command in &self.commands {
-            write_setup_command(f, command, 1)?;
-        }
-        writeln!(f)?;
-
-        // Expected
-        writeln!(f, "{}", cformat!("<green,bold>expected:</>"))?;
-        for expected in &self.expected {
-            write_eval_command(f, expected, 1)?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Display for SetupCommand {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write_setup_command(f, self, 0)
-    }
-}
-
-impl Display for EvaluationCommand {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write_eval_command(f, self, 0)
-    }
-}
-
-impl Display for Command {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.binary, self.args.join(" "))
-    }
-}
-
-impl Display for WriteFile {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.path)
-    }
-}
-
-impl Display for AppendFile {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.path)
-    }
-}
-
 impl Display for FileEvaluation {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.path)
+        let path = &self.path;
+        let language = self.matcher.language;
+        let query = self.matcher.query.as_str();
+        cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>language:</> {language}")?;
+        cwriteln!(f, "<cyan>-</> <yellow>query:</> {query}")?;
+        Ok(())
     }
-}
-
-// Helper functions for formatted output
-
-fn indent(level: usize) -> String {
-    "  ".repeat(level)
-}
-
-fn write_indented(f: &mut Formatter<'_>, text: &str, level: usize) -> fmt::Result {
-    let prefix = indent(level);
-    for line in text.lines() {
-        writeln!(f, "{prefix}{line}")?;
-    }
-    Ok(())
-}
-
-fn write_setup_command(f: &mut Formatter<'_>, cmd: &SetupCommand, level: usize) -> fmt::Result {
-    let prefix = indent(level);
-    match cmd {
-        SetupCommand::Command(c) => {
-            let cmd_str = c.to_string();
-            writeln!(
-                f,
-                "{prefix}{}",
-                cformat!("<cyan>-</> <yellow>command:</> {cmd_str}")
-            )
-        }
-        SetupCommand::Write(file) => {
-            let path = &file.path;
-            writeln!(
-                f,
-                "{prefix}{}",
-                cformat!("<cyan>-</> <yellow>write:</> {path}")
-            )?;
-            write_indented(f, &file.content, level + 2)
-        }
-        SetupCommand::Append(file) => {
-            let path = &file.path;
-            writeln!(
-                f,
-                "{prefix}{}",
-                cformat!("<cyan>-</> <yellow>append:</> {path}")
-            )?;
-            if let Some(sep) = &file.separator {
-                writeln!(
-                    f,
-                    "{prefix}  {}",
-                    cformat!("<dim>separator:</> <dim>{sep}</>")
-                )?;
-            }
-            write_indented(f, &file.content, level + 2)
-        }
-    }
-}
-
-fn write_eval_command(f: &mut Formatter<'_>, cmd: &EvaluationCommand, level: usize) -> fmt::Result {
-    let prefix = indent(level);
-    match cmd {
-        EvaluationCommand::Command(c) => {
-            let cmd_str = c.to_string();
-            writeln!(
-                f,
-                "{prefix}{}",
-                cformat!("<cyan>-</> <yellow>command:</> {cmd_str}")
-            )
-        }
-        EvaluationCommand::Equals(file) => write_file_eval(f, &prefix, "equals", file),
-        EvaluationCommand::Contains(file) => write_file_eval(f, &prefix, "contains", file),
-        EvaluationCommand::NotContains(file) => write_file_eval(f, &prefix, "not_contains", file),
-    }
-}
-
-fn write_file_eval(
-    f: &mut Formatter<'_>,
-    prefix: &str,
-    kind: &str,
-    file: &FileEvaluation,
-) -> fmt::Result {
-    let kind_label = format!("{kind} (regex):");
-    let path = &file.path;
-    let content = file.content.to_string();
-    writeln!(
-        f,
-        "{prefix}{}",
-        cformat!("<cyan>-</> <yellow>{kind_label}</> {path}")
-    )?;
-    writeln!(f, "{prefix}  {}", cformat!("<dim>{content}</>"))
 }
