@@ -26,12 +26,12 @@ use tap::Pipe;
 
 use crate::{
     ext::indent,
-    matcher::code::CodeMatcher,
-    outcome::{QueryMatched, QueryNotMatched},
-};
-use crate::{
     matcher::FallibleMatcher,
-    outcome::{CommandFailed, Violation},
+    matcher::code::CodeMatcher,
+    outcome::{
+        CommandFailed, CommandSucceeded, Evidence, Outcome, QueryMatchedEvidence,
+        QueryMatchedViolation, QueryNotMatchedEvidence, QueryNotMatchedViolation, Violation,
+    },
 };
 
 /// A benchmark scenario testing a specific rule.
@@ -238,19 +238,21 @@ pub enum EvaluationCommand {
 }
 
 impl EvaluationCommand {
-    /// Evaluate this command and return any violations.
+    /// Evaluate this command and return an outcome.
     ///
-    /// Returns `Ok(vec![])` if the evaluation passes, `Ok(violations)` if it fails
-    /// with expectation violations, or `Err` if there's a fatal error (e.g., file not found).
+    /// Returns `Ok(Outcome::Pass { evidence })` if the evaluation passes,
+    /// `Ok(Outcome::Fail { violations })` if it fails with expectation violations,
+    /// or `Err` if there's a fatal error (e.g., file not found).
     #[tracing::instrument]
-    pub fn evaluate(&self, project: &Path) -> Result<Vec<Violation>> {
+    pub fn evaluate(&self, project: &Path) -> Result<Outcome> {
         match self {
-            EvaluationCommand::Command(test) => test
-                .evaluate(project)
-                .map(|v| v.into_iter().collect::<Vec<_>>()),
+            EvaluationCommand::Command(test) => test.evaluate(project),
             EvaluationCommand::Exists(test) => {
                 let files = test.read(project)?;
                 let mut violations = Vec::new();
+                let mut evidence = Vec::new();
+                let filter_desc = test.between.as_ref().map(|f| f.to_string());
+
                 for (path, content) in files {
                     let matches = test
                         .matcher
@@ -268,20 +270,40 @@ impl EvaluationCommand {
 
                     if matches.is_empty() {
                         violations.push(Violation::QueryNotMatched(
-                            QueryNotMatched::builder()
+                            QueryNotMatchedViolation::builder()
                                 .path(path)
                                 .query(test.matcher.query.as_str())
                                 .language(test.matcher.language)
                                 .content(content)
+                                .maybe_filter(filter_desc.clone())
+                                .build(),
+                        ));
+                    } else {
+                        evidence.push(Evidence::QueryMatched(
+                            QueryMatchedEvidence::builder()
+                                .path(path)
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language)
+                                .content(content)
+                                .matches(matches)
+                                .maybe_filter(filter_desc.clone())
                                 .build(),
                         ));
                     }
                 }
-                Ok(violations)
+
+                if violations.is_empty() {
+                    Ok(Outcome::Pass { evidence })
+                } else {
+                    Ok(Outcome::Fail { violations })
+                }
             }
             EvaluationCommand::NotExists(test) => {
                 let files = test.read(project)?;
                 let mut violations = Vec::new();
+                let mut evidence = Vec::new();
+                let filter_desc = test.between.as_ref().map(|f| f.to_string());
+
                 for (path, content) in files {
                     let matches = test
                         .matcher
@@ -302,17 +324,33 @@ impl EvaluationCommand {
 
                     if !matches.is_empty() {
                         violations.push(Violation::QueryMatched(
-                            QueryMatched::builder()
+                            QueryMatchedViolation::builder()
                                 .path(path)
                                 .query(test.matcher.query.as_str())
                                 .language(test.matcher.language)
                                 .content(content)
                                 .matches(matches)
+                                .maybe_filter(filter_desc.clone())
+                                .build(),
+                        ));
+                    } else {
+                        evidence.push(Evidence::QueryNotMatched(
+                            QueryNotMatchedEvidence::builder()
+                                .path(path)
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language)
+                                .content(content)
+                                .maybe_filter(filter_desc.clone())
                                 .build(),
                         ));
                     }
                 }
-                Ok(violations)
+
+                if violations.is_empty() {
+                    Ok(Outcome::Pass { evidence })
+                } else {
+                    Ok(Outcome::Fail { violations })
+                }
             }
         }
     }
@@ -388,29 +426,41 @@ impl Command {
             })
     }
 
-    /// Evaluate the command and return violations if it fails.
+    /// Evaluate the command and return an outcome.
     /// Used for evaluation commands where failure is a violation, not a fatal error.
     #[tracing::instrument]
-    pub fn evaluate(&self, project: &Path) -> Result<Option<Violation>> {
+    pub fn evaluate(&self, project: &Path) -> Result<Outcome> {
         let output = std::process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
             .output()
             .with_context(|| format!("run command {:?} with args: {:?}", self.binary, self.args))?;
 
+        let command = format!("{} {}", self.binary, self.args.join(" "));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
         if output.status.success() {
-            Ok(None)
+            CommandSucceeded::builder()
+                .command(command)
+                .maybe_exit_code(output.status.code())
+                .stdout(stdout)
+                .stderr(stderr)
+                .build()
+                .pipe(Evidence::CommandSucceeded)
+                .pipe(|e| Outcome::Pass { evidence: vec![e] })
+                .pipe(Ok)
         } else {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
             CommandFailed::builder()
-                .command(format!("{} {}", self.binary, self.args.join(" ")))
+                .command(command)
                 .maybe_exit_code(output.status.code())
                 .stderr(stderr)
                 .stdout(stdout)
                 .build()
                 .pipe(Violation::CommandFailed)
-                .pipe(Some)
+                .pipe(|v| Outcome::Fail {
+                    violations: vec![v],
+                })
                 .pipe(Ok)
         }
     }

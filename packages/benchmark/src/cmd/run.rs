@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use benchmark::{Agent, Guidance, ModelClaudeCode, Scenario, evaluate, load_scenarios};
 use clap::Args;
 use color_eyre::{Result, eyre::eyre};
-use color_print::{cformat, cprintln};
+use color_print::cformat;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -126,7 +126,7 @@ fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
                     let scenario_name = &scenario.name;
                     let agent_name = agent.name();
                     let model = agent.model();
-                    let guidance_str = guidance.to_string();
+                    let guidance = guidance.to_string();
                     println!(
                         "  [{run_number}/{total_runs}] {}",
                         cformat!(
@@ -134,7 +134,7 @@ fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
                             <green,bold>Scenario:</> <dim>{scenario_name}</> × \
                             <green,bold>Agent:</> <dim>{agent_name}</> × \
                             <green,bold>Model:</> <dim>{model}</> × \
-                            <green,bold>Guidance:</> <dim>{guidance_str}</>"
+                            <green,bold>Guidance:</> <dim>{guidance}</>"
                         )
                     );
                 }
@@ -158,7 +158,7 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
                     let scenario_name = &scenario.name;
                     let agent_name = agent.name();
                     let model = agent.model();
-                    let guidance_str = guidance.to_string();
+                    let guidance_content = guidance.to_string();
                     println!(
                         "{} [{run_number}/{total_runs}] {}",
                         cformat!("<green,bold>Running</>"),
@@ -167,18 +167,12 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
                             <green,bold>Scenario:</> <dim>{scenario_name}</> × \
                             <green,bold>Agent:</> <dim>{agent_name}</> × \
                             <green,bold>Model:</> <dim>{model}</> × \
-                            <green,bold>Guidance:</> <dim>{guidance_str}</>"
+                            <green,bold>Guidance:</> <dim>{guidance_content}</>"
                         )
                     );
 
-                    match evaluate(scenario, agent, *guidance) {
-                        Ok(outcome) => {
-                            println!("  {outcome}");
-                        }
-                        Err(e) => {
-                            cprintln!("<yellow>⚠</> Error: {e}");
-                        }
-                    }
+                    let outcome = evaluate(scenario, agent, *guidance)?;
+                    println!("  {outcome}");
                 }
             }
         }

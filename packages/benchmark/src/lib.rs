@@ -91,18 +91,11 @@ pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Resul
 
     agent.run(root, &scenario.prompt)?;
 
-    let violations =
-        scenario
-            .expected
-            .iter()
-            .try_fold(Vec::new(), |mut acc, command| -> Result<_> {
-                acc.extend(command.evaluate(root)?);
-                Ok(acc)
-            })?;
+    let outcomes = scenario
+        .expected
+        .iter()
+        .map(|command| command.evaluate(root))
+        .collect::<Result<Vec<_>>>()?;
 
-    if violations.is_empty() {
-        Ok(Outcome::pass())
-    } else {
-        Ok(Outcome::fail(violations))
-    }
+    Ok(Outcome::combine(outcomes))
 }

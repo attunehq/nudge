@@ -17,6 +17,15 @@ use crate::{
     matcher::{Span, code::Language},
 };
 
+/// Color options for highlighting spans in rendered output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HighlightColor {
+    /// Yellow background - used for violations/errors.
+    Yellow,
+    /// Green background - used for successful matches.
+    Green,
+}
+
 /// A snippet of source content to be rendered.
 ///
 /// Create snippet instances from the full source code (e.g. a full file) and
@@ -40,6 +49,23 @@ impl<'a> Snippet<'a> {
         &self,
         highlight: impl IntoIterator<Item = impl Into<Span>>,
     ) -> String {
+        self.render_highlighted_with_color(highlight, HighlightColor::Yellow)
+    }
+
+    /// Render the content of the snippet with the provided ranges highlighted in green.
+    pub fn render_highlighted_green(
+        &self,
+        highlight: impl IntoIterator<Item = impl Into<Span>>,
+    ) -> String {
+        self.render_highlighted_with_color(highlight, HighlightColor::Green)
+    }
+
+    /// Render the content of the snippet with the provided ranges highlighted in a specific color.
+    fn render_highlighted_with_color(
+        &self,
+        highlight: impl IntoIterator<Item = impl Into<Span>>,
+        color: HighlightColor,
+    ) -> String {
         let mut source = self.0.to_string();
 
         // Collect and sort spans in reverse order (by start position descending).
@@ -54,7 +80,10 @@ impl<'a> Snippet<'a> {
             let start = span.start();
             let end = span.end();
             let content = &source[start..end];
-            let highlighted = cformat!("<bg:yellow,black>{content}</>");
+            let highlighted = match color {
+                HighlightColor::Yellow => cformat!("<bg:yellow,black>{content}</>"),
+                HighlightColor::Green => cformat!("<bg:green,black>{content}</>"),
+            };
             source.replace_range(span.range(), &highlighted);
         }
         render_line_numbers(source)
