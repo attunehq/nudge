@@ -203,7 +203,7 @@ impl Display for QueryNotMatchedViolation {
         cwriteln!(f, "<cyan>-</> <yellow>query:</>")?;
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>filter:</>")?;
-        cwriteln!(f, "<dim>{}</>", filter.indent(2))?;
+        cwriteln!(f, "{}", filter.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
         cwriteln!(f, "{}", tree.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
@@ -259,7 +259,7 @@ impl Display for QueryMatchedViolation {
         cwriteln!(f, "<cyan>-</> <yellow>query:</>")?;
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>filter:</>")?;
-        cwriteln!(f, "<dim>{}</>", filter.indent(2))?;
+        cwriteln!(f, "{}", filter.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
         cwriteln!(f, "{}", tree.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>matched:</>")?;
@@ -396,7 +396,7 @@ impl Display for QueryMatchedEvidence {
         cwriteln!(f, "<cyan>-</> <green>query:</>")?;
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <green>filter:</>")?;
-        cwriteln!(f, "<dim>{}</>", filter.indent(2))?;
+        cwriteln!(f, "{}", filter.indent(2))?;
         cwriteln!(f, "<cyan>-</> <green>matched:</>")?;
         cwriteln!(f, "{}", content.indent(2))?;
         Ok(())
@@ -443,7 +443,7 @@ impl Display for QueryNotMatchedEvidence {
         cwriteln!(f, "<cyan>-</> <green>query:</>")?;
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <green>filter:</>")?;
-        cwriteln!(f, "<dim>{}</>", filter.indent(2))?;
+        cwriteln!(f, "{}", filter.indent(2))?;
         cwriteln!(f, "<cyan>-</> <green>content:</>")?;
         cwriteln!(f, "<dim>{}</>", content.indent(2))?;
         Ok(())

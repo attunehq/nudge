@@ -6,6 +6,8 @@ use benchmark::{Agent, Guidance, ModelClaudeCode, Scenario, evaluate, load_scena
 use clap::Args;
 use color_eyre::{Result, eyre::eyre};
 use color_print::cformat;
+use itertools::iproduct;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -146,37 +148,56 @@ fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
 }
 
 fn main_run(config: &ResolvedConfig) -> Result<()> {
-    let mut run_number = 0;
     let total_runs = config.total_runs();
     let runs = config.runs;
 
-    for scenario in &config.scenarios {
-        for agent in &config.agents {
-            for guidance in &config.guidances {
-                for run in 1..=runs {
-                    run_number += 1;
-                    let scenario_name = &scenario.name;
-                    let agent_name = agent.name();
-                    let model = agent.model();
-                    let guidance_content = guidance.to_string();
-                    println!(
-                        "{} [{run_number}/{total_runs}] {}",
-                        cformat!("<green,bold>Running</>"),
-                        cformat!(
-                            "<green,bold>Run:</> <dim>{run}/{runs}</> × \
-                            <green,bold>Scenario:</> <dim>{scenario_name}</> × \
-                            <green,bold>Agent:</> <dim>{agent_name}</> × \
-                            <green,bold>Model:</> <dim>{model}</> × \
-                            <green,bold>Guidance:</> <dim>{guidance_content}</>"
-                        )
-                    );
-
-                    let outcome = evaluate(scenario, agent, *guidance)?;
-                    println!("  {outcome}");
-                }
-            }
-        }
-    }
+    iproduct!(
+        &config.scenarios,
+        &config.agents,
+        &config.guidances,
+        1..=runs
+    )
+    .zip(1..)
+    .par_bridge()
+    .map(|((scenario, agent, guidance, run), id)| -> Result<_> {
+        let scenario_name = &scenario.name;
+        let agent_name = agent.name();
+        let model = agent.model();
+        let guidance_content = guidance.to_string();
+        println!(
+            "{} [{id}/{total_runs}] {}",
+            cformat!("<green,bold>Running</>"),
+            cformat!(
+                "<green,bold>Run:</> <dim>{run}/{runs}</> × \
+                    <green,bold>Scenario:</> <dim>{scenario_name}</> × \
+                    <green,bold>Agent:</> <dim>{agent_name}</> × \
+                    <green,bold>Model:</> <dim>{model}</> × \
+                    <green,bold>Guidance:</> <dim>{guidance_content}</>"
+            )
+        );
+        let outcome = evaluate(scenario, agent, *guidance)?;
+        Ok((id, scenario, agent, guidance, run, outcome))
+    })
+    .try_for_each(|attempt| -> Result<_> {
+        let (id, scenario, agent, guidance, run, outcome) = attempt?;
+        let scenario_name = &scenario.name;
+        let agent_name = agent.name();
+        let model = agent.model();
+        let guidance_content = guidance.to_string();
+        println!(
+            "{} [{id}/{total_runs}] {}",
+            cformat!("<green,bold>Completed</>"),
+            cformat!(
+                "<green,bold>Run:</> <dim>{run}/{runs}</> × \
+                    <green,bold>Scenario:</> <dim>{scenario_name}</> × \
+                    <green,bold>Agent:</> <dim>{agent_name}</> × \
+                    <green,bold>Model:</> <dim>{model}</> × \
+                    <green,bold>Guidance:</> <dim>{guidance_content}</>"
+            )
+        );
+        println!("  {outcome}");
+        Ok(())
+    })?;
 
     println!();
     println!("{}", cformat!("<bold>Benchmark complete.</>"));
