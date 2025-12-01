@@ -271,7 +271,7 @@ impl EvaluationCommand {
                             QueryNotMatched::builder()
                                 .path(path)
                                 .query(test.matcher.query.as_str())
-                                .language(test.matcher.language.to_string())
+                                .language(test.matcher.language)
                                 .content(content)
                                 .build(),
                         ));

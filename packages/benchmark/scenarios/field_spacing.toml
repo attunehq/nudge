@@ -93,10 +93,15 @@ impl User {
 }
 """
 
-# Pattern: comma followed by newline, then spaces/tabs, then a field name with colon
-# This catches fields on consecutive lines without a blank line between
+# Adjacent struct fields must have a blank line between them
 [[expected]]
-type = "not_contains"
+type = "not_exists"
 [expected.content]
 path = "src/lib.rs"
-content = ',\n[ \t]+(pub\s+)?\w+\s*:'
+[expected.content.matcher]
+language = "rust"
+query = "(field_declaration_list (field_declaration) @f1 (field_declaration) @f2)"
+[expected.content.between]
+from = "f1"
+to = "f2"
+not_contains = "\n\n"

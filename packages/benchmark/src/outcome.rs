@@ -126,7 +126,7 @@ pub struct QueryNotMatched {
     pub path: PathBuf,
 
     /// The language of the file that was checked.
-    pub language: String,
+    pub language: Language,
 
     /// The content of the file that was checked.
     #[builder(into)]
@@ -137,13 +137,19 @@ impl Display for QueryNotMatched {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let query = &self.query;
         let path = self.path.display();
-        let language = &self.language;
+        let language = self.language;
         let content = &self.content;
+        let tree = Snippet::new(content)
+            .render_syntax_tree(language)
+            .unwrap_or_else(|err| cformat!("<red>error rendering syntax tree:</> {err:?}"));
+
         cwriteln!(f, "<yellow>query did not match:</>")?;
         cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
         cwriteln!(f, "<cyan>-</> <yellow>language:</> {language}")?;
         cwriteln!(f, "<cyan>-</> <yellow>query:</>")?;
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
+        cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
+        cwriteln!(f, "{}", tree.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
         cwriteln!(f, "<dim>{}</>", content.indent(2))?;
         Ok(())

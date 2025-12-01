@@ -69,9 +69,11 @@ pub struct Config {
 // TODO: Add parse_config function here
 """
 
-# Matches `let name: Type = ` or `let mut name: Type = `
+# Matches let statements with explicit type annotations (let x: Type = ...)
 [[expected]]
-type = "not_contains"
+type = "not_exists"
 [expected.content]
 path = "src/lib.rs"
-content = '^\s*let\s+(mut\s+)?[a-zA-Z_][a-zA-Z0-9_]*\s*:\s*'
+[expected.content.matcher]
+language = "rust"
+query = "(let_declaration type: (_))"

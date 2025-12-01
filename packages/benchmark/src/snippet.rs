@@ -41,8 +41,16 @@ impl<'a> Snippet<'a> {
         highlight: impl IntoIterator<Item = impl Into<Span>>,
     ) -> String {
         let mut source = self.0.to_string();
-        for span in highlight {
-            let span = span.into();
+
+        // Collect and sort spans in reverse order (by start position descending).
+        // This ensures replacements don't invalidate byte positions of earlier spans.
+        let mut spans = highlight
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<Span>>();
+        spans.sort_by(|a, b| b.start().cmp(&a.start()));
+
+        for span in spans {
             let start = span.start();
             let end = span.end();
             let content = &source[start..end];

@@ -99,9 +99,18 @@ impl Calculator {
 // TODO: Add tests here
 """
 
-# The file must contain the aliased import if it uses assert_eq
+# Checks that pretty_assertions is imported with an alias (use ... as ...)
+# The structure is: use_declaration -> use_as_clause -> scoped_identifier containing "pretty_assertions"
 [[expected]]
-type = "contains"
+type = "exists"
 [expected.content]
 path = "src/lib.rs"
-content = "pretty_assertions::assert_eq as pretty_assert_eq"
+[expected.content.matcher]
+language = "rust"
+query = """
+(use_declaration
+  argument: (use_as_clause
+    path: (scoped_identifier
+      path: (identifier) @crate_name
+      (#eq? @crate_name "pretty_assertions"))))
+"""

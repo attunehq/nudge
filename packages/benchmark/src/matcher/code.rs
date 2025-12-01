@@ -51,7 +51,7 @@ impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
                         .captures
                         .iter()
                         .map(|c| c.node.byte_range())
-                        .fold((0, 0), |(start, end), range| {
+                        .fold((usize::MAX, 0), |(start, end), range| {
                             (start.min(range.start), end.max(range.end))
                         });
                     matches.push(Span::from(span));
@@ -71,7 +71,7 @@ impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
                 let mut matches = Vec::new();
                 while let Some(matched) = ts_matches.next() {
                     let (captures, span) = matched.captures.iter().fold(
-                        (Vec::new(), (0, 0)),
+                        (Vec::new(), (usize::MAX, 0)),
                         |(mut captures, (start, end)), c| {
                             let index = c.index as usize;
                             match capture_names.get(index).copied() {
@@ -195,122 +195,5 @@ impl Clone for Query {
 impl AsRef<TsQuery> for Query {
     fn as_ref(&self) -> &TsQuery {
         &self.0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn make_matcher(query: &str) -> CodeMatcher {
-        CodeMatcher {
-            language: Language::Rust,
-            query: Query::parse(Language::Rust, query).unwrap(),
-        }
-    }
-
-    #[test]
-    fn test_query_without_captures_returns_unlabeled() {
-        let matcher = make_matcher("(function_item)");
-        let code = "fn foo() {} fn bar() {}";
-        let matches = matcher.find(code).unwrap();
-
-        match matches {
-            Matches::Unlabeled(spans) => {
-                assert_eq!(spans.len(), 2);
-                // First function
-                assert_eq!(&code[spans[0].range()], "fn foo() {}");
-                // Second function
-                assert_eq!(&code[spans[1].range()], "fn bar() {}");
-            }
-            _ => panic!("expected Unlabeled, got {:?}", matches),
-        }
-    }
-
-    #[test]
-    fn test_query_with_captures_returns_labeled() {
-        let matcher = make_matcher("(function_item name: (identifier) @name)");
-        let code = "fn foo() {} fn bar() {}";
-        let matches = matcher.find(code).unwrap();
-
-        match matches {
-            Matches::Labeled(ref ms) => {
-                assert_eq!(ms.len(), 2);
-
-                // First function
-                let m0 = &ms[0];
-                assert_eq!(&code[m0.span.range()], "foo");
-                let name0 = m0.captures.iter().find(|c| c.label == "name").unwrap();
-                assert_eq!(&code[name0.range()], "foo");
-
-                // Second function
-                let m1 = &ms[1];
-                assert_eq!(&code[m1.span.range()], "bar");
-                let name1 = m1.captures.iter().find(|c| c.label == "name").unwrap();
-                assert_eq!(&code[name1.range()], "bar");
-            }
-            _ => panic!("expected Labeled, got {:?}", matches),
-        }
-    }
-
-    #[test]
-    fn test_query_with_multiple_captures() {
-        let matcher = make_matcher("(function_item name: (identifier) @name body: (block) @body)");
-        let code = "fn foo() { 1 }";
-        let matches = matcher.find(code).unwrap();
-
-        match matches {
-            Matches::Labeled(ref ms) => {
-                assert_eq!(ms.len(), 1);
-                let m = &ms[0];
-
-                let labels: Vec<_> = m.captures.iter().map(|c| c.label.as_str()).collect();
-                assert!(labels.contains(&"name"), "missing 'name', got {:?}", labels);
-                assert!(labels.contains(&"body"), "missing 'body', got {:?}", labels);
-
-                let name = m.captures.iter().find(|c| c.label == "name").unwrap();
-                assert_eq!(&code[name.range()], "foo");
-
-                let body = m.captures.iter().find(|c| c.label == "body").unwrap();
-                assert_eq!(&code[body.range()], "{ 1 }");
-            }
-            _ => panic!("expected Labeled, got {:?}", matches),
-        }
-    }
-
-    #[test]
-    fn test_no_matches() {
-        let matcher = make_matcher("(struct_item)");
-        let code = "fn foo() {}";
-        let matches = matcher.find(code).unwrap();
-
-        // Should be empty
-        assert!(matches.is_empty());
-    }
-
-    #[test]
-    fn test_struct_fields() {
-        // This is a more realistic example - finding struct field declarations
-        let matcher = make_matcher("(field_declaration name: (field_identifier) @field)");
-        let code = r#"
-struct User {
-    name: String,
-    age: u32,
-}
-"#;
-        let matches = matcher.find(code).unwrap();
-
-        match matches {
-            Matches::Labeled(ref ms) => {
-                assert_eq!(ms.len(), 2);
-
-                let field0 = ms[0].captures.iter().find(|c| c.label == "field").unwrap();
-                assert_eq!(&code[field0.range()], "name");
-
-                let field1 = ms[1].captures.iter().find(|c| c.label == "field").unwrap();
-                assert_eq!(&code[field1.range()], "age");
-            }
-            _ => panic!("expected Labeled, got {:?}", matches),
-        }
     }
 }

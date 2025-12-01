@@ -74,10 +74,11 @@ mod tests {
 }
 """
 
-# Matches `use` statements with leading whitespace (inside function bodies)
-# but excludes module-level `use super::*` in test modules
+# Matches use declarations inside function bodies
 [[expected]]
-type = "not_contains"
+type = "not_exists"
 [expected.content]
 path = "src/lib.rs"
-content = '^\s{4,}use (?!super::)'
+[expected.content.matcher]
+language = "rust"
+query = "(function_item body: (block (use_declaration)))"

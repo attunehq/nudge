@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use benchmark::{Agent, Guidance, ModelClaudeCode, Scenario, evaluate, load_scenarios};
 use clap::Args;
 use color_eyre::{Result, eyre::eyre};
-use color_print::cformat;
+use color_print::{cformat, cprintln};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -110,7 +110,10 @@ pub fn main(config: Config) -> Result<()> {
 }
 
 fn main_dry_run(config: &ResolvedConfig) -> Result<()> {
-    println!("{}", cformat!("<yellow,bold>Dry run: listing all combinations:</>"));
+    println!(
+        "{}",
+        cformat!("<yellow,bold>Dry run: listing all combinations:</>")
+    );
 
     let mut run_number = 0;
     let total_runs = config.total_runs();
@@ -170,10 +173,10 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
 
                     match evaluate(scenario, agent, *guidance) {
                         Ok(outcome) => {
-                            print!("  {outcome}");
+                            println!("  {outcome}");
                         }
                         Err(e) => {
-                            println!("  {}", cformat!("<yellow>⚠</> Error: {e}"));
+                            cprintln!("<yellow>⚠</> Error: {e}");
                         }
                     }
                 }

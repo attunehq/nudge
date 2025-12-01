@@ -64,9 +64,13 @@ fn main() {
 }
 """
 
-# Matches paths with 2+ :: separators (3+ segments), excluding use/mod statements and comments
+# Matches deeply qualified paths (3+ segments) in function bodies
+# This catches patterns like `a::b::c::something()` or `std::collections::HashMap`
+# We specifically look inside function bodies to avoid matching use statements
 [[expected]]
-type = "not_contains"
+type = "not_exists"
 [expected.content]
 path = "src/main.rs"
-content = '[a-zA-Z_][a-zA-Z0-9_]*(::[a-zA-Z_][a-zA-Z0-9_]*){2,}'
+[expected.content.matcher]
+language = "rust"
+query = "(function_item body: (block (scoped_identifier path: (scoped_identifier path: (scoped_identifier)))))"

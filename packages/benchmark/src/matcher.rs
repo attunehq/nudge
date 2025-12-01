@@ -7,10 +7,8 @@ use color_eyre::Result;
 
 use color_print::cwriteln;
 use serde::{Deserialize, Serialize};
-pub use string::RegexMatcher as MatchString;
 
 pub mod code;
-pub mod string;
 
 /// Common functionality for matching types against patterns.
 pub trait Matcher<T> {
