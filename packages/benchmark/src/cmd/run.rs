@@ -98,6 +98,7 @@ impl ResolvedConfig {
     }
 }
 
+#[tracing::instrument]
 pub fn main(config: Config) -> Result<()> {
     let dry_run = config.dry_run;
     let resolved = ResolvedConfig::try_from(config)?;
@@ -158,8 +159,7 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
         1..=runs
     )
     .zip(1..)
-    .par_bridge()
-    .map(|((scenario, agent, guidance, run), id)| -> Result<_> {
+    .map(|((scenario, agent, guidance, run), id)| {
         let scenario_name = &scenario.name;
         let agent_name = agent.name();
         let model = agent.model();
@@ -175,6 +175,10 @@ fn main_run(config: &ResolvedConfig) -> Result<()> {
                     <green,bold>Guidance:</> <dim>{guidance_content}</>"
             )
         );
+        (id, scenario, agent, guidance, run)
+    })
+    .par_bridge()
+    .map(|(id, scenario, agent, guidance, run)| -> Result<_> {
         let outcome = evaluate(scenario, agent, *guidance)?;
         Ok((id, scenario, agent, guidance, run, outcome))
     })

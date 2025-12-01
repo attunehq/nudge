@@ -2,12 +2,13 @@
 
 use std::path::Path;
 
+use clap::ValueEnum;
 use color_eyre::{
     Result, Section, SectionExt,
     eyre::{Context, eyre},
 };
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
+use tap::Tap;
 
 /// Specifies the agent being evaluated.
 #[derive(Clone, Eq, PartialEq, Debug, Deserialize, Serialize)]
@@ -68,19 +69,31 @@ impl Agent {
     pub fn run(&self, project: &Path, prompt: &str) -> Result<()> {
         match self {
             Agent::ClaudeCode(model) => std::process::Command::new("claude")
-                .arg("--model")
-                .arg(model.as_arg())
+                .args(["--permission-mode", "acceptEdits"])
+                .args(["--allowedTools", "Write,Edit,Read,Glob,Grep"])
+                .args(["--tools", "Write,Edit,Read,Glob,Grep"])
+                .args(["--model", model.as_arg()])
                 .arg("--print")
                 .arg(prompt)
                 .current_dir(project)
+                .tap(|cmd| tracing::debug!(?cmd, "running agent"))
                 .output()
                 .with_context(|| format!("run {self:?} with prompt {prompt}"))
                 .and_then(|output| {
                     if output.status.success() {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+
+                        tracing::debug!(?stdout, ?stderr, "agent succeeded");
+                        if !stderr.is_empty() {
+                            tracing::warn!(?stderr, "agent succeeded with warnings");
+                        }
+
                         Ok(())
                     } else {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         let stderr = String::from_utf8_lossy(&output.stderr);
+                        tracing::debug!(?stderr, ?stdout, "agent failed");
                         Err(eyre!("run {self:?} with prompt {prompt}"))
                             .section(stdout.to_string().header("Stdout:"))
                             .section(stderr.to_string().header("Stderr:"))
@@ -93,11 +106,12 @@ impl Agent {
     ///
     /// What specific context file is written depends on the agent type. For
     /// example the Claude Code agent will write a `CLAUDE.md` file.
-    #[tracing::instrument]
+    #[tracing::instrument(skip(context), fields(context = %context.len()))]
     pub fn write_context(&self, project: &Path, context: &str) -> Result<()> {
         match self {
             Agent::ClaudeCode(_) => {
                 let target = project.join("CLAUDE.md");
+                tracing::debug!(?target, "writing claude guidance");
                 std::fs::write(&target, context)
                     .with_context(|| format!("write context to {target:?}"))
             }
@@ -112,14 +126,17 @@ impl Agent {
                 .arg("claude")
                 .arg("setup")
                 .current_dir(project)
+                .tap(|cmd| tracing::debug!(?cmd, "running Pavlov setup"))
                 .output()
                 .with_context(|| format!("run Pavlov setup for {self:?}"))
                 .and_then(|output| {
                     if output.status.success() {
+                        tracing::debug!("Pavlov setup succeeded");
                         Ok(())
                     } else {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         let stderr = String::from_utf8_lossy(&output.stderr);
+                        tracing::debug!(?stderr, ?stdout, "Pavlov setup failed");
                         Err(eyre!("run Pavlov setup"))
                             .section(stdout.to_string().header("Stdout:"))
                             .section(stderr.to_string().header("Stderr:"))
@@ -181,7 +198,6 @@ impl ModelClaudeCode {
         }
     }
 }
-
 
 /// The type of guidance to provide to the agent before running the prompt.
 ///

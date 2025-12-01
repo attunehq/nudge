@@ -65,7 +65,7 @@ impl Match {
     /// Returns `None` if captures is empty.
     pub fn from_captures(captures: impl IntoIterator<Item = LabeledSpan>) -> Option<Self> {
         let (captures, span) = captures.into_iter().fold(
-            (Vec::new(), (0, 0)),
+            (Vec::new(), (usize::MAX, 0)),
             |(mut captures, (start, end)), capture| {
                 let start = start.min(capture.span.start());
                 let end = end.max(capture.span.end());

@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use color_eyre::Result;
 use tracing::level_filters::LevelFilter;
 use tracing_error::ErrorLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod cmd;
 
@@ -36,9 +36,20 @@ fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
         .with(
-            tracing_subscriber::EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .from_env_lossy(),
+            tracing_subscriber::fmt::layer()
+                .with_level(true)
+                .with_file(true)
+                .with_line_number(true)
+                .with_target(true)
+                .with_thread_ids(true)
+                .with_thread_names(true)
+                .pretty()
+                .with_writer(std::io::stderr)
+                .with_filter(
+                    tracing_subscriber::EnvFilter::builder()
+                        .with_default_directive(LevelFilter::INFO.into())
+                        .from_env_lossy(),
+                ),
         )
         .init();
 

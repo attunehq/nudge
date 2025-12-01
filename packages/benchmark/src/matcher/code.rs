@@ -25,6 +25,7 @@ pub struct CodeMatcher {
 }
 
 impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
+    #[tracing::instrument]
     fn find(&self, target: &str) -> Result<Matches> {
         let tree = self
             .language

@@ -20,13 +20,15 @@ use color_eyre::{
     eyre::{Context, bail, eyre},
 };
 use color_print::{cformat, cwriteln};
-use glob::glob;
+use derive_more::Debug;
+use glob_match::glob_match;
 use serde::Deserialize;
-use tap::Pipe;
+use tap::{Pipe, Tap};
+use walkdir::WalkDir;
 
 use crate::{
     ext::indent,
-    matcher::FallibleMatcher,
+    matcher::{FallibleMatcher, Matches},
     matcher::code::CodeMatcher,
     outcome::{
         CommandFailed, CommandSucceeded, Evidence, Outcome, QueryMatchedEvidence,
@@ -248,12 +250,14 @@ impl EvaluationCommand {
         match self {
             EvaluationCommand::Command(test) => test.evaluate(project),
             EvaluationCommand::Exists(test) => {
+                tracing::debug!("evaluating exists");
                 let files = test.read(project)?;
                 let mut violations = Vec::new();
                 let mut evidence = Vec::new();
                 let filter_desc = test.between.as_ref().map(|f| f.to_string());
 
                 for (path, content) in files {
+                    tracing::debug!(path = ?path.to_string_lossy(), "evaluating file");
                     let matches = test
                         .matcher
                         .find(&content)
@@ -279,16 +283,19 @@ impl EvaluationCommand {
                                 .build(),
                         ));
                     } else {
-                        evidence.push(Evidence::QueryMatched(
-                            QueryMatchedEvidence::builder()
-                                .path(path)
-                                .query(test.matcher.query.as_str())
-                                .language(test.matcher.language)
-                                .content(content)
-                                .matches(matches)
-                                .maybe_filter(filter_desc.clone())
-                                .build(),
-                        ));
+                        // Create one evidence per match so each is reported separately
+                        for m in matches.iter() {
+                            evidence.push(Evidence::QueryMatched(
+                                QueryMatchedEvidence::builder()
+                                    .path(path.clone())
+                                    .query(test.matcher.query.as_str())
+                                    .language(test.matcher.language)
+                                    .content(content.clone())
+                                    .matches(Matches::Labeled(vec![m]))
+                                    .maybe_filter(filter_desc.clone())
+                                    .build(),
+                            ));
+                        }
                     }
                 }
 
@@ -299,12 +306,14 @@ impl EvaluationCommand {
                 }
             }
             EvaluationCommand::NotExists(test) => {
+                tracing::debug!("evaluating not exists");
                 let files = test.read(project)?;
                 let mut violations = Vec::new();
                 let mut evidence = Vec::new();
                 let filter_desc = test.between.as_ref().map(|f| f.to_string());
 
                 for (path, content) in files {
+                    tracing::debug!(path = ?path.to_string_lossy(), "evaluating file");
                     let matches = test
                         .matcher
                         .find(&content)
@@ -323,16 +332,19 @@ impl EvaluationCommand {
                     };
 
                     if !matches.is_empty() {
-                        violations.push(Violation::QueryMatched(
-                            QueryMatchedViolation::builder()
-                                .path(path)
-                                .query(test.matcher.query.as_str())
-                                .language(test.matcher.language)
-                                .content(content)
-                                .matches(matches)
-                                .maybe_filter(filter_desc.clone())
-                                .build(),
-                        ));
+                        // Create one violation per match so each is reported separately
+                        for m in matches.iter() {
+                            violations.push(Violation::QueryMatched(
+                                QueryMatchedViolation::builder()
+                                    .path(path.clone())
+                                    .query(test.matcher.query.as_str())
+                                    .language(test.matcher.language)
+                                    .content(content.clone())
+                                    .matches(Matches::Labeled(vec![m]))
+                                    .maybe_filter(filter_desc.clone())
+                                    .build(),
+                            ));
+                        }
                     } else {
                         evidence.push(Evidence::QueryNotMatched(
                             QueryNotMatchedEvidence::builder()
@@ -404,6 +416,7 @@ impl Command {
     /// Used for setup commands where failure is fatal.
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
+        tracing::debug!("running command");
         std::process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
@@ -411,15 +424,19 @@ impl Command {
             .with_context(|| format!("run command {:?} with args: {:?}", self.binary, self.args))
             .and_then(|output| {
                 if output.status.success() {
+                    tracing::debug!("command succeeded");
                     Ok(())
                 } else {
                     let stdout = String::from_utf8_lossy(&output.stdout);
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::debug!(?stderr, ?stdout, "command failed");
                     Err(eyre!(
                         "run command {:?} with args: {:?}",
                         self.binary,
                         self.args
                     ))
+                    .with_section(|| self.binary.clone().header("Command:"))
+                    .with_section(|| self.args.join("\n").header("Arguments:"))
                     .section(stdout.to_string().header("Stdout:"))
                     .section(stderr.to_string().header("Stderr:"))
                 }
@@ -433,14 +450,18 @@ impl Command {
         let output = std::process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
+            .tap(|cmd| tracing::debug!(?cmd, "running evaluation command"))
             .output()
-            .with_context(|| format!("run command {:?} with args: {:?}", self.binary, self.args))?;
+            .with_context(|| format!("run command"))
+            .with_section(|| self.binary.clone().header("Command:"))
+            .with_section(|| self.args.join("\n").header("Arguments:"))?;
 
         let command = format!("{} {}", self.binary, self.args.join(" "));
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
 
         if output.status.success() {
+            tracing::debug!("command succeeded");
             CommandSucceeded::builder()
                 .command(command)
                 .maybe_exit_code(output.status.code())
@@ -451,6 +472,7 @@ impl Command {
                 .pipe(|e| Outcome::Pass { evidence: vec![e] })
                 .pipe(Ok)
         } else {
+            tracing::debug!("command failed");
             CommandFailed::builder()
                 .command(command)
                 .maybe_exit_code(output.status.code())
@@ -491,6 +513,7 @@ pub struct WriteFile {
     pub path: String,
 
     /// The content to write to the file.
+    #[debug("{} bytes", content.len())]
     #[builder(into)]
     pub content: String,
 }
@@ -498,6 +521,7 @@ pub struct WriteFile {
 impl WriteFile {
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
+        tracing::debug!("writing file");
         let path = project.join(&self.path);
         if let Some(parent) = path.parent() {
             create_dir_all(parent)
@@ -533,12 +557,14 @@ pub struct AppendFile {
     pub path: String,
 
     /// The content to append to the file.
+    #[debug("{} bytes", content.len())]
     #[builder(into)]
     pub content: String,
 
     /// An optional string to insert between the existing content and the
     /// new content. If not specified, no separator is inserted; if the file
     /// did not exist then the content is written without the separator.
+    #[debug("{} bytes", separator.as_deref().map(|s| s.len()).unwrap_or(0))]
     #[builder(into)]
     pub separator: Option<String>,
 }
@@ -721,13 +747,24 @@ impl FileEvaluation {
             .to_str()
             .ok_or_else(|| eyre!("invalid path pattern: {path:?}"))?;
 
-        let files = glob(pattern)
-            .with_context(|| format!("parse glob pattern {pattern:?}"))?
-            .map(|entry| {
-                let path = entry.context("read glob entry")?;
-                if path.is_file() {
-                    let content = read_to_string(&path).context("read file content")?;
-                    Ok(Some((path, content)))
+        let files = WalkDir::new(project)
+            .into_iter()
+            .map(|entry| -> Result<_> {
+                let entry = entry.context("read walkdir entry")?;
+
+                if entry.file_type().is_file() {
+                    let path = entry.path();
+                    let relative = path.strip_prefix(project).map_err(|error| eyre!("file is not inside project: {error:?}"))?;
+                    tracing::debug!(path = ?path.to_string_lossy(), relative = ?relative.to_string_lossy(), glob = ?self.path, "walk entry");
+
+                    if glob_match(&self.path, relative.to_string_lossy().as_ref()) {
+                        tracing::debug!("file matches glob");
+                        let content = read_to_string(path).context("read file content")?;
+                        Ok(Some((path.to_path_buf(), content)))
+                    } else {
+                        tracing::debug!("file does not match glob");
+                        Ok(None)
+                    }
                 } else {
                     Ok(None)
                 }

@@ -37,6 +37,7 @@ prompt = """
 Write comprehensive tests for the Calculator struct.
 Test all four operations (add, subtract, multiply, divide) with various inputs.
 Include edge cases like division by zero.
+Also include the path(s) to where you wrote the tests in your response.
 """
 
 [[commands]]
@@ -104,7 +105,7 @@ impl Calculator {
 [[expected]]
 type = "exists"
 [expected.content]
-path = "src/lib.rs"
+path = "**/*.rs"
 [expected.content.matcher]
 language = "rust"
 query = """

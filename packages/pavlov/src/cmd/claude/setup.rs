@@ -27,7 +27,7 @@ pub fn main(config: Config) -> Result<()> {
     let dotclaude = config
         .claude_dir
         .canonicalize()
-        .context("canonicalize claude dir")?;
+        .with_context(|| format!("canonicalize claude dir: {:?}", config.claude_dir))?;
     let settings_file = dotclaude.join("settings.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 

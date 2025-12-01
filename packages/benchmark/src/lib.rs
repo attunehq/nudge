@@ -78,24 +78,30 @@ pub fn load_scenarios(dir: &Path) -> Result<Vec<Scenario>> {
 pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Result<Outcome> {
     let project = tempdir().context("create temporary project directory")?;
     let root = project.path();
+    tracing::debug!(?root, "created temporary project directory");
 
+    tracing::debug!("running setup commands");
     for command in &scenario.commands {
         command.run(root)?;
     }
 
+    tracing::debug!("writing guidance");
     match guidance {
         Guidance::None => Ok(()),
         Guidance::Pavlov => agent.configure_pavlov(root),
         Guidance::File => agent.write_context(root, &scenario.guidance),
     }?;
 
+    tracing::debug!("running agent");
     agent.run(root, &scenario.prompt)?;
 
+    tracing::debug!("evaluating expected outcomes");
     let outcomes = scenario
         .expected
         .iter()
         .map(|command| command.evaluate(root))
         .collect::<Result<Vec<_>>>()?;
 
+    tracing::debug!("finished evaluation");
     Ok(Outcome::combine(outcomes))
 }

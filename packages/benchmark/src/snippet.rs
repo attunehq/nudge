@@ -70,20 +70,36 @@ impl<'a> Snippet<'a> {
 
         // Collect and sort spans in reverse order (by start position descending).
         // This ensures replacements don't invalidate byte positions of earlier spans.
-        let mut spans = highlight
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<Span>>();
+        let mut spans = highlight.into_iter().map(Into::into).collect::<Vec<Span>>();
         spans.sort_by(|a, b| b.start().cmp(&a.start()));
 
+        // Merge overlapping spans. Since we're sorted descending by start,
+        // we merge each span into the previous one if they overlap.
+        let mut merged = Vec::<Span>::new();
         for span in spans {
+            if let Some(last) = merged.last_mut() {
+                if span.end() >= last.start() {
+                    *last = Span::new(span.start(), last.end());
+                    continue;
+                }
+            }
+            merged.push(span);
+        }
+
+        for span in merged {
             let start = span.start();
             let end = span.end();
             let content = &source[start..end];
-            let highlighted = match color {
-                HighlightColor::Yellow => cformat!("<bg:yellow,black>{content}</>"),
-                HighlightColor::Green => cformat!("<bg:green,black>{content}</>"),
-            };
+            // Highlight each line separately to prevent background color from
+            // extending to end of line.
+            let highlighted = content
+                .split('\n')
+                .map(|line| match color {
+                    HighlightColor::Yellow => cformat!("<bg:yellow,black>{line}</>"),
+                    HighlightColor::Green => cformat!("<bg:green,black>{line}</>"),
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
             source.replace_range(span.range(), &highlighted);
         }
         render_line_numbers(source)

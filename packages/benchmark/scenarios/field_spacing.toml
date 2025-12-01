@@ -48,7 +48,9 @@ enum Status {
 """
 
 prompt = """
-Add the following fields to the User struct:
+Add a `User` struct with the following fields into `src/lib.rs`:
+- id: u64
+- name: String
 - email: String
 - phone: Option<String>
 - address: Address (create this struct too with street, city, zip fields)
@@ -74,24 +76,21 @@ type = "write"
 [commands.content]
 path = "src/lib.rs"
 content = """
-pub struct User {
-    pub id: u64,
-
-    pub name: String,
-
-    pub active: bool,
-}
-
-impl User {
-    pub fn new(id: u64, name: String) -> Self {
-        Self {
-            id,
-            name,
-            active: true,
-        }
-    }
-}
+// TODO: Write our `User` struct here
 """
+
+# Must have actually written a struct
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(struct_item
+  name: (type_identifier) @name
+  (#eq? @name "User"))
+'''
 
 # Adjacent struct fields must have a blank line between them
 [[expected]]
@@ -100,7 +99,9 @@ type = "not_exists"
 path = "src/lib.rs"
 [expected.content.matcher]
 language = "rust"
-query = "(field_declaration_list (field_declaration) @f1 (field_declaration) @f2)"
+query = '''
+((field_declaration) @f1 . (field_declaration) @f2)
+'''
 [expected.content.between]
 from = "f1"
 to = "f2"
