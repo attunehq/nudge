@@ -82,12 +82,10 @@ impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
             capture_names => {
                 let mut matches = Vec::new();
                 while let Some(matched) = ts_matches.next() {
-                    // When there are no captures, use (0, 0) as a placeholder span.
+                    // When there are no captures, skip this match.
                     // This preserves the fact that a match occurred while avoiding
                     // panics from invalid spans like (usize::MAX, 0).
                     if matched.captures.is_empty() {
-                        tracing::warn!(?capture_names, ?matched, "no captures found for match");
-                        matches.push(Match::new((0, 0), Vec::new()));
                         continue;
                     }
                     let (captures, span) = matched.captures.iter().fold(
@@ -143,6 +141,8 @@ impl<'de> Deserialize<'de> for CodeMatcher {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
+    /// The Python programming language.
+    Python,
     /// The Rust programming language.
     Rust,
 }
@@ -151,6 +151,7 @@ impl Language {
     /// Get the tree-sitter grammar for this language.
     pub fn treesitter(self) -> TsLanguage {
         match self {
+            Language::Python => tree_sitter_python::LANGUAGE.into(),
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
         }
     }
