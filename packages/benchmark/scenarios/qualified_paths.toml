@@ -8,34 +8,17 @@ guidance = """
 # Rust Style Guide
 
 ## Path Qualification Rules
-- NEVER use paths with 3+ segments inline (like `color_eyre::eyre::eyre!()`)
-- Add `use` imports at the top of the file to simplify paths
+- Never use paths with 3+ segments inline (like `color_eyre::eyre::eyre!()`)
+- Add `use` imports to simplify paths
 - Keep code readable by avoiding deeply nested module paths
-
-Example of WRONG code:
-```rust
-fn main() {
-    color_eyre::eyre::eyre!("error");
-    std::collections::HashMap::new();
-}
-```
-
-Example of CORRECT code:
-```rust
-use color_eyre::eyre::eyre;
-use std::collections::HashMap;
-
-fn main() {
-    eyre!("error");
-    HashMap::new();
-}
-```
 """
 
 prompt = """
 Add error handling to this application using color_eyre.
 Create a function called `run` that can return errors, and update main to use it.
 Add proper error context using eyre's context methods.
+
+Do not modify the return type of main or early return from main on error; we need to do some important cleanup first.
 """
 
 [[commands]]
@@ -58,19 +41,66 @@ type = "write"
 path = "src/main.rs"
 content = """
 fn main() {
-    println!("Hello, world!");
+    start_daemon();
 
-    // TODO: Add error handling with color_eyre
+    // TODO: Add error handling
+    print_and_copy("src/main.rs", "target.rs");
+
+    // This cleanup always needs to run; don't make the function early return!
+    shutdown_daemon();
+}
+
+fn print_and_copy(file: &str, target: &str) {
+    /// TODO: Read `file`, println! its contents,
+    /// and then copy its contents to `target`.
+}
+
+fn start_daemon() {
+    todo!("ignore this for now but assume it is important");
+}
+
+fn shutdown_daemon() {
+    todo!("ignore this for now but assume it is important");
 }
 """
 
-# Matches deeply qualified paths (3+ segments) in function bodies
-# This catches patterns like `a::b::c::something()` or `std::collections::HashMap`
-# We specifically look inside function bodies to avoid matching use statements
+# Must have actually written a run function
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(function_item
+  name: (identifier) @name
+  (#eq? @name "run"))
+'''
+
+# Matches function calls with deeply qualified paths (3+ segments)
+# This catches patterns like `std::fs::read_to_string()` or `std::process::exit()`
 [[expected]]
 type = "not_exists"
 [expected.content]
 path = "src/main.rs"
 [expected.content.matcher]
 language = "rust"
-query = "(function_item body: (block (scoped_identifier path: (scoped_identifier path: (scoped_identifier)))))"
+query = '''
+(call_expression
+  function: (scoped_identifier
+    path: (scoped_identifier) @inner) @qualified_path)
+'''
+
+# Matches macro invocations with deeply qualified paths (3+ segments)
+# This catches patterns like `color_eyre::eyre::eyre!()` or `std::write!()`
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (scoped_identifier
+    path: (scoped_identifier) @inner) @qualified_macro)
+'''

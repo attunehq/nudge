@@ -8,43 +8,9 @@ guidance = """
 # Rust Style Guide
 
 ## Struct and Enum Formatting Rules
-- ALWAYS put a blank line between struct fields
-- ALWAYS put a blank line between enum variants
+- Always put a blank line between struct fields
+- Always put a blank line between enum variants
 - This improves readability and makes diffs cleaner
-
-Example of WRONG code:
-```rust
-struct User {
-    name: String,
-    age: u32,
-    email: String,
-}
-
-enum Status {
-    Active,
-    Inactive,
-    Pending,
-}
-```
-
-Example of CORRECT code:
-```rust
-struct User {
-    name: String,
-
-    age: u32,
-
-    email: String,
-}
-
-enum Status {
-    Active,
-
-    Inactive,
-
-    Pending,
-}
-```
 """
 
 prompt = """

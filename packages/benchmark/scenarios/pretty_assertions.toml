@@ -8,29 +8,9 @@ guidance = """
 # Rust Style Guide
 
 ## Testing Rules
-- ALWAYS use `pretty_assertions` for better diff output in tests
+- Always use `pretty_assertions` for better diff output in tests
 - Import it with an alias to avoid conflicts: `use pretty_assertions::assert_eq as pretty_assert_eq;`
 - Use `pretty_assert_eq!` instead of `assert_eq!`
-
-Example of WRONG code:
-```rust
-#[test]
-fn test_something() {
-    assert_eq!(result, expected);
-}
-```
-
-Example of CORRECT code:
-```rust
-use pretty_assertions::assert_eq as pretty_assert_eq;
-
-#[test]
-fn test_something() {
-    pretty_assert_eq!(result, expected);
-}
-```
-
-Note: Make sure pretty_assertions is in dev-dependencies.
 """
 
 prompt = """
@@ -108,10 +88,36 @@ type = "exists"
 path = "**/*.rs"
 [expected.content.matcher]
 language = "rust"
-query = """
+query = '''
 (use_declaration
   argument: (use_as_clause
     path: (scoped_identifier
       path: (identifier) @crate_name
       (#eq? @crate_name "pretty_assertions"))))
-"""
+'''
+
+# Verify the model actually wrote tests with assertions
+[[expected]]
+type = "exists"
+[expected.content]
+path = "**/*.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (identifier) @macro_name
+  (#match? @macro_name "assert"))
+'''
+
+# Ensure standard assert_eq! is NOT used (should use pretty_assert_eq! instead)
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "**/*.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (identifier) @macro_name
+  (#eq? @macro_name "assert_eq"))
+'''

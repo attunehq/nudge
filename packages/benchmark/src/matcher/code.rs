@@ -1,4 +1,5 @@
 use bon::Builder;
+use clap::ValueEnum;
 use color_eyre::{
     Result, Section, SectionExt,
     eyre::{Context, OptionExt},
@@ -48,6 +49,16 @@ impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
             [] => {
                 let mut matches = Vec::new();
                 while let Some(matched) = ts_matches.next() {
+                    // When there are no captures, use (0, 0) as a placeholder span.
+                    // This preserves the fact that a match occurred while avoiding
+                    // panics from invalid spans like (usize::MAX, 0).
+                    //
+                    // Unfortunately, treesitter does not give us location
+                    // information for queries without at least one capture.
+                    if matched.captures.is_empty() {
+                        matches.push(Span::from((0, 0)));
+                        continue;
+                    }
                     let span = matched
                         .captures
                         .iter()
@@ -71,6 +82,14 @@ impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
             capture_names => {
                 let mut matches = Vec::new();
                 while let Some(matched) = ts_matches.next() {
+                    // When there are no captures, use (0, 0) as a placeholder span.
+                    // This preserves the fact that a match occurred while avoiding
+                    // panics from invalid spans like (usize::MAX, 0).
+                    if matched.captures.is_empty() {
+                        tracing::warn!(?capture_names, ?matched, "no captures found for match");
+                        matches.push(Match::new((0, 0), Vec::new()));
+                        continue;
+                    }
                     let (captures, span) = matched.captures.iter().fold(
                         (Vec::new(), (usize::MAX, 0)),
                         |(mut captures, (start, end)), c| {
@@ -113,13 +132,15 @@ impl<'de> Deserialize<'de> for CodeMatcher {
 
         // Then we can parse the query with the language.
         let Intermediate { language, query } = Intermediate::deserialize(deserializer)?;
-        let query = Query::parse(language, query).map_err(serde::de::Error::custom)?;
+        let query = Query::parse(language, query)
+            .map_err(|err| serde::de::Error::custom(format!("{err:?}")))?;
+
         Ok(CodeMatcher { language, query })
     }
 }
 
 /// The language of the code to match.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
     /// The Rust programming language.

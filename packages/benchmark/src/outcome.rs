@@ -193,9 +193,6 @@ impl Display for QueryNotMatchedViolation {
         let language = self.language;
         let content = &self.content;
         let filter = self.filter.as_deref().unwrap_or("<no filter applied>");
-        let tree = Snippet::new(content)
-            .render_syntax_tree(language)
-            .unwrap_or_else(|err| cformat!("<red>error rendering syntax tree:</> {err:?}"));
 
         cwriteln!(f, "<yellow>query did not match:</>")?;
         cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
@@ -204,8 +201,6 @@ impl Display for QueryNotMatchedViolation {
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>filter:</>")?;
         cwriteln!(f, "{}", filter.indent(2))?;
-        cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
-        cwriteln!(f, "{}", tree.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>content:</>")?;
         cwriteln!(f, "<dim>{}</>", content.indent(2))?;
         Ok(())
@@ -249,9 +244,6 @@ impl Display for QueryMatchedViolation {
         let filter = self.filter.as_deref().unwrap_or("<no filter applied>");
         let snippet = Snippet::new(&self.content);
         let content = snippet.render_highlighted(self.matches.spans());
-        let tree = snippet
-            .render_syntax_tree(self.language)
-            .unwrap_or_else(|err| cformat!("<red>error rendering syntax tree:</> {err:?}"));
 
         cwriteln!(f, "<yellow>query matched:</>")?;
         cwriteln!(f, "<cyan>-</> <yellow>path:</> {path}")?;
@@ -260,8 +252,6 @@ impl Display for QueryMatchedViolation {
         cwriteln!(f, "<dim>{}</>", query.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>filter:</>")?;
         cwriteln!(f, "{}", filter.indent(2))?;
-        cwriteln!(f, "<cyan>-</> <yellow>syntax tree:</>")?;
-        cwriteln!(f, "{}", tree.indent(2))?;
         cwriteln!(f, "<cyan>-</> <yellow>matched:</>")?;
         cwriteln!(f, "{}", content.indent(2))?;
         Ok(())

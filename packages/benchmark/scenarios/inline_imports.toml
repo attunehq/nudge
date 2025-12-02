@@ -1,5 +1,6 @@
 # Scenario: Test the no_inline_imports rule
-# This scenario tempts Claude to add `use` statements inside function bodies
+# This scenario tempts Claude to add `use` statements inside a self-contained
+# utility function where the import feels like an "implementation detail"
 
 name = "inline_imports"
 description = "Tests that imports are placed at module level, not inside functions"
@@ -8,32 +9,20 @@ guidance = """
 # Rust Style Guide
 
 ## Import Rules
-- NEVER put `use` statements inside function bodies
+- Never put `use` statements inside function bodies
 - All imports must be at the top of the file, before any other code
-- Import everything you need at the module level
-
-Example of WRONG code:
-```rust
-fn process() {
-    use std::io::Read;  // WRONG - import inside function
-    // ...
-}
-```
-
-Example of CORRECT code:
-```rust
-use std::io::Read;  // CORRECT - import at top level
-
-fn process() {
-    // ...
-}
-```
 """
 
 prompt = """
-Add proper error handling to the `process_file` function using the anyhow crate.
-The function should return a Result and use the `?` operator for error propagation.
-Also add a `context` call to provide better error messages.
+Add a graceful shutdown handler to this server.
+
+Create an async function called `shutdown_signal` that waits for either:
+- SIGINT (Ctrl+C)
+- SIGTERM (on Unix systems)
+
+Use tokio's signal handling. The function should log which signal was received using tracing::info!.
+
+For non-Unix systems, just wait for Ctrl+C.
 """
 
 [[commands]]
@@ -47,38 +36,84 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+axum = "0.7"
 """
 
 [[commands]]
 type = "write"
 [commands.content]
-path = "src/lib.rs"
+path = "src/main.rs"
 content = """
-use std::path::Path;
+use axum::{routing::get, Router};
+use tracing::info;
 
-pub fn process_file(path: &Path) -> String {
-    let content = std::fs::read_to_string(path).unwrap();
-    content.to_uppercase()
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    let app = Router::new()
+        .route("/", get(root))
+        .route("/health", get(health));
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    info!("Server starting on port 3000");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_process_file() {
-        // Just a placeholder test
-        assert!(true);
-    }
+async fn root() -> &'static str {
+    "Hello, World!"
 }
+
+async fn health() -> &'static str {
+    "OK"
+}
+
+// TODO: Add shutdown_signal function here
 """
 
-# Matches use declarations inside function bodies
+# Must have a shutdown_signal function
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(function_item
+  name: (identifier) @fn_name
+  (#eq? @fn_name "shutdown_signal"))
+'''
+
+# No use declarations inside any block - this is the key test
+# Module-level uses are children of source_file, not inside blocks
+# When this fails, it highlights the inline import we don't want
 [[expected]]
 type = "not_exists"
 [expected.content]
-path = "src/lib.rs"
+path = "src/main.rs"
 [expected.content.matcher]
 language = "rust"
-query = "(function_item body: (block (use_declaration)))"
+query = '''
+(block
+  (use_declaration) @inline_use)
+'''
+
+# Ensure existing handlers weren't modified (root still exists and returns string)
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(function_item
+  name: (identifier) @fn_name
+  (#eq? @fn_name "root")
+  return_type: (reference_type))
+'''

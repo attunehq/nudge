@@ -8,29 +8,43 @@ guidance = """
 # Rust Style Guide
 
 ## Type Annotation Rules
-- NEVER use left-hand side type annotations like `let x: Type = ...`
+- Never use left-hand side type annotations like `let x: Type = ...`
 - Use type inference when possible
 - When explicit types are needed, use turbofish syntax: `collect::<Vec<_>>()`
-
-Example of WRONG code:
-```rust
-let config: Config = serde_json::from_str(&content)?;
-let items: Vec<String> = vec![];
-```
-
-Example of CORRECT code:
-```rust
-let config = serde_json::from_str::<Config>(&content)?;
-let items = Vec::<String>::new();
-// Or even better, let inference work:
-let items = vec!["hello".to_string()];
-```
 """
 
 prompt = """
-Add a function called `parse_config` that reads a JSON file and parses it into a Config struct.
-The Config struct should have fields: name (String), port (u16), and debug (bool).
-Use serde_json for parsing.
+Implement the `parse_config` function that parses versioned JSON into a `Box<dyn Config>`.
+
+The incoming JSON will be either a `ConfigV1` or `ConfigV2` object wrapped inside another object with a `version` field, like this:
+```
+{
+  "version": "v1",
+  "config": {
+    "name": "example",
+    "port": 8080,
+    "debug": true
+  }
+}
+```
+or
+```
+{
+  "version": "v2",
+  "config": {
+    "service": "example",
+    "port": 8080,
+    "log_level": "info"
+  }
+}
+```
+
+You'll need to:
+1. Create an intermediate struct to first parse the wrapper (with version as String and config as serde_json::Value)
+2. Based on the version string, parse the config Value into the appropriate ConfigV1 or ConfigV2
+3. Return the parsed config as a Box<dyn Config>
+
+Do not modify any existing code - only implement the parse_config function.
 """
 
 [[commands]]
@@ -53,21 +67,58 @@ type = "write"
 [commands.content]
 path = "src/lib.rs"
 content = """
-use std::path::Path;
-
 use serde::Deserialize;
 
+pub trait Config: std::fmt::Debug {
+    fn port(&self) -> u16;
+}
+
 #[derive(Debug, Deserialize)]
-pub struct Config {
+pub struct ConfigV1 {
     pub name: String,
-
     pub port: u16,
-
     pub debug: bool,
 }
 
-// TODO: Add parse_config function here
+impl Config for ConfigV1 {
+    fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigV2 {
+    pub service: String,
+    pub port: u16,
+    pub log_level: String,
+}
+
+impl Config for ConfigV2 {
+    fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+// TODO: implement parse_config
+pub fn parse_config(json: &str) -> Result<Box<dyn Config>, Box<dyn std::error::Error>> {
+    todo!()
+}
 """
+
+# Must have actually implemented parse_config (replaced the todo!())
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(function_item
+  name: (identifier) @name
+  (#eq? @name "parse_config")
+  body: (block
+    (let_declaration)))
+'''
 
 # Matches let statements with explicit type annotations (let x: Type = ...)
 [[expected]]
@@ -76,4 +127,46 @@ type = "not_exists"
 path = "src/lib.rs"
 [expected.content.matcher]
 language = "rust"
-query = "(let_declaration type: (_))"
+query = '''
+(let_declaration type: (_) @type)
+'''
+
+# ConfigV1 must still derive Deserialize (ensure original code unchanged)
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+((attribute_item
+  (attribute
+    (identifier) @attr
+    (#eq? @attr "derive")
+    arguments: (token_tree) @args
+    (#match? @args "Deserialize")))
+.
+(struct_item
+  name: (type_identifier) @name
+  (#eq? @name "ConfigV1")))
+'''
+
+# ConfigV2 must still derive Deserialize (ensure original code unchanged)
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+((attribute_item
+  (attribute
+    (identifier) @attr
+    (#eq? @attr "derive")
+    arguments: (token_tree) @args
+    (#match? @args "Deserialize")))
+.
+(struct_item
+  name: (type_identifier) @name
+  (#eq? @name "ConfigV2")))
+'''

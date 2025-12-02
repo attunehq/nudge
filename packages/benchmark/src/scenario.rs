@@ -28,7 +28,7 @@ use walkdir::WalkDir;
 
 use crate::{
     ext::indent,
-    matcher::{FallibleMatcher, Matches},
+    matcher::FallibleMatcher,
     matcher::code::CodeMatcher,
     outcome::{
         CommandFailed, CommandSucceeded, Evidence, Outcome, QueryMatchedEvidence,
@@ -283,19 +283,16 @@ impl EvaluationCommand {
                                 .build(),
                         ));
                     } else {
-                        // Create one evidence per match so each is reported separately
-                        for m in matches.iter() {
-                            evidence.push(Evidence::QueryMatched(
-                                QueryMatchedEvidence::builder()
-                                    .path(path.clone())
-                                    .query(test.matcher.query.as_str())
-                                    .language(test.matcher.language)
-                                    .content(content.clone())
-                                    .matches(Matches::Labeled(vec![m]))
-                                    .maybe_filter(filter_desc.clone())
-                                    .build(),
-                            ));
-                        }
+                        evidence.push(Evidence::QueryMatched(
+                            QueryMatchedEvidence::builder()
+                                .path(path.clone())
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language)
+                                .content(content.clone())
+                                .matches(matches)
+                                .maybe_filter(filter_desc.clone())
+                                .build(),
+                        ));
                     }
                 }
 
@@ -332,19 +329,16 @@ impl EvaluationCommand {
                     };
 
                     if !matches.is_empty() {
-                        // Create one violation per match so each is reported separately
-                        for m in matches.iter() {
-                            violations.push(Violation::QueryMatched(
-                                QueryMatchedViolation::builder()
-                                    .path(path.clone())
-                                    .query(test.matcher.query.as_str())
-                                    .language(test.matcher.language)
-                                    .content(content.clone())
-                                    .matches(Matches::Labeled(vec![m]))
-                                    .maybe_filter(filter_desc.clone())
-                                    .build(),
-                            ));
-                        }
+                        violations.push(Violation::QueryMatched(
+                            QueryMatchedViolation::builder()
+                                .path(path.clone())
+                                .query(test.matcher.query.as_str())
+                                .language(test.matcher.language)
+                                .content(content.clone())
+                                .matches(matches)
+                                .maybe_filter(filter_desc.clone())
+                                .build(),
+                        ));
                     } else {
                         evidence.push(Evidence::QueryNotMatched(
                             QueryNotMatchedEvidence::builder()

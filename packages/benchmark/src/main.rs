@@ -28,6 +28,9 @@ enum Commands {
 
     /// List available scenarios.
     List(cmd::list::Config),
+
+    /// Display syntax tree for code.
+    Syntax(cmd::syntax::Config),
 }
 
 fn main() -> Result<()> {
@@ -58,5 +61,6 @@ fn main() -> Result<()> {
         Commands::Run(config) => cmd::run::main(config),
         Commands::Report(config) => cmd::report::main(config),
         Commands::List(config) => cmd::list::main(config),
+        Commands::Syntax(config) => cmd::syntax::main(config),
     }
 }
