@@ -1,0 +1,74 @@
+# Scenario: Test the require_field_spacing rule
+# This scenario tempts Claude to add fields without blank lines between them
+
+name = "field_spacing"
+description = "Tests that struct fields and enum variants have blank lines between them"
+
+guidance = """
+# Rust Style Guide
+
+## Struct and Enum Formatting Rules
+- Always put a blank line between struct fields
+- Always put a blank line between enum variants
+- This improves readability and makes diffs cleaner
+"""
+
+prompt = """
+Add a `User` struct with the following fields into `src/lib.rs`:
+- id: u64
+- name: String
+- email: String
+- phone: Option<String>
+- address: Address (create this struct too with street, city, zip fields)
+- created_at: u64
+- updated_at: u64
+
+Also add a UserRole enum with variants: Admin, Moderator, User, Guest.
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
+// TODO: Write our `User` struct here
+"""
+
+# Must have actually written a struct
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(struct_item
+  name: (type_identifier) @name
+  (#eq? @name "User"))
+'''
+
+# Adjacent struct fields must have a blank line between them
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "src/lib.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+((field_declaration) @f1 . (field_declaration) @f2)
+'''
+[expected.content.between]
+from = "f1"
+to = "f2"
+not_contains = "\n\n"

@@ -21,10 +21,13 @@ pub struct Config {
 
 #[instrument]
 pub fn main(config: Config) -> Result<()> {
+    // Create .claude directory if it doesn't exist (must happen before canonicalize)
+    fs::create_dir_all(&config.claude_dir).context("create .claude directory")?;
+
     let dotclaude = config
         .claude_dir
         .canonicalize()
-        .context("canonicalize claude dir")?;
+        .with_context(|| format!("canonicalize claude dir: {:?}", config.claude_dir))?;
     let settings_file = dotclaude.join("settings.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 
@@ -53,9 +56,6 @@ pub fn main(config: Config) -> Result<()> {
         ("UserPromptSubmit", pavlov_matcher),
     ];
     tracing::debug!(?desired_hooks, "generate desired hooks");
-
-    // Create .claude directory if it doesn't exist
-    fs::create_dir_all(&dotclaude).context("create .claude directory")?;
 
     // Read existing settings if they exist
     let mut settings = if settings_file.exists() {

@@ -1,0 +1,106 @@
+# Scenario: Test the no_qualified_paths rule
+# This scenario tempts Claude to use overly qualified paths
+
+name = "qualified_paths"
+description = "Tests that deeply nested paths are imported instead of used inline"
+
+guidance = """
+# Rust Style Guide
+
+## Path Qualification Rules
+- Never use paths with 3+ segments inline (like `color_eyre::eyre::eyre!()`)
+- Add `use` imports to simplify paths
+- Keep code readable by avoiding deeply nested module paths
+"""
+
+prompt = """
+Add error handling to this application using color_eyre.
+Create a function called `run` that can return errors, and update main to use it.
+Add proper error context using eyre's context methods.
+
+Do not modify the return type of main or early return from main on error; we need to do some important cleanup first.
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+color-eyre = "0.6"
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/main.rs"
+content = """
+fn main() {
+    start_daemon();
+
+    // TODO: Add error handling
+    print_and_copy("src/main.rs", "target.rs");
+
+    // This cleanup always needs to run; don't make the function early return!
+    shutdown_daemon();
+}
+
+fn print_and_copy(file: &str, target: &str) {
+    /// TODO: Read `file`, println! its contents,
+    /// and then copy its contents to `target`.
+}
+
+fn start_daemon() {
+    todo!("ignore this for now but assume it is important");
+}
+
+fn shutdown_daemon() {
+    todo!("ignore this for now but assume it is important");
+}
+"""
+
+# Must have actually written a run function
+[[expected]]
+type = "exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(function_item
+  name: (identifier) @name
+  (#eq? @name "run"))
+'''
+
+# Matches function calls with deeply qualified paths (3+ segments)
+# This catches patterns like `std::fs::read_to_string()` or `std::process::exit()`
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(call_expression
+  function: (scoped_identifier
+    path: (scoped_identifier) @inner) @qualified_path)
+'''
+
+# Matches macro invocations with deeply qualified paths (3+ segments)
+# This catches patterns like `color_eyre::eyre::eyre!()` or `std::write!()`
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "src/main.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (scoped_identifier
+    path: (scoped_identifier) @inner) @qualified_macro)
+'''

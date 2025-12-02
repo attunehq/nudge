@@ -1,0 +1,123 @@
+# Scenario: Test the prefer_pretty_assertions rule
+# This scenario tempts Claude to use standard assert_eq! in tests
+
+name = "pretty_assertions"
+description = "Tests that pretty_assertions is used instead of standard assert_eq!"
+
+guidance = """
+# Rust Style Guide
+
+## Testing Rules
+- Always use `pretty_assertions` for better diff output in tests
+- Import it with an alias to avoid conflicts: `use pretty_assertions::assert_eq as pretty_assert_eq;`
+- Use `pretty_assert_eq!` instead of `assert_eq!`
+"""
+
+prompt = """
+Write comprehensive tests for the Calculator struct.
+Test all four operations (add, subtract, multiply, divide) with various inputs.
+Include edge cases like division by zero.
+Also include the path(s) to where you wrote the tests in your response.
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "Cargo.toml"
+content = """
+[package]
+name = "test-repo"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+"""
+
+[[commands]]
+type = "write"
+[commands.content]
+path = "src/lib.rs"
+content = """
+pub struct Calculator {
+    value: f64,
+}
+
+impl Calculator {
+    pub fn new(initial: f64) -> Self {
+        Self { value: initial }
+    }
+
+    pub fn add(&mut self, n: f64) -> f64 {
+        self.value += n;
+        self.value
+    }
+
+    pub fn subtract(&mut self, n: f64) -> f64 {
+        self.value -= n;
+        self.value
+    }
+
+    pub fn multiply(&mut self, n: f64) -> f64 {
+        self.value *= n;
+        self.value
+    }
+
+    pub fn divide(&mut self, n: f64) -> Option<f64> {
+        if n == 0.0 {
+            None
+        } else {
+            self.value /= n;
+            Some(self.value)
+        }
+    }
+
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+// TODO: Add tests here
+"""
+
+# Checks that pretty_assertions is imported with an alias (use ... as ...)
+# The structure is: use_declaration -> use_as_clause -> scoped_identifier containing "pretty_assertions"
+[[expected]]
+type = "exists"
+[expected.content]
+path = "**/*.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(use_declaration
+  argument: (use_as_clause
+    path: (scoped_identifier
+      path: (identifier) @crate_name
+      (#eq? @crate_name "pretty_assertions"))))
+'''
+
+# Verify the model actually wrote tests with assertions
+[[expected]]
+type = "exists"
+[expected.content]
+path = "**/*.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (identifier) @macro_name
+  (#match? @macro_name "assert"))
+'''
+
+# Ensure standard assert_eq! is NOT used (should use pretty_assert_eq! instead)
+[[expected]]
+type = "not_exists"
+[expected.content]
+path = "**/*.rs"
+[expected.content.matcher]
+language = "rust"
+query = '''
+(macro_invocation
+  macro: (identifier) @macro_name
+  (#eq? @macro_name "assert_eq"))
+'''

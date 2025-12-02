@@ -1,0 +1,7 @@
+# Benchmark results
+results/
+benchmark-results.json
+*.json
+
+# But keep scenario files
+!scenarios/*.toml
