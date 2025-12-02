@@ -4,7 +4,7 @@ This document captures research on real-world CLAUDE.md usage patterns, common f
 
 ## Problem Validation
 
-The problems described in PLAN.md are widely reported in the Claude Code community. Key GitHub issues confirm:
+The problems described in [PLAN.md](PLAN.md) are widely reported in the Claude Code community. Key GitHub issues confirm:
 
 - Users report **~95% rule compliance in first messages → ~20-60% after 10+ exchanges**
 - Rules are followed initially but degrade as conversation length increases
@@ -12,18 +12,18 @@ The problems described in PLAN.md are widely reported in the Claude Code communi
 - Claude can correctly recite instructions when asked but ignores them in practice
 
 > "Claude Code has enormous potential - but it is currently akin to a senior developer with the attention span of a three-year-old"
-> — [Issue #7083](https://github.com/anthropics/claude-code/issues/7083)
+> - [Issue #7083](https://github.com/anthropics/claude-code/issues/7083)
 
 ## Most Commonly Ignored Rule Types
 
-| Rule Type | Example Rule | Observed Behavior |
-|-----------|--------------|-------------------|
-| Comment discipline | "No comments unless necessary" | Claude adds comments anyway, acknowledges rule when asked |
-| Import placement | "Never import inside functions" | Imports in functions, adds `# noqa` to suppress lint |
-| Lint suppression | "DO NOT disable lint rules" | Adds `# noqa` or equivalent comments |
-| Security rules | "NEVER commit API keys" | Commits credentials to git |
-| Commit formats | "Use specific message format" | Uses default format instead |
-| Build procedures | "Run X before Y" | Skips steps or guesses commands |
+| Rule Type          | Example Rule                    | Observed Behavior                                         |
+|--------------------|---------------------------------|-----------------------------------------------------------|
+| Comment discipline | "No comments unless necessary"  | Claude adds comments anyway, acknowledges rule when asked |
+| Import placement   | "Never import inside functions" | Imports in functions, adds `# noqa` to suppress lint      |
+| Lint suppression   | "DO NOT disable lint rules"     | Adds `# noqa` or equivalent comments                      |
+| Security rules     | "NEVER commit API keys"         | Commits credentials to git                                |
+| Commit formats     | "Use specific message format"   | Uses default format instead                               |
+| Build procedures   | "Run X before Y"                | Skips steps or guesses commands                           |
 
 ### Sources
 - [Issue #7083 - Import Restrictions Ignored](https://github.com/anthropics/claude-code/issues/7083)
@@ -38,7 +38,7 @@ The most frequently reported issue pattern:
 1. Start session → rules followed
 2. Work for a while → rules start slipping
 3. Auto-compaction triggers → **rules completely forgotten**
-4. User must manually say "re-read CLAUDE.md" to restore compliance
+4. User must manually say "re-read CLAUDE.md" to restore compliance, with varying results
 
 ### Key Issues
 - [Issue #6354 - Forgets After Compaction](https://github.com/anthropics/claude-code/issues/6354)
@@ -48,13 +48,13 @@ The most frequently reported issue pattern:
 
 ## Workarounds Users Have Tried
 
-| Workaround | How It Works | Effectiveness |
-|------------|--------------|---------------|
-| Recursive self-display | Rule says "display all rules at start of every response" | Effective but token-expensive |
-| `/check-rules` command | Manual refresh before tasks | Inconsistent |
-| Separate RULES.md | Split into multiple files | No improvement reported |
-| Enforcement agents | Custom agent to check compliance | Complex setup |
-| Manual "re-read CLAUDE.md" | After every compaction | Works but tedious |
+| Workaround                 | How It Works                                             | Effectiveness                 |
+|----------------------------|----------------------------------------------------------|-------------------------------|
+| Recursive self-display     | Rule says "display all rules at start of every response" | Effective but token-expensive |
+| `/check-rules` command     | Manual refresh before tasks                              | Inconsistent                  |
+| Separate RULES.md          | Split into multiple files                                | No improvement reported       |
+| Enforcement agents         | Custom agent to check compliance                         | Complex setup                 |
+| Manual "re-read CLAUDE.md" | After every compaction                                   | Works but tedious             |
 
 Source: [DEV.to - Stop Claude From Forgetting Rules](https://dev.to/siddhantkcode/an-easy-way-to-stop-claude-code-from-forgetting-the-rules-h36)
 
@@ -64,20 +64,20 @@ Source: [DEV.to - Stop Claude From Forgetting Rules](https://dev.to/siddhantkcod
 
 ### Curated Collections
 
-| Repository | Description |
-|------------|-------------|
-| [josix/awesome-claude-md](https://github.com/josix/awesome-claude-md) | Curated collection of CLAUDE.md files from public projects, filterable by language |
-| [steipete/agent-rules](https://github.com/steipete/agent-rules) | Reusable rules for AI assistants - commit standards, code quality, workflows |
-| [kariedo/claude-code-security-rules](https://github.com/kariedo/claude-code-security-rules) | Security rules for Python, JS, Java, PHP, Ruby, **Rust**, C |
+| Repository                                                                                  | Description                                                                        |
+|---------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| [josix/awesome-claude-md](https://github.com/josix/awesome-claude-md)                       | Curated collection of CLAUDE.md files from public projects, filterable by language |
+| [steipete/agent-rules](https://github.com/steipete/agent-rules)                             | Reusable rules for AI assistants - commit standards, code quality, workflows       |
+| [kariedo/claude-code-security-rules](https://github.com/kariedo/claude-code-security-rules) | Security rules for Python, JS, Java, PHP, Ruby, **Rust**, C                        |
 
 ### Rust-Specific Projects
 
-| Repository | Key Rules/Patterns |
-|------------|-------------------|
-| [hashintel/hash](https://github.com/hashintel/hash/blob/main/CLAUDE.md) | Large monorepo (Rust + TS). Branch naming (`<name>/h-XXXX-desc`), PR title formats, `cargo doc` conventions |
-| [KentBeck/BPlusTree3](https://github.com/KentBeck/BPlusTree3/blob/main/rust/docs/CLAUDE.md) | TDD-focused. Red→Green→Refactor, Tidy First (separate structural vs behavioral commits) |
-| [bredmond1019/claude-sdk-rs](https://github.com/bredmond1019/claude-sdk-rs) | Standard cargo conventions |
-| [ruvnet/claude-flow Wiki](https://github.com/ruvnet/claude-flow/wiki/CLAUDE-MD-Rust) | Comprehensive Rust template with cargo batching, memory safety patterns |
+| Repository                                                                                  | Key Rules/Patterns                                                                                          |
+|---------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| [hashintel/hash](https://github.com/hashintel/hash/blob/main/CLAUDE.md)                     | Large monorepo (Rust + TS). Branch naming (`<name>/h-XXXX-desc`), PR title formats, `cargo doc` conventions |
+| [KentBeck/BPlusTree3](https://github.com/KentBeck/BPlusTree3/blob/main/rust/docs/CLAUDE.md) | TDD-focused. Red→Green→Refactor, Tidy First (separate structural vs behavioral commits)                     |
+| [bredmond1019/claude-sdk-rs](https://github.com/bredmond1019/claude-sdk-rs)                 | Standard cargo conventions                                                                                  |
+| [ruvnet/claude-flow Wiki](https://github.com/ruvnet/claude-flow/wiki/CLAUDE-MD-Rust)        | Comprehensive Rust template with cargo batching, memory safety patterns                                     |
 
 ### Notable Rule Categories from These Projects
 
