@@ -2,7 +2,7 @@
 
 Pavlov adds "teachability" to Claude Code by intercepting tool calls and enforcing coding rules before code is written. When Claude tries to write code that violates a rule, Pavlov either blocks the operation (for hard rules) or injects guidance into the conversation (for soft suggestions).
 
-**See [PLAN.md](PLAN.md) for project goals and roadmap.**
+**See [docs/PLAN.md](docs/PLAN.md) for project goals and roadmap.**
 
 ## How It Works
 
