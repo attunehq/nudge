@@ -121,11 +121,13 @@ match:
 
   # For Stop:
   message: "pattern"       # Regex to match in assistant's final message
-
-  # Common options:
-  case_sensitive: true     # Default: true
-  multiline: true          # Default: true (^ and $ match line boundaries)
 ```
+
+**Regex inline flags** can be used at the start of patterns for modifiers:
+- `(?i)` - case-insensitive matching
+- `(?m)` - multiline mode (^ and $ match line boundaries)
+- `(?s)` - dotall mode (. matches newlines)
+- `(?x)` - verbose mode (ignore whitespace, allow comments)
 
 **Note**: If unspecified, `match` patterns default to `.*`, meaning that they always match by default.
 
@@ -201,8 +203,7 @@ rules:
     on:
       hook: UserPromptSubmit
     match:
-      prompt: "start.*(server|dev)|run.*server"
-      case_sensitive: false
+      prompt: "(?i)start.*(server|dev)|run.*server"
     action: continue
     message: |
       To start the development server:
@@ -370,6 +371,7 @@ pub enum HookType {
     Stop,
 }
 
+/// Use inline regex flags for modifiers: (?i), (?m), (?s), (?x)
 #[derive(Debug, Deserialize)]
 pub struct Match {
     pub content: Option<String>,
@@ -377,10 +379,6 @@ pub struct Match {
     pub old_string: Option<String>,
     pub prompt: Option<String>,
     pub message: Option<String>,
-    #[serde(default = "true")]
-    pub case_sensitive: bool,
-    #[serde(default = "true")]
-    pub multiline: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -631,6 +629,7 @@ rules:
 
     # Content matching criteria (optional)
     # If omitted, rule fires on activation alone
+    # Use inline regex flags for modifiers: (?i), (?m), (?s), (?x)
     match:
       # For Write tool content (regex)
       content: string
@@ -644,10 +643,6 @@ rules:
 
       # For Stop (regex)
       message: string
-
-      # Regex options
-      case_sensitive: bool  # default: true
-      multiline: bool       # default: true
 
     # Response type (required)
     # Values: interrupt (block), continue (allow with guidance)

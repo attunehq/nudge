@@ -66,6 +66,14 @@ pub enum HookType {
 }
 
 /// Content matching criteria.
+///
+/// All patterns are regular expressions. Use inline flags for modifiers:
+/// - `(?i)` - case-insensitive matching
+/// - `(?m)` - multiline mode (^ and $ match line boundaries)
+/// - `(?s)` - dotall mode (. matches newlines)
+/// - `(?x)` - verbose mode (ignore whitespace, allow comments)
+///
+/// Example: `(?m)^\\s+use ` matches `use` statements at line start with leading whitespace.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Match {
     /// Regex for Write tool content.
@@ -82,18 +90,6 @@ pub struct Match {
 
     /// Regex for Stop assistant message.
     pub message: Option<String>,
-
-    /// Whether regex matching is case sensitive.
-    #[serde(default = "default_true")]
-    pub case_sensitive: bool,
-
-    /// Whether ^ and $ match line boundaries.
-    #[serde(default = "default_true")]
-    pub multiline: bool,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 /// Response type when a rule fires.

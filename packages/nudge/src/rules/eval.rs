@@ -5,7 +5,7 @@ use color_eyre::{
     eyre::{Context, Result},
 };
 use glob::Pattern;
-use regex::{Regex, RegexBuilder};
+use regex::Regex;
 
 use crate::claude::hook::{
     Hook, PostToolUsePayload, PreToolUsePayload, StopPayload, UserPromptSubmitPayload,
@@ -76,7 +76,7 @@ impl CompiledRule {
             .on
             .tool
             .as_ref()
-            .map(|p| build_regex(p, true, false))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid tool regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
@@ -96,41 +96,39 @@ impl CompiledRule {
             ref old_string,
             ref prompt,
             ref message,
-            case_sensitive,
-            multiline,
         } = rule.r#match;
 
         let content_pattern = content
             .as_ref()
-            .map(|p| build_regex(p, case_sensitive, multiline))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid content regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let new_string_pattern = new_string
             .as_ref()
-            .map(|p| build_regex(p, case_sensitive, multiline))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid new_string regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let old_string_pattern = old_string
             .as_ref()
-            .map(|p| build_regex(p, case_sensitive, multiline))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid old_string regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let prompt_pattern = prompt
             .as_ref()
-            .map(|p| build_regex(p, case_sensitive, multiline))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid prompt regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let message_pattern = message
             .as_ref()
-            .map(|p| build_regex(p, case_sensitive, multiline))
+            .map(|p| build_regex(p))
             .transpose()
             .with_context(|| format!("invalid message regex in rule '{}'", rule.name))
             .with_section(|| format!("{rule:#?}").header("Rule:"))?;
@@ -474,11 +472,9 @@ impl CompiledRule {
     }
 }
 
-/// Build a regex with the given options.
-fn build_regex(pattern: &str, case_sensitive: bool, multiline: bool) -> Result<Regex> {
-    RegexBuilder::new(pattern)
-        .case_insensitive(!case_sensitive)
-        .multi_line(multiline)
-        .build()
-        .with_context(|| format!("invalid regex: {pattern}"))
+/// Build a regex from a pattern.
+///
+/// Use inline flags for modifiers: `(?i)` for case-insensitive, `(?m)` for multiline, etc.
+fn build_regex(pattern: &str) -> Result<Regex> {
+    Regex::new(pattern).with_context(|| format!("invalid regex: {pattern}"))
 }

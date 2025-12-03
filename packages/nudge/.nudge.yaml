@@ -6,6 +6,7 @@ version: 1
 rules:
   # Rule 1: Catch `use` statements inside function bodies
   # Pattern: lines starting with whitespace followed by `use `
+  # (?m) enables multiline mode so ^ matches at line boundaries.
   - name: no-inline-imports
     description: Move imports to the top of the file
     on:
@@ -13,13 +14,13 @@ rules:
       tool: Write|Edit
       file: "**/*.rs"
     match:
-      content: "^\\s+use "
-      multiline: true
+      content: "(?m)^[ \\t]+use "
     action: interrupt
     message: |
       Move the `use` statement(s) on lines {{ lines }} to the top of the file with other imports.
 
   # Rule 2: Catch LHS type annotations (simplified)
+  # (?m) enables multiline mode for consistent behavior with line-based patterns.
   - name: no-lhs-type-annotations
     description: Use type inference or turbofish instead
     on:
@@ -27,8 +28,7 @@ rules:
       tool: Write|Edit
       file: "**/*.rs"
     match:
-      content: "let\\s+\\w+\\s*:\\s*Vec<"
-      multiline: true
+      content: "(?m)let\\s+\\w+\\s*:\\s*Vec<"
     action: interrupt
     message: |
       Remove LHS type annotations. Use turbofish or type inference instead.

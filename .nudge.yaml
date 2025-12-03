@@ -18,8 +18,7 @@ rules:
       tool: Write|Edit
       file: "**/*.rs"
     match:
-      content: "^[ \\t]+use "
-      multiline: true
+      content: "(?m)^[ \\t]+use "
     action: interrupt
     message: |
       Move the `use` statement(s) on lines {{ lines }} to the top of the file with other imports, then retry this exact operation.
@@ -35,8 +34,7 @@ rules:
     match:
       # Matches: let name: Type, let mut name: Type
       # Excludes lines starting with // (handled in message)
-      content: "^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
-      multiline: true
+      content: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
     action: interrupt
     message: |
       Remove LHS type annotations on lines {{ lines }}. Use turbofish (`collect::<Vec<_>>()`) or type inference instead, then retry.

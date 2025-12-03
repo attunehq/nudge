@@ -688,6 +688,7 @@ dependencies = [
  "bon",
  "clap",
  "color-eyre",
+ "color-print",
  "directories",
  "glob",
  "monostate",
