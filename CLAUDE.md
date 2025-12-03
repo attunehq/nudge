@@ -61,44 +61,6 @@ When Pavlov has something to share, it responds in one of three ways:
 - **Continue**: The code is written, and Pavlov sends you a gentle reminder to consider
 - **Interrupt**: Pavlov caught something worth fixing first—it'll explain what and why
 
-### Adding a New Rule
-
-1. Add the rule function to `src/rules.rs`:
-   ```rust
-   fn my_rule(hook: &Hook) -> Response {
-       // Extract file_path and content using extract_file_content()
-       // Check for patterns worth mentioning
-       // Return Passthrough (nothing to say), Continue (gentle reminder), or Interrupt (worth fixing first)
-   }
-   ```
-
-2. Register it in `evaluate_all()`:
-   ```rust
-   let rules: &[fn(&Hook) -> Response] = &[
-       // ... existing rules
-       my_rule,
-   ];
-   ```
-
-3. Add tests in `tests/rules.rs` using `simple_test_case` for parameterized tests
-
-### Testing Pattern
-
-Integration tests run the actual CLI via xshell:
-
-```rust
-#[test_case("content", Expected::Interrupt; "description")]
-#[test]
-fn test_my_rule(content: &str, expected: Expected) {
-    let sh = Shell::new().unwrap();
-    let input = write_hook("test.rs", content);  // Build hook JSON
-    let (exit_code, stdout) = run_hook(&sh, &input);  // Run CLI
-    // Assert based on expected
-}
-```
-
-Use `pretty_assertions::assert_eq as pretty_assert_eq` to avoid conflicts with std prelude.
-
 ## Keeping Documentation in Sync
 
 Pavlov has three documentation sources that must stay aligned. When updating one, consider whether the others need updates too.
