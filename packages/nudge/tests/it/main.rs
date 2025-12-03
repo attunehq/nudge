@@ -14,6 +14,9 @@ mod multiple_rules;
 mod non_rust_files;
 mod user_prompt;
 
+use std::io::Write as _;
+use std::process::{Command, Stdio};
+
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use xshell::Shell;
 
@@ -83,8 +86,6 @@ pub fn user_prompt_hook(prompt: &str) -> String {
 
 /// Run nudge claude hook with the given input JSON and return (exit_code, output).
 pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
 
     // Build and get the binary path
     let status = Command::new("cargo")
@@ -179,7 +180,6 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
 
 /// Run a nudge subcommand and return (exit_code, stdout, stderr).
 pub fn run_nudge(args: &[&str]) -> (i32, String, String) {
-    use std::process::{Command, Stdio};
 
     let status = Command::new("cargo")
         .args(["build", "--quiet", "-p", "nudge"])

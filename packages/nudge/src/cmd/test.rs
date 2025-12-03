@@ -102,10 +102,7 @@ fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
         "prompt": prompt
     });
 
-    let hook: Hook =
-        serde_json::from_value(payload).context("failed to build UserPromptSubmit hook")?;
-
-    Ok(hook)
+    serde_json::from_value(payload).context("failed to build UserPromptSubmit hook")
 }
 
 fn build_tool_use_hook(config: &Config) -> Result<Hook> {
@@ -150,7 +147,5 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
         "tool_input": tool_input
     });
 
-    let hook: Hook = serde_json::from_value(payload).context("failed to build PreToolUse hook")?;
-
-    Ok(hook)
+    serde_json::from_value(payload).context("failed to build PreToolUse hook")
 }

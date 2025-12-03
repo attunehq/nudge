@@ -7,7 +7,7 @@ mod cmd;
 
 use clap::{Parser, Subcommand};
 use tracing_error::ErrorLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Nudge adds memory to your agents.
 #[derive(Parser)]
@@ -49,7 +49,7 @@ fn main() -> Result<()> {
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
         .with(
-            tracing_subscriber::fmt::layer()
+            fmt::layer()
                 .with_level(true)
                 .with_file(true)
                 .with_line_number(true)
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
                 .pretty(),
         )
         .with(
-            tracing_subscriber::EnvFilter::builder()
+            EnvFilter::builder()
                 .with_env_var("NUDGE_LOG")
                 .with_default_directive(LevelFilter::ERROR.into())
                 .from_env_lossy(),
