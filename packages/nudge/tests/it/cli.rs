@@ -65,8 +65,8 @@ fn test_test_rule_match() {
         "test should show rule name, got: {stdout}"
     );
     assert!(
-        stdout.contains("INTERRUPT"),
-        "test should show INTERRUPT for matching content, got: {stdout}"
+        stdout.contains("Result: Interrupt"),
+        "test should show Interrupt for matching content, got: {stdout}"
     );
 }
 
@@ -86,8 +86,8 @@ fn test_test_rule_no_match() {
 
     pretty_assert_eq!(exit_code, 0, "test command should exit 0");
     assert!(
-        stdout.contains("NO MATCH"),
-        "test should show NO MATCH for non-matching content, got: {stdout}"
+        stdout.contains("Result: Passthrough"),
+        "test should show Passthrough for non-matching content, got: {stdout}"
     );
 }
 
