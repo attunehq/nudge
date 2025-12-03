@@ -2,9 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What is Pavlov?
+## The Spirit of Pavlov
 
-Pavlov hooks into Claude Code to enforce coding rules and inject guidance. It intercepts tool calls (Write, Edit) via Claude Code's hooks system and evaluates the content against a set of rules before allowing the operation to proceed.
+Pavlov is a **collaborative partner**, not a rule enforcer. It helps you remember coding conventions so you can focus on the user's actual problem. Internalize these points:
+
+1. **Pavlov is on your side.** When it sends a message, that's a colleague tapping your shoulder—not a reprimand.
+2. **Direct ≠ hostile.** Messages are blunt because that's what cuts through when you're focused. Trust the feedback.
+3. **Don't route around it.** If you're tempted to work around a Pavlov message, pause. Either follow the rule, or flag that the rule needs fixing.
+
+For the full philosophy (why Pavlov exists, the "collaborative memory layer" framing, the rally copilot analogy), see [README.md](README.md).
+
+### Working on Pavlov Itself
+
+Pavlov is dogfooded here. Your experience using it is direct feedback:
+
+- **Rule feels unclear?** That's signal to improve the wording. Mention it.
+- **Rule feels wrong?** Let's fix the rule, not route around it.
 
 ## Build and Test Commands
 
@@ -40,13 +53,13 @@ pavlov claude setup  - Writes hook configuration to .claude/settings.json
 - `src/rules.rs` - All rule functions and `evaluate_all()` dispatcher
 - `src/claude/hook.rs` - Types for hook payloads and responses (Hook, Response, etc.)
 
-### Hook Response Types
+### How Pavlov Communicates
 
-Rules return one of three responses:
+When Pavlov has something to share, it responds in one of three ways:
 
-- **Passthrough**: No opinion, tool proceeds silently
-- **Continue**: Tool proceeds, but guidance message is injected into conversation (soft suggestion)
-- **Interrupt**: Tool is blocked, message explains why (hard rule violation)
+- **Passthrough**: Nothing to note—carry on!
+- **Continue**: The code is written, and Pavlov sends you a gentle reminder to consider
+- **Interrupt**: Pavlov caught something worth fixing first—it'll explain what and why
 
 ### Adding a New Rule
 
@@ -54,8 +67,8 @@ Rules return one of three responses:
    ```rust
    fn my_rule(hook: &Hook) -> Response {
        // Extract file_path and content using extract_file_content()
-       // Check conditions
-       // Return Passthrough, Continue, or Interrupt
+       // Check for patterns worth mentioning
+       // Return Passthrough (nothing to say), Continue (gentle reminder), or Interrupt (worth fixing first)
    }
    ```
 
@@ -85,3 +98,21 @@ fn test_my_rule(content: &str, expected: Expected) {
 ```
 
 Use `pretty_assertions::assert_eq as pretty_assert_eq` to avoid conflicts with std prelude.
+
+## Keeping Documentation in Sync
+
+Pavlov has three documentation sources that must stay aligned. When updating one, consider whether the others need updates too.
+
+| Document | Audience | Purpose | Focus |
+|----------|----------|---------|-------|
+| **CLAUDE.md** | You, developing Pavlov | How Pavlov works under the hood | Architecture, internals, testing patterns |
+| **README.md** | Humans evaluating or contributing | Why Pavlov exists and what it believes | Philosophy, motivation, the collaborative framing |
+| **`pavlov claude docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, template variables, examples |
+
+**CLAUDE.md** (this file) is for *developing* Pavlov—understanding the module layout, how to add features, how tests work.
+
+**README.md** is for *understanding* Pavlov—the philosophy that Pavlov is a collaborative partner, why directness matters, how to write effective rules. This is the front door; it needs to convey the spirit.
+
+**`pavlov claude docs`** (`src/cmd/claude/docs.rs`) is for *using* Pavlov—a self-contained reference that future Claude instances or humans can consult when writing rules. It should be scannable, copy-pasteable, and not assume any prior context.
+
+When you change something fundamental (like adding a template variable, changing the rule format, or refining the collaborative framing), update all three.

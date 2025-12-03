@@ -4,6 +4,7 @@ use clap::{Args, Subcommand};
 use color_eyre::Result;
 use tracing::instrument;
 
+pub mod docs;
 pub mod hook;
 pub mod setup;
 
@@ -20,6 +21,9 @@ enum Commands {
 
     /// Set up Pavlov hooks in .claude/hooks.
     Setup(setup::Config),
+
+    /// Show documentation for writing Pavlov rules.
+    Docs(docs::Config),
 }
 
 #[instrument]
@@ -27,5 +31,6 @@ pub fn main(config: Config) -> Result<()> {
     match config.command {
         Commands::Hook(config) => hook::main(config),
         Commands::Setup(config) => setup::main(config),
+        Commands::Docs(config) => docs::main(config),
     }
 }

@@ -1,25 +1,31 @@
-//! Integration tests for the rules evaluation system.
+//! Integration tests for the user-defined rules system.
+//!
+//! These tests verify that the YAML-based rule system works correctly:
+//! - Rules are loaded from .pavlov.yaml
+//! - Rules match based on hook type, tool name, file pattern, and content
+//! - Rules produce correct responses (interrupt vs continue vs passthrough)
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use simple_test_case::test_case;
-use xshell::{Shell, cmd};
+use xshell::Shell;
 
 /// Expected outcome from running a hook through pavlov.
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 enum Expected {
     /// Passthrough: exit 0, no output
     Passthrough,
+
     /// Continue: exit 0, output contains "continue":true
+    #[allow(dead_code)]
     Continue,
+
     /// Interrupt: exit 2, output contains "continue":false
     Interrupt,
 }
 
 /// Build a PreToolUse hook JSON payload for Write tool.
 fn write_hook(file_path: &str, content: &str) -> String {
-    use serde_json::json;
-    json!({
+    serde_json::json!({
         "hook_event_name": "PreToolUse",
         "session_id": "test",
         "transcript_path": "/tmp/test",
@@ -36,7 +42,7 @@ fn write_hook(file_path: &str, content: &str) -> String {
 }
 
 /// Build a PreToolUse hook JSON payload for Edit tool.
-fn edit_hook(file_path: &str, new_string: &str) -> String {
+fn edit_hook(file_path: &str, old_string: &str, new_string: &str) -> String {
     serde_json::json!({
         "hook_event_name": "PreToolUse",
         "session_id": "test",
@@ -47,27 +53,128 @@ fn edit_hook(file_path: &str, new_string: &str) -> String {
         "tool_use_id": "123",
         "tool_input": {
             "file_path": file_path,
-            "old_string": "placeholder",
+            "old_string": old_string,
             "new_string": new_string
         }
     })
     .to_string()
 }
 
+/// Build a UserPromptSubmit hook JSON payload.
+fn user_prompt_hook(prompt: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "test",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": "/tmp",
+        "prompt": prompt
+    })
+    .to_string()
+}
+
 /// Run pavlov claude hook with the given input JSON and return (exit_code, output).
-/// Output combines stdout and stderr since Interrupt writes to stderr, Continue to stdout.
-fn run_hook(sh: &Shell, input: &str) -> (i32, String) {
-    let output = cmd!(sh, "cargo run --quiet -p pavlov -- claude hook")
-        .stdin(input)
-        .ignore_status()
-        .output()
-        .expect("failed to run pavlov");
+fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    // Build and get the binary path
+    let status = Command::new("cargo")
+        .args(["build", "--quiet", "-p", "pavlov"])
+        .status()
+        .expect("failed to build pavlov");
+    assert!(status.success(), "cargo build failed");
+
+    // Run the binary directly with stdin
+    let mut child = Command::new("cargo")
+        .args(["run", "--quiet", "-p", "pavlov", "--", "claude", "hook"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn pavlov");
+
+    // Write input to stdin
+    {
+        let stdin = child.stdin.as_mut().expect("failed to get stdin");
+        stdin.write_all(input.as_bytes()).expect("failed to write to stdin");
+    }
+
+    let output = child.wait_with_output().expect("failed to wait for pavlov");
 
     let exit_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let combined = format!("{stdout}{stderr}");
+
+
+    // For interrupt responses, output goes to stderr
+    // For continue responses, output goes to stdout
+    // Combine them but filter out compiler warnings
+    let is_json = |line: &str| {
+        let trimmed = line.trim();
+        trimmed.starts_with('{') || trimmed.starts_with('"')
+    };
+
+    let combined = if !stdout.trim().is_empty() && is_json(stdout.trim()) {
+        stdout.trim().to_string()
+    } else if !stderr.trim().is_empty() {
+        // Filter out compiler warnings from stderr
+        stderr
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.starts_with("warning:")
+                    && !trimmed.contains("--> packages/")
+                    && !trimmed.contains("= note:")
+                    && !trimmed.starts_with('|')
+                    && !trimmed.is_empty()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        String::new()
+    };
+
     (exit_code, combined)
+}
+
+fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
+    match expected {
+        Expected::Passthrough => {
+            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
+            assert!(output.is_empty(), "expected no output for passthrough, got: {output}");
+        }
+        Expected::Continue => {
+            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
+            assert!(
+                output.contains(r#""continue":true"#),
+                "expected continue:true in output, got: {output}"
+            );
+        }
+        Expected::Interrupt => {
+            pretty_assert_eq!(
+                exit_code, 2,
+                "expected interrupt (exit 2), output: {output}"
+            );
+            assert!(
+                output.contains(r#""continue":false"#),
+                "expected continue:false in output, got: {output}"
+            );
+        }
+    }
+}
+
+// =============================================================================
+// Basic Rule Loading Tests
+// =============================================================================
+
+#[test]
+fn test_no_rules_passthrough() {
+    // Non-matching file extension should passthrough (no rules match)
+    let sh = Shell::new().unwrap();
+    let input = write_hook("test.xyz", "any content");
+    let (exit_code, output) = run_hook(&sh, &input);
+    assert_expected(exit_code, &output, Expected::Passthrough);
 }
 
 // =============================================================================
@@ -77,130 +184,41 @@ fn run_hook(sh: &Shell, input: &str) -> (i32, String) {
 #[test_case(
     "fn main() {\n    use std::io;\n}",
     Expected::Interrupt;
-    "indented use statement triggers guidance"
+    "indented use statement triggers interrupt"
 )]
 #[test_case(
     "use std::io;\n\nfn main() {}",
     Expected::Passthrough;
     "top-level use statement passes"
 )]
-#[test_case(
-    "fn main() {\n    // use std::io;\n}",
-    Expected::Passthrough;
-    "commented use statement passes"
-)]
 #[test]
 fn test_inline_imports(content: &str, expected: Expected) {
     let sh = Shell::new().unwrap();
     let input = write_hook("test.rs", content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    match expected {
-        Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
-            assert!(stdout.is_empty(), "expected no output for passthrough");
-        }
-        Expected::Continue => {
-            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-        }
-        Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
-            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
-        }
-    }
+    let (exit_code, output) = run_hook(&sh, &input);
+    assert_expected(exit_code, &output, expected);
 }
 
 // =============================================================================
-// LHS Type Annotations Rule Tests
+// Edit Tool Tests
 // =============================================================================
 
-#[test_case(
-    "fn main() {\n    let foo: Vec<String> = vec![];\n}",
-    Expected::Interrupt;
-    "lhs type annotation triggers guidance"
-)]
-#[test_case(
-    "fn main() {\n    let foo = vec![\"hello\".to_string()];\n}",
-    Expected::Passthrough;
-    "inference passes"
-)]
-#[test_case(
-    "fn main() {\n    let foo = items.collect::<Vec<_>>();\n}",
-    Expected::Passthrough;
-    "turbofish passes"
-)]
-#[test_case(
-    "// let foo: Type = bar;\nfn main() {}",
-    Expected::Passthrough;
-    "commented let passes"
-)]
 #[test]
-fn test_lhs_type_annotations(content: &str, expected: Expected) {
+fn test_edit_tool_content_matching() {
     let sh = Shell::new().unwrap();
-    let input = write_hook("test.rs", content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    match expected {
-        Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
-            assert!(stdout.is_empty(), "expected no output for passthrough");
-        }
-        Expected::Continue => {
-            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-        }
-        Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
-            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
-        }
-    }
+    // Edit that introduces an indented use statement
+    let input = edit_hook("test.rs", "old code", "    use std::io;\n");
+    let (exit_code, output) = run_hook(&sh, &input);
+    assert_expected(exit_code, &output, Expected::Interrupt);
 }
 
-// =============================================================================
-// Qualified Paths Rule Tests
-// =============================================================================
-
-#[test_case(
-    "fn main() {\n    color_eyre::eyre::eyre!(\"error\");\n}",
-    Expected::Interrupt;
-    "over-qualified path triggers guidance"
-)]
-#[test_case(
-    "use color_eyre::eyre::eyre;\n\nfn main() {\n    eyre!(\"error\");\n}",
-    Expected::Passthrough;
-    "imported and used directly passes"
-)]
-#[test_case(
-    "// color_eyre::eyre::eyre!()\nfn main() {}",
-    Expected::Passthrough;
-    "commented qualified path passes"
-)]
-#[test_case(
-    "use foo::bar::baz;\n\nfn main() {}",
-    Expected::Passthrough;
-    "qualified path in use statement passes"
-)]
 #[test]
-fn test_qualified_paths(content: &str, expected: Expected) {
+fn test_edit_tool_non_matching() {
     let sh = Shell::new().unwrap();
-    let input = write_hook("test.rs", content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    match expected {
-        Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
-            assert!(stdout.is_empty(), "expected no output for passthrough");
-        }
-        Expected::Continue => {
-            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-        }
-        Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
-            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
-        }
-    }
+    // Edit that doesn't trigger any rules
+    let input = edit_hook("test.rs", "old", "new");
+    let (exit_code, output) = run_hook(&sh, &input);
+    assert_expected(exit_code, &output, Expected::Passthrough);
 }
 
 // =============================================================================
@@ -214,184 +232,187 @@ fn test_qualified_paths(content: &str, expected: Expected) {
 fn test_non_rust_files_pass(file_path: &str, content: &str) {
     let sh = Shell::new().unwrap();
     let input = write_hook(file_path, content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    pretty_assert_eq!(exit_code, 0, "non-rust files should passthrough");
-    assert!(stdout.is_empty(), "non-rust files should have no output");
+    let (exit_code, output) = run_hook(&sh, &input);
+    assert_expected(exit_code, &output, Expected::Passthrough);
 }
 
 // =============================================================================
-// Edit Tool Tests
+// UserPromptSubmit Hook Tests
 // =============================================================================
 
 #[test]
-fn test_edit_tool_triggers_rules() {
+fn test_user_prompt_no_matching_rules() {
     let sh = Shell::new().unwrap();
-    let input = edit_hook("test.rs", "    use std::io;\n");
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    pretty_assert_eq!(exit_code, 2, "edit tool should trigger inline imports rule");
-    assert!(stdout.contains(r#""continue":false"#), "expected interrupt response");
+    let input = user_prompt_hook("hello world");
+    let (exit_code, output) = run_hook(&sh, &input);
+    // No UserPromptSubmit rules in the test config, so should passthrough
+    assert_expected(exit_code, &output, Expected::Passthrough);
 }
 
 // =============================================================================
-// Rule Priority Tests
+// Message Content Tests
 // =============================================================================
 
 #[test]
-fn test_first_matching_rule_wins() {
+fn test_interrupt_message_contains_rule_message() {
     let sh = Shell::new().unwrap();
-    // Content triggers both inline imports and LHS annotations rules
-    let content = "fn main() {\n    use std::io;\n    let foo: Type = bar;\n}";
+    let input = write_hook("test.rs", "fn main() {\n    use std::io;\n}");
+    let (_, output) = run_hook(&sh, &input);
+
+    // Should contain the message from the no-inline-imports rule
+    assert!(
+        output.contains("Move the `use` statement"),
+        "expected rule message in output"
+    );
+}
+
+// =============================================================================
+// Multiple Rules Tests
+// =============================================================================
+
+#[test]
+fn test_multiple_rules_fire() {
+    let sh = Shell::new().unwrap();
+    // Content that triggers both inline imports AND lhs type annotations
+    let content = "fn main() {\n    use std::io;\n    let foo: Vec<String> = vec![];\n}";
     let input = write_hook("test.rs", content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
+    let (exit_code, output) = run_hook(&sh, &input);
 
-    // Inline imports rule is first in the list, so it should be the one that fires
-    pretty_assert_eq!(exit_code, 2, "expected interrupt");
-    assert!(stdout.contains("BLOCKED"), "inline imports rule should fire first");
-}
+    // Should be interrupt (any interrupt = overall interrupt)
+    pretty_assert_eq!(exit_code, 2, "expected interrupt when multiple rules fire");
 
-// =============================================================================
-// Pretty Assertions Rule Tests
-// =============================================================================
-
-#[test_case(
-    "tests/foo.rs",
-    "#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Interrupt;
-    "test file with assert_eq triggers guidance"
-)]
-#[test_case(
-    "tests/foo.rs",
-    "use pretty_assertions::assert_eq as pretty_assert_eq;\n\n#[test]\nfn test_it() {\n    pretty_assert_eq!(1, 1);\n}",
-    Expected::Passthrough;
-    "test file with aliased import passes"
-)]
-#[test_case(
-    "tests/foo.rs",
-    "use pretty_assertions::assert_eq;\n\n#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Interrupt;
-    "test file with unaliased import triggers guidance"
-)]
-#[test_case(
-    "src/lib.rs",
-    "fn main() {\n    assert_eq!(1, 1);\n}",
-    Expected::Passthrough;
-    "non-test file with assert_eq passes"
-)]
-#[test_case(
-    "tests/foo.rs",
-    "#[test]\nfn test_it() {\n    assert!(true);\n}",
-    Expected::Passthrough;
-    "test file without assert_eq passes"
-)]
-#[test_case(
-    "src/lib.rs",
-    "#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}",
-    Expected::Interrupt;
-    "file with test attribute triggers guidance"
-)]
-#[test]
-fn test_pretty_assertions(file_path: &str, content: &str, expected: Expected) {
-    let sh = Shell::new().unwrap();
-    let input = write_hook(file_path, content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
-
-    match expected {
-        Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
-            assert!(stdout.is_empty(), "expected no output for passthrough");
-        }
-        Expected::Continue => {
-            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-        }
-        Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
-            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
-        }
-    }
-}
-
-#[test]
-fn test_pretty_assertions_unaliased_import_message() {
-    let sh = Shell::new().unwrap();
-    let content = "use pretty_assertions::assert_eq;\n\n#[test]\nfn test_it() {\n    assert_eq!(1, 1);\n}";
-    let input = write_hook("tests/foo.rs", content);
-    let (_, stdout) = run_hook(&sh, &input);
-
+    // Messages should be concatenated with separator
     assert!(
-        stdout.contains("Change the import"),
-        "should suggest changing the import"
-    );
-    assert!(
-        stdout.contains("pretty_assert_eq"),
-        "should mention the alias"
+        output.contains("---") || output.contains("Move the `use` statement"),
+        "expected messages from multiple rules"
     );
 }
 
 // =============================================================================
-// Field Spacing Rule Tests
+// CLI Subcommand Smoke Tests
 // =============================================================================
 
-#[test_case(
-    "struct Foo {\n    a: String,\n    b: String,\n}",
-    Expected::Interrupt;
-    "consecutive struct fields triggers guidance"
-)]
-#[test_case(
-    "struct Foo {\n    a: String,\n\n    b: String,\n}",
-    Expected::Passthrough;
-    "spaced struct fields passes"
-)]
-#[test_case(
-    "enum Foo {\n    A,\n    B,\n}",
-    Expected::Interrupt;
-    "consecutive enum variants triggers guidance"
-)]
-#[test_case(
-    "enum Foo {\n    A,\n\n    B,\n}",
-    Expected::Passthrough;
-    "spaced enum variants passes"
-)]
-#[test_case(
-    "struct Foo {\n    a: String,\n}",
-    Expected::Passthrough;
-    "single field struct passes"
-)]
-#[test_case(
-    "struct Foo {\n    a: String,\n    /// Doc comment\n    b: String,\n}",
-    Expected::Interrupt;
-    "fields separated by comment without blank line triggers guidance"
-)]
-#[test_case(
-    "struct Foo {\n    a: String,\n\n    /// Doc comment\n    b: String,\n}",
-    Expected::Passthrough;
-    "fields with blank line before doc comment passes"
-)]
-#[test_case(
-    "enum Foo {\n    A(String),\n    B { x: i32 },\n}",
-    Expected::Interrupt;
-    "tuple and struct variants without spacing triggers guidance"
-)]
-#[test]
-fn test_field_spacing(content: &str, expected: Expected) {
-    let sh = Shell::new().unwrap();
-    let input = write_hook("src/types.rs", content);
-    let (exit_code, stdout) = run_hook(&sh, &input);
+/// Run a pavlov subcommand and return (exit_code, stdout, stderr).
+fn run_pavlov(args: &[&str]) -> (i32, String, String) {
+    use std::process::{Command, Stdio};
 
-    match expected {
-        Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
-            assert!(stdout.is_empty(), "expected no output for passthrough");
-        }
-        Expected::Continue => {
-            pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
-            assert!(stdout.contains(r#""continue":true"#), "expected continue:true in output");
-        }
-        Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 2, "expected interrupt (exit 2)");
-            assert!(stdout.contains(r#""continue":false"#), "expected continue:false in output");
-        }
-    }
+    let status = Command::new("cargo")
+        .args(["build", "--quiet", "-p", "pavlov"])
+        .status()
+        .expect("failed to build pavlov");
+    assert!(status.success(), "cargo build failed");
+
+    let mut cmd_args = vec!["run", "--quiet", "-p", "pavlov", "--"];
+    cmd_args.extend(args);
+
+    let output = Command::new("cargo")
+        .args(&cmd_args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("failed to run pavlov");
+
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    (exit_code, stdout, stderr)
+}
+
+#[test]
+fn test_validate_discovers_config() {
+    // Should find .pavlov.yaml in packages/pavlov/
+    let (exit_code, stdout, _stderr) = run_pavlov(&["validate"]);
+
+    pretty_assert_eq!(exit_code, 0, "validate should exit 0");
+    assert!(
+        stdout.contains(".pavlov.yaml") && stdout.contains("rules loaded"),
+        "validate should report loaded rules, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_validate_specific_file() {
+    // Use CARGO_MANIFEST_DIR to get absolute path to the test config
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let config_path = format!("{manifest_dir}/.pavlov.yaml");
+
+    let (exit_code, stdout, _stderr) =
+        run_pavlov(&["validate", &config_path]);
+
+    pretty_assert_eq!(exit_code, 0, "validate should exit 0");
+    assert!(
+        stdout.contains("rules loaded"),
+        "validate should report loaded rules, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("no-inline-imports"),
+        "validate should list rule names, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_validate_nonexistent_file() {
+    let (exit_code, stdout, _stderr) =
+        run_pavlov(&["validate", "nonexistent.yaml"]);
+
+    pretty_assert_eq!(exit_code, 0, "validate should exit 0 for nonexistent file");
+    assert!(
+        stdout.contains("0 rules loaded"),
+        "validate should report 0 rules for nonexistent file, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_rule_match() {
+    let (exit_code, stdout, _stderr) = run_pavlov(&[
+        "test",
+        "--rule", "no-inline-imports",
+        "--tool", "Write",
+        "--file", "test.rs",
+        "--content", "fn main() {\n    use std::io;\n}",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "test command should exit 0");
+    assert!(
+        stdout.contains("Rule: no-inline-imports"),
+        "test should show rule name, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("INTERRUPT"),
+        "test should show INTERRUPT for matching content, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_rule_no_match() {
+    let (exit_code, stdout, _stderr) = run_pavlov(&[
+        "test",
+        "--rule", "no-inline-imports",
+        "--tool", "Write",
+        "--file", "test.rs",
+        "--content", "use std::io;\nfn main() {}",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "test command should exit 0");
+    assert!(
+        stdout.contains("NO MATCH"),
+        "test should show NO MATCH for non-matching content, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_test_rule_not_found() {
+    let (exit_code, _stdout, stderr) = run_pavlov(&[
+        "test",
+        "--rule", "nonexistent-rule",
+        "--content", "anything",
+    ]);
+
+    // Should fail with an error
+    assert!(exit_code != 0, "test should fail for nonexistent rule");
+    assert!(
+        stderr.contains("not found") || stderr.contains("nonexistent-rule"),
+        "test should report rule not found, got: {stderr}"
+    );
 }

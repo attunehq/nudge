@@ -21,6 +21,12 @@ struct Cli {
 enum Commands {
     /// Integration with Claude Code.
     Claude(cmd::claude::Config),
+
+    /// Validate rule configuration files.
+    Validate(cmd::validate::Config),
+
+    /// Test a rule against sample input.
+    Test(cmd::test::Config),
 }
 
 #[instrument]
@@ -49,5 +55,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Claude(config) => cmd::claude::main(config),
+        Commands::Validate(config) => cmd::validate::main(config),
+        Commands::Test(config) => cmd::test::main(config),
     }
 }

@@ -1,0 +1,34 @@
+# Test rules for Pavlov integration tests.
+# Keep these rules simple and focused on testing the rule system itself.
+
+version: 1
+
+rules:
+  # Rule 1: Catch `use` statements inside function bodies
+  # Pattern: lines starting with whitespace followed by `use `
+  - name: no-inline-imports
+    description: Move imports to the top of the file
+    on:
+      hook: PreToolUse
+      tool: Write|Edit
+      file: "**/*.rs"
+    match:
+      content: "^\\s+use "
+      multiline: true
+    action: interrupt
+    message: |
+      Move the `use` statement(s) on lines {{ lines }} to the top of the file with other imports.
+
+  # Rule 2: Catch LHS type annotations (simplified)
+  - name: no-lhs-type-annotations
+    description: Use type inference or turbofish instead
+    on:
+      hook: PreToolUse
+      tool: Write|Edit
+      file: "**/*.rs"
+    match:
+      content: "let\\s+\\w+\\s*:\\s*Vec<"
+      multiline: true
+    action: interrupt
+    message: |
+      Remove LHS type annotations. Use turbofish or type inference instead.
