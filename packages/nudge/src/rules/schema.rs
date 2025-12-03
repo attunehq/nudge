@@ -1,34 +1,16 @@
 //! Schema types for user-defined rules.
 
+use monostate::MustBe;
 use serde::Deserialize;
 
 /// A rule configuration file.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RuleConfig {
-    /// Must be 1.
-    pub version: Version,
+    /// The version of the rule configuration file.
+    pub version: MustBe!(1),
 
     /// The rules defined in this file.
     pub rules: Vec<Rule>,
-}
-
-/// Version marker that only accepts version 1.
-#[derive(Debug, Clone, Copy)]
-pub struct Version;
-
-impl<'de> Deserialize<'de> for Version {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let v = u32::deserialize(deserializer)?;
-        if v != 1 {
-            return Err(serde::de::Error::custom(format!(
-                "unsupported version {v}, expected 1"
-            )));
-        }
-        Ok(Version)
-    }
 }
 
 /// A single rule definition.
@@ -70,9 +52,16 @@ pub struct Activation {
 /// Hook event types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum HookType {
+    /// The hook is triggered before a tool is used.
     PreToolUse,
+
+    /// The hook is triggered after a tool is used.
     PostToolUse,
+
+    /// The hook is triggered when a user prompt is submitted.
     UserPromptSubmit,
+
+    /// The hook is triggered when the assistant stops.
     Stop,
 }
 

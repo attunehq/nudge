@@ -1,5 +1,5 @@
 [package]
-name = "pavlov"
+name = "nudge"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,12 +7,14 @@ edition = "2024"
 bon = "3.8.1"
 clap = { version = "4.5.53", features = ["env", "derive", "cargo"] }
 color-eyre = "0.6.5"
-dirs = "6.0.0"
+directories = "6.0.0"
 glob = "0.3.3"
+monostate = "1.0.2"
 regex = "1.12.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
+tap = "1.0.1"
 tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }

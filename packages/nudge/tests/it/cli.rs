@@ -1,16 +1,16 @@
 //! CLI Subcommand Smoke Tests
 
-use crate::run_pavlov;
+use crate::run_nudge;
 use pretty_assertions::assert_eq as pretty_assert_eq;
 
 #[test]
 fn test_validate_discovers_config() {
-    // Should find .pavlov.yaml in packages/pavlov/
-    let (exit_code, stdout, _stderr) = run_pavlov(&["validate"]);
+    // Should find .nudge.yaml in packages/nudge/
+    let (exit_code, stdout, _stderr) = run_nudge(&["validate"]);
 
     pretty_assert_eq!(exit_code, 0, "validate should exit 0");
     assert!(
-        stdout.contains(".pavlov.yaml") && stdout.contains("rules loaded"),
+        stdout.contains(".nudge.yaml") && stdout.contains("rules loaded"),
         "validate should report loaded rules, got: {stdout}"
     );
 }
@@ -19,9 +19,9 @@ fn test_validate_discovers_config() {
 fn test_validate_specific_file() {
     // Use CARGO_MANIFEST_DIR to get absolute path to the test config
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let config_path = format!("{manifest_dir}/.pavlov.yaml");
+    let config_path = format!("{manifest_dir}/.nudge.yaml");
 
-    let (exit_code, stdout, _stderr) = run_pavlov(&["validate", &config_path]);
+    let (exit_code, stdout, _stderr) = run_nudge(&["validate", &config_path]);
 
     pretty_assert_eq!(exit_code, 0, "validate should exit 0");
     assert!(
@@ -36,7 +36,7 @@ fn test_validate_specific_file() {
 
 #[test]
 fn test_validate_nonexistent_file() {
-    let (exit_code, stdout, _stderr) = run_pavlov(&["validate", "nonexistent.yaml"]);
+    let (exit_code, stdout, _stderr) = run_nudge(&["validate", "nonexistent.yaml"]);
 
     pretty_assert_eq!(exit_code, 0, "validate should exit 0 for nonexistent file");
     assert!(
@@ -47,7 +47,7 @@ fn test_validate_nonexistent_file() {
 
 #[test]
 fn test_test_rule_match() {
-    let (exit_code, stdout, _stderr) = run_pavlov(&[
+    let (exit_code, stdout, _stderr) = run_nudge(&[
         "test",
         "--rule",
         "no-inline-imports",
@@ -72,7 +72,7 @@ fn test_test_rule_match() {
 
 #[test]
 fn test_test_rule_no_match() {
-    let (exit_code, stdout, _stderr) = run_pavlov(&[
+    let (exit_code, stdout, _stderr) = run_nudge(&[
         "test",
         "--rule",
         "no-inline-imports",
@@ -93,7 +93,7 @@ fn test_test_rule_no_match() {
 
 #[test]
 fn test_test_rule_not_found() {
-    let (exit_code, _stdout, stderr) = run_pavlov(&[
+    let (exit_code, _stdout, stderr) = run_nudge(&[
         "test",
         "--rule",
         "nonexistent-rule",

@@ -9,39 +9,39 @@ pub mod schema;
 
 use std::collections::HashSet;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Context, Result};
 
-use crate::claude::hook::{
-    ContinueResponse, Hook, InterruptResponse, PreToolUseOutput, Response,
-};
+use crate::claude::hook::{ContinueResponse, Hook, InterruptResponse, PreToolUseOutput, Response};
+use crate::rules::schema::Action;
 
-use self::config::load_all_rules;
+use self::config::load_rules;
 use self::eval::CompiledRule;
 
 /// Registry of all loaded rules.
-pub struct RuleRegistry {
+#[derive(Debug, Clone)]
+pub struct Registry {
     rules: Vec<CompiledRule>,
 }
 
-impl RuleRegistry {
+impl Registry {
     /// Create a new registry by loading rules from all sources.
     ///
     /// Loading order (all additive):
-    /// 1. `~/.config/pavlov/rules.yaml` if it exists
-    /// 2. `.pavlov.yaml` if it exists
-    /// 3. `.pavlov/` directory walked recursively (sorted), loading all `*.yaml` files
+    /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
+    /// 2. `.nudge.yaml` if it exists
+    /// 3. `.nudge/` directory walked recursively (sorted), loading all `*.yaml` files
+    #[tracing::instrument(name = "Registry::new")]
     pub fn new() -> Result<Self> {
         let mut rules = vec![];
         let mut seen_names = HashSet::new();
 
-        let all_rules = load_all_rules()?;
-
+        let all_rules = load_rules().context("load rules")?;
         for rule in all_rules {
-            // Warn on duplicate names (but still add the rule)
             if !seen_names.insert(rule.name.clone()) {
                 tracing::warn!("Multiple rules with name '{}' found", rule.name);
             }
-            let compiled = CompiledRule::compile(rule)?;
+
+            let compiled = CompiledRule::compile(rule).context("compile rule")?;
             rules.push(compiled);
         }
 
@@ -52,15 +52,16 @@ impl RuleRegistry {
     ///
     /// All matching rules fire. Messages are concatenated with `\n\n---\n\n`.
     /// If any rule returns `interrupt`, the overall response is `interrupt`.
+    #[tracing::instrument(name = "Registry::evaluate")]
     pub fn evaluate(&self, hook: &Hook) -> Response {
         let mut messages = vec![];
-        let mut any_interrupt = false;
+        let mut interrupt = false;
 
         for rule in &self.rules {
             if let Some(result) = rule.evaluate(hook) {
                 messages.push(result.message);
-                if result.is_interrupt {
-                    any_interrupt = true;
+                if result.action == Action::Interrupt {
+                    interrupt = true;
                 }
             }
         }
@@ -69,13 +70,12 @@ impl RuleRegistry {
             return Response::Passthrough;
         }
 
-        let combined_message = messages.join("\n\n---\n\n");
-
-        if any_interrupt {
+        let message = messages.join("\n\n---\n\n");
+        if interrupt {
             Response::Interrupt(
                 InterruptResponse::builder()
                     .stop_reason("Rule violation detected")
-                    .system_message(combined_message)
+                    .system_message(message)
                     .hook_specific_output(
                         serde_json::to_value(PreToolUseOutput::default()).unwrap(),
                     )
@@ -84,7 +84,7 @@ impl RuleRegistry {
         } else {
             Response::Continue(
                 ContinueResponse::builder()
-                    .system_message(combined_message)
+                    .system_message(message)
                     .hook_specific_output(
                         serde_json::to_value(PreToolUseOutput::default()).unwrap(),
                     )
@@ -108,11 +108,12 @@ impl RuleRegistry {
 ///
 /// This is a convenience function that creates a RuleRegistry and evaluates the hook.
 /// For repeated evaluations, prefer creating a RuleRegistry once and reusing it.
+#[tracing::instrument]
 pub fn evaluate_all(hook: &Hook) -> Response {
-    match RuleRegistry::new() {
+    match Registry::new() {
         Ok(registry) => registry.evaluate(hook),
-        Err(e) => {
-            tracing::error!("Failed to load rules: {e}");
+        Err(error) => {
+            tracing::error!("Failed to load rules: {error:?}");
             Response::Passthrough
         }
     }

@@ -1,6 +1,6 @@
-//! Benchmark CLI for Pavlov.
+//! Benchmark CLI for Nudge.
 //!
-//! Run benchmarks comparing Pavlov hooks vs CLAUDE.md guidance.
+//! Run benchmarks comparing Nudge hooks vs CLAUDE.md guidance.
 
 use clap::{Parser, Subcommand};
 use color_eyre::Result;
@@ -10,7 +10,7 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 mod cmd;
 
-/// Benchmark Pavlov rule enforcement effectiveness.
+/// Benchmark Nudge rule enforcement effectiveness.
 #[derive(Parser)]
 #[command(name = "benchmark", author, version, about)]
 struct Cli {

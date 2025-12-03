@@ -124,7 +124,7 @@ For rules that should influence initial code generation, put them in `CLAUDE.md`
 When running hooks via `cargo run`, the cargo build/run messages go to stderr. In tests that combine stdout and stderr, use `--quiet` to suppress cargo output:
 
 ```rust
-cmd!(sh, "cargo run --quiet -p pavlov -- claude hook")
+cmd!(sh, "cargo run --quiet -p nudge -- claude hook")
 ```
 
 ## Summary Table

@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use color_eyre::eyre::{bail, Context, Result};
+use color_eyre::eyre::{Context, Result, bail};
 use serde_json::json;
 
-use pavlov::claude::hook::Hook;
-use pavlov::rules::config::load_all_rules;
-use pavlov::rules::eval::CompiledRule;
+use nudge::claude::hook::Hook;
+use nudge::rules::config::load_rules;
+use nudge::rules::eval::CompiledRule;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -38,37 +38,31 @@ pub struct Config {
 }
 
 pub fn main(config: Config) -> Result<()> {
-    // Load all rules and find the one we want
-    let rules = load_all_rules()?;
+    let rules = load_rules()?;
     let rule = rules
         .into_iter()
         .find(|r| r.name == config.rule)
         .ok_or_else(|| color_eyre::eyre::eyre!("Rule '{}' not found", config.rule))?;
 
-    // Compile the rule
     let compiled = CompiledRule::compile(rule.clone())
         .with_context(|| format!("failed to compile rule '{}'", config.rule))?;
 
-    // Build a hook payload based on the provided arguments
     let hook = build_hook(&config)?;
-
-    // Evaluate the rule
     let result = compiled.evaluate(&hook);
 
-    // Print results
     println!("Rule: {}", config.rule);
 
     match result {
         Some(res) => {
-            let action_str = if res.is_interrupt { "INTERRUPT" } else { "CONTINUE" };
-            println!("Result: {}", action_str);
+            let action = res.action;
+            println!("Result: {action:?}");
             println!("Message:");
             for line in res.message.lines() {
-                println!("  {}", line);
+                println!("  {line}");
             }
         }
         None => {
-            println!("Result: NO MATCH");
+            println!("Result: Passthrough");
             println!("The rule did not match the provided input.");
         }
     }
@@ -83,11 +77,17 @@ fn build_hook(config: &Config) -> Result<Hook> {
         return build_user_prompt_hook(config);
     }
 
-    if config.tool.is_some() || config.file.is_some() || config.content.is_some() || config.content_file.is_some() {
+    if config.tool.is_some()
+        || config.file.is_some()
+        || config.content.is_some()
+        || config.content_file.is_some()
+    {
         return build_tool_use_hook(config);
     }
 
-    bail!("Must specify either --prompt (for UserPromptSubmit) or --tool/--file/--content (for PreToolUse)");
+    bail!(
+        "Must specify either --prompt (for UserPromptSubmit) or --tool/--file/--content (for PreToolUse)"
+    );
 }
 
 fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
@@ -102,15 +102,17 @@ fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
         "prompt": prompt
     });
 
-    let hook: Hook = serde_json::from_value(payload)
-        .context("failed to build UserPromptSubmit hook")?;
+    let hook: Hook =
+        serde_json::from_value(payload).context("failed to build UserPromptSubmit hook")?;
 
     Ok(hook)
 }
 
 fn build_tool_use_hook(config: &Config) -> Result<Hook> {
     let tool = config.tool.as_deref().unwrap_or("Write");
-    let file_path = config.file.as_ref()
+    let file_path = config
+        .file
+        .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "test.txt".to_string());
 
@@ -148,8 +150,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
         "tool_input": tool_input
     });
 
-    let hook: Hook = serde_json::from_value(payload)
-        .context("failed to build PreToolUse hook")?;
+    let hook: Hook = serde_json::from_value(payload).context("failed to build PreToolUse hook")?;
 
     Ok(hook)
 }

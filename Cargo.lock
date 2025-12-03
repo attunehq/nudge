@@ -371,10 +371,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
-name = "dirs"
+name = "directories"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
+checksum = "16f5094c54661b38d03bd7e50df373292118db60b585c08a411c6d840017fe7d"
 dependencies = [
  "dirs-sys",
 ]
@@ -641,6 +641,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "monostate"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb4cc965c89dd0615a9e822ff8002f7633d2466143d51bd58693e4b2c75aabad"
+dependencies = [
+ "monostate-impl",
+ "serde",
+ "serde_core",
+]
+
+[[package]]
+name = "monostate-impl"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23f5b99488110875b5904839d396c2cdfaf241ff6622638acb879cc7effad5de"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -657,6 +679,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
  "windows-sys",
+]
+
+[[package]]
+name = "nudge"
+version = "0.1.0"
+dependencies = [
+ "bon",
+ "clap",
+ "color-eyre",
+ "directories",
+ "glob",
+ "monostate",
+ "pretty_assertions",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "simple_test_case",
+ "tap",
+ "tracing",
+ "tracing-error",
+ "tracing-subscriber",
+ "walkdir",
+ "xshell",
 ]
 
 [[package]]
@@ -697,28 +743,6 @@ name = "partial_application"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f926567968c32d22274b8eb721210363e54dcd8d2c960dd8533aa3be78143081"
-
-[[package]]
-name = "pavlov"
-version = "0.1.0"
-dependencies = [
- "bon",
- "clap",
- "color-eyre",
- "dirs",
- "glob",
- "pretty_assertions",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "simple_test_case",
- "tracing",
- "tracing-error",
- "tracing-subscriber",
- "walkdir",
- "xshell",
-]
 
 [[package]]
 name = "pin-project-lite"

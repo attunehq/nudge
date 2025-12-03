@@ -1,19 +1,19 @@
 # Benchmark
 
-A harness for evaluating Pavlov rule effectiveness through synthetic scenarios.
+A harness for evaluating Nudge rule effectiveness through synthetic scenarios.
 
 ## Background
 
-Pavlov's core thesis is that coding agents (like Claude Code) struggle to follow project-specific guidelines because guidance in context files competes with accumulated task context. As conversations grow, rules slip. The [RESEARCH.md](../../docs/RESEARCH.md) file documents this phenomenon: users report ~95% rule compliance in initial messages degrading to ~20-60% after 10+ exchanges, with rules often forgotten entirely after auto-compaction.
+Nudge's core thesis is that coding agents (like Claude Code) struggle to follow project-specific guidelines because guidance in context files competes with accumulated task context. As conversations grow, rules slip. The [RESEARCH.md](../../docs/RESEARCH.md) file documents this phenomenon: users report ~95% rule compliance in initial messages degrading to ~20-60% after 10+ exchanges, with rules often forgotten entirely after auto-compaction.
 
-This benchmark package was built to test whether Pavlov- which enforces rules outside the standard context loop via hooks- actually improves adherence. The goal was to produce quantitative evidence: "with Pavlov, rule X is followed Y% more often."
+This benchmark package was built to test whether Nudge- which enforces rules outside the standard context loop via hooks- actually improves adherence. The goal was to produce quantitative evidence: "with Nudge, rule X is followed Y% more often."
 
 ## What We Built
 
 The harness runs scenarios that:
 
 1. Set up a temporary project with starter code
-2. Provide guidance (either via CLAUDE.md, Pavlov hooks, or nothing)
+2. Provide guidance (either via CLAUDE.md, Nudge hooks, or nothing)
 3. Give Claude a task prompt
 4. Evaluate the result using tree-sitter queries to detect rule violations
 
@@ -41,7 +41,7 @@ This package is deprioritized. The infrastructure remains useful for:
 - Understanding tree-sitter query syntax
 - Exploration and expansion if/when better benchmarking approaches emerge
 
-For demonstrating Pavlov's value, we're instead focusing on real-world usage data: capturing statistics about interventions during actual development, which provides organic evidence that's harder to dismiss as benchmark gaming.
+For demonstrating Nudge's value, we're instead focusing on real-world usage data: capturing statistics about interventions during actual development, which provides organic evidence that's harder to dismiss as benchmark gaming.
 
 ## Usage
 

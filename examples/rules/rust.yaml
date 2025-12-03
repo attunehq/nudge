@@ -1,9 +1,9 @@
-# Example Pavlov rules for Rust code style enforcement.
+# Example Nudge rules for Rust code style enforcement.
 #
 # These rules demonstrate how to convert common Rust coding guidelines
-# into Pavlov rule definitions. Copy and adapt for your projects.
+# into Nudge rule definitions. Copy and adapt for your projects.
 #
-# To use: copy this file to `.pavlov/rules.yaml` in your project.
+# To use: copy this file to `.nudge/rules.yaml` in your project.
 
 version: 1
 

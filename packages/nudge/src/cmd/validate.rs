@@ -7,9 +7,9 @@ use clap::Args;
 use color_eyre::eyre::{Context, Result};
 use walkdir::WalkDir;
 
-use pavlov::rules::config::load_rules_from_file;
-use pavlov::rules::eval::CompiledRule;
-use pavlov::rules::schema::{Action, HookType};
+use nudge::rules::config::{load_rules_from, project_dirs};
+use nudge::rules::eval::CompiledRule;
+use nudge::rules::schema::{Action, HookType};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -29,26 +29,23 @@ pub fn main(config: Config) -> Result<()> {
 fn validate_all() -> Result<()> {
     let mut found_any = false;
 
-    // 1. User-level rules
-    if let Some(config_dir) = dirs::config_dir() {
-        let path = config_dir.join("pavlov/rules.yaml");
+    if let Some(proj_dirs) = project_dirs() {
+        let path = proj_dirs.config_dir().join("rules.yaml");
         if path.exists() {
             validate_file(&path)?;
             found_any = true;
         }
     }
 
-    // 2. Project-level single file
-    let project_file = Path::new(".pavlov.yaml");
+    let project_file = Path::new(".nudge.yaml");
     if project_file.exists() {
         validate_file(project_file)?;
         found_any = true;
     }
 
-    // 3. Project-level directory
-    let pavlov_dir = Path::new(".pavlov");
-    if pavlov_dir.is_dir() {
-        for entry in WalkDir::new(pavlov_dir)
+    let nudge_dir = Path::new(".nudge");
+    if nudge_dir.is_dir() {
+        for entry in WalkDir::new(nudge_dir)
             .sort_by_file_name()
             .into_iter()
             .filter_map(|e| e.ok())
@@ -69,14 +66,19 @@ fn validate_all() -> Result<()> {
 
 /// Validate a single config file and print results.
 fn validate_file(path: &Path) -> Result<()> {
-    let rules = load_rules_from_file(path)
-        .with_context(|| format!("failed to validate {}", path.display()))?;
+    let rules =
+        load_rules_from(path).with_context(|| format!("failed to validate {}", path.display()))?;
 
     // Try to compile each rule to catch regex/glob errors
     let mut compiled_rules = Vec::new();
     for rule in &rules {
-        let compiled = CompiledRule::compile(rule.clone())
-            .with_context(|| format!("failed to compile rule '{}' in {}", rule.name, path.display()))?;
+        let compiled = CompiledRule::compile(rule.clone()).with_context(|| {
+            format!(
+                "failed to compile rule '{}' in {}",
+                rule.name,
+                path.display()
+            )
+        })?;
         compiled_rules.push((rule, compiled));
     }
 

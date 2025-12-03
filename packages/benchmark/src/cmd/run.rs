@@ -1,4 +1,4 @@
-//! Run benchmarks comparing Pavlov hooks vs CLAUDE.md guidance.
+//! Run benchmarks comparing Nudge hooks vs CLAUDE.md guidance.
 
 use std::path::PathBuf;
 
@@ -30,7 +30,7 @@ pub struct Config {
 
     /// Guidance modes to test (can be specified multiple times).
     ///
-    /// Example: `-g none -g pavlov -g file`
+    /// Example: `-g none -g nudge -g file`
     #[arg(short, long = "guidance", value_enum)]
     guidances: Vec<Guidance>,
 
@@ -237,7 +237,7 @@ impl TryFrom<Config> for ResolvedConfig {
         };
 
         let guidances = if config.guidances.is_empty() {
-            vec![Guidance::None, Guidance::Pavlov, Guidance::File]
+            vec![Guidance::None, Guidance::Nudge, Guidance::File]
         } else {
             config.guidances
         };

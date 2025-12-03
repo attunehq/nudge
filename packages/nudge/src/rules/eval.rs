@@ -1,6 +1,9 @@
 //! Rule evaluation and response aggregation.
 
-use color_eyre::eyre::{Context, Result};
+use color_eyre::{
+    Section, SectionExt,
+    eyre::{Context, Result},
+};
 use glob::Pattern;
 use regex::{Regex, RegexBuilder};
 
@@ -11,8 +14,8 @@ use crate::claude::hook::{
 use super::schema::{Action, HookType, Match, Rule};
 
 /// A rule compiled for efficient evaluation.
+#[derive(Debug, Clone)]
 pub struct CompiledRule {
-    #[allow(dead_code)]
     pub name: String,
 
     hook_type: HookType,
@@ -37,28 +40,37 @@ pub struct CompiledRule {
 }
 
 /// Result of evaluating a single rule.
+#[derive(Debug)]
 pub struct RuleResult {
+    /// The message to display to the user.
     pub message: String,
 
-    pub is_interrupt: bool,
+    /// The action to take when the rule matches.
+    pub action: Action,
 }
 
 /// Context gathered during matching for template interpolation.
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct MatchContext {
+    /// The lines that matched the pattern.
     lines: Vec<usize>,
 
+    /// The file path that matched the pattern.
     file_path: Option<String>,
 
+    /// The text that matched the pattern.
     matched: Option<String>,
 
+    /// The tool name that matched the pattern.
     tool_name: Option<String>,
 
+    /// The user prompt that matched the pattern.
     prompt: Option<String>,
 }
 
 impl CompiledRule {
     /// Compile a rule from its schema representation.
+    #[tracing::instrument(name = "CompiledRule::compile")]
     pub fn compile(rule: Rule) -> Result<Self> {
         let tool_pattern = rule
             .on
@@ -66,7 +78,8 @@ impl CompiledRule {
             .as_ref()
             .map(|p| build_regex(p, true, false))
             .transpose()
-            .with_context(|| format!("invalid tool regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid tool regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let file_glob = rule
             .on
@@ -74,14 +87,15 @@ impl CompiledRule {
             .as_ref()
             .map(|p| Pattern::new(p))
             .transpose()
-            .with_context(|| format!("invalid file glob in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid file glob in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let Match {
-            content,
-            new_string,
-            old_string,
-            prompt,
-            message,
+            ref content,
+            ref new_string,
+            ref old_string,
+            ref prompt,
+            ref message,
             case_sensitive,
             multiline,
         } = rule.r#match;
@@ -90,31 +104,36 @@ impl CompiledRule {
             .as_ref()
             .map(|p| build_regex(p, case_sensitive, multiline))
             .transpose()
-            .with_context(|| format!("invalid content regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid content regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let new_string_pattern = new_string
             .as_ref()
             .map(|p| build_regex(p, case_sensitive, multiline))
             .transpose()
-            .with_context(|| format!("invalid new_string regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid new_string regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let old_string_pattern = old_string
             .as_ref()
             .map(|p| build_regex(p, case_sensitive, multiline))
             .transpose()
-            .with_context(|| format!("invalid old_string regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid old_string regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let prompt_pattern = prompt
             .as_ref()
             .map(|p| build_regex(p, case_sensitive, multiline))
             .transpose()
-            .with_context(|| format!("invalid prompt regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid prompt regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         let message_pattern = message
             .as_ref()
             .map(|p| build_regex(p, case_sensitive, multiline))
             .transpose()
-            .with_context(|| format!("invalid message regex in rule '{}'", rule.name))?;
+            .with_context(|| format!("invalid message regex in rule '{}'", rule.name))
+            .with_section(|| format!("{rule:#?}").header("Rule:"))?;
 
         Ok(CompiledRule {
             name: rule.name,
@@ -132,15 +151,14 @@ impl CompiledRule {
     }
 
     /// Evaluate this rule against a hook. Returns None if the rule doesn't match.
+    #[tracing::instrument(name = "CompiledRule::evaluate")]
     pub fn evaluate(&self, hook: &Hook) -> Option<RuleResult> {
         let mut ctx = MatchContext::default();
 
-        // 1. Check hook type matches
         if !self.matches_hook_type(hook) {
             return None;
         }
 
-        // 2. Check activation criteria and gather context
         match hook {
             Hook::PreToolUse(payload) => {
                 if !self.matches_pre_tool_use(payload, &mut ctx) {
@@ -164,12 +182,10 @@ impl CompiledRule {
             }
         }
 
-        // 3. Render message with context
         let message = self.render_message(&ctx);
-
         Some(RuleResult {
             message,
-            is_interrupt: self.action == Action::Interrupt,
+            action: self.action,
         })
     }
 
@@ -186,24 +202,17 @@ impl CompiledRule {
     fn matches_pre_tool_use(&self, payload: &PreToolUsePayload, ctx: &mut MatchContext) -> bool {
         ctx.tool_name = Some(payload.tool_name.clone());
 
-        // Check tool name pattern
         if let Some(ref pattern) = self.tool_pattern {
             if !pattern.is_match(&payload.tool_name) {
                 return false;
             }
         }
 
-        // Extract file_path if available
-        let file_path = payload
-            .tool_input
-            .get("file_path")
-            .and_then(|v| v.as_str());
-
+        let file_path = payload.tool_input.get("file_path").and_then(|v| v.as_str());
         if let Some(fp) = file_path {
             ctx.file_path = Some(fp.to_string());
         }
 
-        // Check file glob
         if let Some(ref glob) = self.file_glob {
             match file_path {
                 Some(fp) => {
@@ -215,7 +224,6 @@ impl CompiledRule {
             }
         }
 
-        // Check content patterns based on tool type
         match payload.tool_name.as_str() {
             "Write" => {
                 let content = payload.tool_input.get("content").and_then(|v| v.as_str());
@@ -296,10 +304,7 @@ impl CompiledRule {
         }
 
         // Extract file_path if available
-        let file_path = payload
-            .tool_input
-            .get("file_path")
-            .and_then(|v| v.as_str());
+        let file_path = payload.tool_input.get("file_path").and_then(|v| v.as_str());
 
         if let Some(fp) = file_path {
             ctx.file_path = Some(fp.to_string());

@@ -19,10 +19,10 @@ enum Commands {
     /// Responds to Claude Code hooks.
     Hook(hook::Config),
 
-    /// Set up Pavlov hooks in .claude/hooks.
+    /// Set up Nudge hooks in .claude/hooks.
     Setup(setup::Config),
 
-    /// Show documentation for writing Pavlov rules.
+    /// Show documentation for writing Nudge rules.
     Docs(docs::Config),
 }
 

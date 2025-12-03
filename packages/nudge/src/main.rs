@@ -1,6 +1,6 @@
-//! Pavlov adds memory to your agents without burning their context.
+//! Nudge adds memory to your agents without burning their context.
 
-use color_eyre::Result;
+use color_eyre::{Result, Section};
 use tracing::{instrument, level_filters::LevelFilter};
 
 mod cmd;
@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Pavlov adds memory to your agents.
+/// Nudge adds memory to your agents.
 #[derive(Parser)]
 #[command(author, version, about)]
 struct Cli {
@@ -34,6 +34,18 @@ fn main() -> Result<()> {
     color_eyre::install()?;
     let cli = Cli::parse();
 
+    // Note: in normal operation, Claude Code invokes `nudge claude hook` as a
+    // subprocess, which gives it access to `stderr` if the hook exits with an
+    // "interrupt" response. This means that by default, we only log warnings;
+    // the intention with tracing usage in this binary is to support manual
+    // debugging with `NUDGE_LOG` directives.
+    //
+    // Examples:
+    // - `NUDGE_LOG=trace` to log all messages
+    // - `NUDGE_LOG=debug` to log debug, info, warn, and error messages
+    // - `NUDGE_LOG=info` to log info, warn, and error messages
+    // - `NUDGE_LOG=warn` to log warn and error messages (this is the default)
+    // - `NUDGE_LOG=error` to log only error messages
     tracing_subscriber::registry()
         .with(ErrorLayer::default())
         .with(
@@ -48,14 +60,19 @@ fn main() -> Result<()> {
         )
         .with(
             tracing_subscriber::EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("NUDGE_LOG")
+                .with_default_directive(LevelFilter::ERROR.into())
                 .from_env_lossy(),
         )
         .init();
 
+    // The suggestion is only added if the command fails; the intention here is
+    // that users or claude code can see an error and then run the command to
+    // learn more about debugging nudge.
     match cli.command {
         Commands::Claude(config) => cmd::claude::main(config),
         Commands::Validate(config) => cmd::validate::main(config),
         Commands::Test(config) => cmd::test::main(config),
     }
+    .suggestion("Run `nudge claude docs` for documentation on writing/debugging Claude Code rules.")
 }

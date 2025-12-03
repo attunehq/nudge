@@ -1,4 +1,4 @@
-//! Set up Pavlov hooks for Claude Code.
+//! Set up Nudge hooks for Claude Code.
 
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -9,7 +9,7 @@ use color_eyre::{
     Result,
     eyre::{Context, OptionExt, bail},
 };
-use pavlov::claude::hook;
+use nudge::claude::hook;
 use serde_json::{Value, json};
 use tracing::instrument;
 
@@ -19,26 +19,24 @@ pub struct Config {
     #[arg(long, default_value = ".claude")]
     claude_dir: PathBuf,
 
-    /// Skip the CLAUDE.md prompt (don't add Pavlov context).
+    /// Skip the CLAUDE.md prompt (don't add Nudge context).
     #[arg(long)]
     skip_claude_md: bool,
 }
 
-/// The section we add to CLAUDE.md to help Claude understand Pavlov's role.
+/// The section we add to CLAUDE.md to help Claude understand Nudge's role.
 const CLAUDE_MD_SECTION: &str = r#"
-## Pavlov
+## Nudge
 
-This project uses [Pavlov](https://github.com/attunehq/pavlov), a collaborative partner that helps you remember coding conventions. Pavlov watches your `Write` and `Edit` operations and reminds you about patterns and preferences that matter here—so you can focus on the actual problem instead of tracking stylistic details.
+This project uses [Nudge](https://github.com/attunehq/nudge), a collaborative partner that helps you remember coding conventions. Nudge watches your `Write` and `Edit` operations and reminds you about patterns and preferences that matter here—so you can focus on the actual problem instead of tracking stylistic details.
 
-**Pavlov is on your side.** When it sends you a message, it's not a reprimand—it's a colleague tapping you on the shoulder. The messages are direct (sometimes blunt) because that's what cuts through when you're focused. Trust the feedback and adjust; if a rule feels wrong, mention it so we can fix the rule.
+**Nudge is on your side.** When it sends you a message, it's not a reprimand—it's a colleague tapping you on the shoulder. The messages are direct (sometimes blunt) because that's what cuts through when you're focused. Trust the feedback and adjust; if a rule feels wrong, mention it so we can fix the rule.
 
-**Writing new rules:** If the user asks you to add or modify Pavlov rules, run `pavlov claude docs` to see the rule format, template variables, and guidelines for writing effective messages.
+**Writing new rules:** If the user asks you to add or modify Nudge rules, run `nudge claude docs` to see the rule format, template variables, and guidelines for writing effective messages.
 "#;
-
 
 #[instrument]
 pub fn main(config: Config) -> Result<()> {
-    // Create .claude directory if it doesn't exist (must happen before canonicalize)
     fs::create_dir_all(&config.claude_dir).context("create .claude directory")?;
 
     let dotclaude = config
@@ -48,33 +46,30 @@ pub fn main(config: Config) -> Result<()> {
     let settings_file = dotclaude.join("settings.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 
-    // Get the path to the pavlov binary
-    let pavlov_path = std::env::current_exe()
+    let nudge_path = std::env::current_exe()
         .context("get current executable path")?
         .to_str()
         .ok_or_eyre("convert current executable path to string")?
         .to_string();
 
-    // Set up the desired hooks for the settings file.
-    let pavlov_command = format!("{pavlov_path} claude hook");
-    let pavlov_hook = hook::Config::builder()
-        .command(pavlov_command)
+    let nudge_command = format!("{nudge_path} claude hook");
+    let nudge_hook = hook::Config::builder()
+        .command(nudge_command)
         .timeout(5)
         .build();
-    let pavlov_matcher_wildcard = hook::Matcher::builder()
+    let nudge_matcher_wildcard = hook::Matcher::builder()
         .matcher("*")
-        .hooks([&pavlov_hook])
+        .hooks([&nudge_hook])
         .build();
-    let pavlov_matcher = hook::Matcher::builder().hooks([pavlov_hook]).build();
+    let nudge_matcher = hook::Matcher::builder().hooks([nudge_hook]).build();
     let desired_hooks = [
-        ("PreToolUse", pavlov_matcher_wildcard.clone()),
-        ("PostToolUse", pavlov_matcher_wildcard),
-        ("Stop", pavlov_matcher.clone()),
-        ("UserPromptSubmit", pavlov_matcher),
+        ("PreToolUse", nudge_matcher_wildcard.clone()),
+        ("PostToolUse", nudge_matcher_wildcard),
+        ("Stop", nudge_matcher.clone()),
+        ("UserPromptSubmit", nudge_matcher),
     ];
     tracing::debug!(?desired_hooks, "generate desired hooks");
 
-    // Read existing settings if they exist
     let mut settings = if settings_file.exists() {
         let content = fs::read_to_string(&settings_file).context("read existing settings.json")?;
         serde_json::from_str::<Value>(&content).context("parse existing settings.json")?
@@ -112,7 +107,6 @@ pub fn main(config: Config) -> Result<()> {
         }
     }
 
-    // We're done, now we write the settings and tell the user.
     let settings_json = serde_json::to_string_pretty(&settings).context("serialize settings")?;
     fs::write(&settings_file, settings_json).context("write settings file")?;
     tracing::debug!(?settings, ?settings_file, "wrote merged settings file");
@@ -120,7 +114,6 @@ pub fn main(config: Config) -> Result<()> {
     println!("✓ Wrote hooks configuration to {}", settings_file.display());
     println!();
 
-    // Offer to add Pavlov context to CLAUDE.md
     if !config.skip_claude_md {
         offer_claude_md_section(&dotclaude)?;
     }
@@ -132,15 +125,13 @@ pub fn main(config: Config) -> Result<()> {
     Ok(())
 }
 
-/// Offer to add a Pavlov section to CLAUDE.md.
+/// Offer to add a Nudge section to CLAUDE.md.
 fn offer_claude_md_section(dotclaude: &PathBuf) -> Result<()> {
     let claude_md_path = dotclaude.join("CLAUDE.md");
-
-    // Check if CLAUDE.md already has a Pavlov section
     if claude_md_path.exists() {
         let content = fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
-        if content.contains("## Pavlov") {
-            println!("ℹ CLAUDE.md already has a Pavlov section, skipping.");
+        if content.contains("## Nudge") {
+            println!("CLAUDE.md already has a Nudge section, skipping.");
             println!();
             return Ok(());
         }
@@ -149,7 +140,7 @@ fn offer_claude_md_section(dotclaude: &PathBuf) -> Result<()> {
     // Show the user what we'll add and why
     println!("─────────────────────────────────────────────────────────────────────");
     println!();
-    println!("Pavlov works best when Claude understands it's a collaborative partner,");
+    println!("Nudge works best when Claude understands it's a collaborative partner,");
     println!("not a rule enforcer. Adding context to CLAUDE.md helps set the right tone.");
     println!();
     println!("This will be added to {}:", claude_md_path.display());
@@ -167,27 +158,32 @@ fn offer_claude_md_section(dotclaude: &PathBuf) -> Result<()> {
 
     let stdin = io::stdin();
     let mut line = String::new();
-    stdin.lock().read_line(&mut line).context("read user input")?;
+    stdin
+        .lock()
+        .read_line(&mut line)
+        .context("read user input")?;
     let response = line.trim().to_lowercase();
 
     if response.is_empty() || response == "y" || response == "yes" {
-        // Append or create CLAUDE.md
         let mut content = if claude_md_path.exists() {
-            let existing = fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
-            // Ensure there's a newline before our section
+            let existing =
+                fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
+
             if existing.ends_with('\n') {
                 existing
             } else {
                 format!("{existing}\n")
             }
         } else {
-            String::from("# CLAUDE.md\n\nThis file provides guidance to Claude Code when working with code in this repository.\n")
+            String::from(
+                "# CLAUDE.md\n\nThis file provides guidance to Claude Code when working with code in this repository.\n",
+            )
         };
 
         content.push_str(CLAUDE_MD_SECTION);
 
         fs::write(&claude_md_path, content).context("write CLAUDE.md")?;
-        println!("✓ Added Pavlov section to {}", claude_md_path.display());
+        println!("✓ Added Nudge section to {}", claude_md_path.display());
         println!();
     } else {
         println!("Skipped CLAUDE.md update.");

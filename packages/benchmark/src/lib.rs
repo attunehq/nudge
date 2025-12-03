@@ -1,4 +1,4 @@
-//! Benchmark harness for testing Pavlov rule effectiveness.
+//! Benchmark harness for testing Nudge rule effectiveness.
 //!
 //! Scenarios test along multiple axes:
 //! - Agent: which agent are we testing?
@@ -24,11 +24,11 @@
 //! - Current SOTA coding agents have an inherent issue following specific
 //!   guidelines, because guidance competes with general context when performing
 //!   the task.
-//! - Pavlov addresses this issue by encoding guidance outside of the standard
+//! - Nudge addresses this issue by encoding guidance outside of the standard
 //!   context loop, in effect providing a learning layer on top of the agent.
 //!
 //! The scenarios in this benchmark are designed to evaluate the effectiveness
-//! of the Pavlov approach compared to other approaches.
+//! of the Nudge approach compared to other approaches.
 
 use std::{fs::read_to_string, path::Path};
 
@@ -88,7 +88,7 @@ pub fn evaluate(scenario: &Scenario, agent: &Agent, guidance: Guidance) -> Resul
     tracing::debug!("writing guidance");
     match guidance {
         Guidance::None => Ok(()),
-        Guidance::Pavlov => agent.configure_pavlov(root),
+        Guidance::Nudge => agent.configure_nudge(root),
         Guidance::File => agent.write_context(root, &scenario.guidance),
     }?;
 

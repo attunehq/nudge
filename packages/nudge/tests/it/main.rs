@@ -1,7 +1,7 @@
 //! Integration tests for the user-defined rules system.
 //!
 //! These tests verify that the YAML-based rule system works correctly:
-//! - Rules are loaded from .pavlov.yaml
+//! - Rules are loaded from .nudge.yaml
 //! - Rules match based on hook type, tool name, file pattern, and content
 //! - Rules produce correct responses (interrupt vs continue vs passthrough)
 
@@ -17,7 +17,7 @@ mod user_prompt;
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use xshell::Shell;
 
-/// Expected outcome from running a hook through pavlov.
+/// Expected outcome from running a hook through nudge.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expected {
     /// Passthrough: exit 0, no output
@@ -81,26 +81,26 @@ pub fn user_prompt_hook(prompt: &str) -> String {
     .to_string()
 }
 
-/// Run pavlov claude hook with the given input JSON and return (exit_code, output).
+/// Run nudge claude hook with the given input JSON and return (exit_code, output).
 pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
     use std::io::Write;
     use std::process::{Command, Stdio};
 
     // Build and get the binary path
     let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "pavlov"])
+        .args(["build", "--quiet", "-p", "nudge"])
         .status()
-        .expect("failed to build pavlov");
+        .expect("failed to build nudge");
     assert!(status.success(), "cargo build failed");
 
     // Run the binary directly with stdin
     let mut child = Command::new("cargo")
-        .args(["run", "--quiet", "-p", "pavlov", "--", "claude", "hook"])
+        .args(["run", "--quiet", "-p", "nudge", "--", "claude", "hook"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("failed to spawn pavlov");
+        .expect("failed to spawn nudge");
 
     // Write input to stdin
     {
@@ -110,7 +110,7 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
             .expect("failed to write to stdin");
     }
 
-    let output = child.wait_with_output().expect("failed to wait for pavlov");
+    let output = child.wait_with_output().expect("failed to wait for nudge");
 
     let exit_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -177,17 +177,17 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
     }
 }
 
-/// Run a pavlov subcommand and return (exit_code, stdout, stderr).
-pub fn run_pavlov(args: &[&str]) -> (i32, String, String) {
+/// Run a nudge subcommand and return (exit_code, stdout, stderr).
+pub fn run_nudge(args: &[&str]) -> (i32, String, String) {
     use std::process::{Command, Stdio};
 
     let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "pavlov"])
+        .args(["build", "--quiet", "-p", "nudge"])
         .status()
-        .expect("failed to build pavlov");
+        .expect("failed to build nudge");
     assert!(status.success(), "cargo build failed");
 
-    let mut cmd_args = vec!["run", "--quiet", "-p", "pavlov", "--"];
+    let mut cmd_args = vec!["run", "--quiet", "-p", "nudge", "--"];
     cmd_args.extend(args);
 
     let output = Command::new("cargo")
@@ -195,7 +195,7 @@ pub fn run_pavlov(args: &[&str]) -> (i32, String, String) {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .expect("failed to run pavlov");
+        .expect("failed to run nudge");
 
     let exit_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();

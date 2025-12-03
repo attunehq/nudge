@@ -2,11 +2,11 @@
 
 ## Summary
 
-Add support for user-defined rules that can be specified in configuration files (YAML, TOML, JSON, JSONC). This enables users to customize Pavlov's behavior without modifying Rust code.
+Add support for user-defined rules that can be specified in configuration files (YAML, TOML, JSON, JSONC). This enables users to customize Nudge's behavior without modifying Rust code.
 
 ## Motivation
 
-Currently, all Pavlov rules are hardcoded in `src/rules.rs`. This has several limitations:
+Currently, all Nudge rules are hardcoded in `src/rules.rs`. This has several limitations:
 
 1. **No customization**: Users can't add project-specific rules
 2. **No personalization**: Users can't add personal coding preferences
@@ -24,18 +24,18 @@ User-defined rules enable:
 
 ### Config File Locations
 
-Pavlov searches for rule files in YAML format. All sources are additive:
+Nudge searches for rule files in YAML format. All sources are additive:
 
 | Location | Purpose |
 |----------|---------|
-| `~/.config/pavlov/rules.yaml` | User-level rules (personal preferences) |
-| `.pavlov.yaml` | Project rules in single file |
-| `.pavlov/**/*.yaml` | Project rules in individual files |
+| `~/Library/Application Support/com.attunehq.nudge/rules.yaml` | User-level rules (personal preferences) |
+| `.nudge.yaml` | Project rules in single file |
+| `.nudge/**/*.yaml` | Project rules in individual files |
 
 **Loading order** (all additive):
-1. `~/.config/pavlov/rules.yaml` if it exists
-2. `.pavlov.yaml` if it exists
-3. `.pavlov/` directory walked recursively in stable order (use `walkdir::WalkDir`'s sorted walking), loading all `*.yaml` files
+1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
+2. `.nudge.yaml` if it exists
+3. `.nudge/` directory walked recursively in stable order (use `walkdir::WalkDir`'s sorted walking), loading all `*.yaml` files
 
 All rules from all sources are collected into a single list, where the list is ordered by (1) the order in which the file was loaded and (2) the order of the rule within the file. In other words, the rules in each distinct file "extend" the global pool of rules when loaded. Multiple rules with the same name are allowed, but they emit a `tracing::warn!` at startup.
 
@@ -46,7 +46,7 @@ All rules from all sources are collected into a single list, where the list is o
 ### Rule Schema
 
 ```yaml
-# .pavlov/rules.yaml
+# .nudge/rules.yaml
 version: 1
 
 rules:
@@ -247,10 +247,10 @@ rules:
       This file is quite large (>10k chars). Consider splitting it into smaller modules.
 ```
 
-#### 6. Single-rule file (in `.pavlov/` directory)
+#### 6. Single-rule file (in `.nudge/` directory)
 
 ```yaml
-# .pavlov/no-console.yaml
+# .nudge/no-console.yaml
 version: 1
 
 rules:
@@ -273,15 +273,15 @@ Add a new CLI command to validate rule configs:
 
 ```bash
 # Validate all discoverable config files
-pavlov validate
+nudge validate
 
 # Validate a specific file
-pavlov validate .pavlov/rules.yaml
+nudge validate .nudge/rules.yaml
 ```
 
 Output on success:
 ```
-.pavlov/rules.yaml: 5 rules loaded
+.nudge/rules.yaml: 5 rules loaded
   - no-console-log (PreToolUse, interrupt)
   - test-naming (PreToolUse, continue)
   - server-start-hint (UserPromptSubmit, continue)
@@ -297,13 +297,13 @@ Add a command to test rules against sample input:
 
 ```bash
 # Test with inline content
-pavlov test --rule no-console-log --tool Write --file app.ts --content 'console.log("hi")'
+nudge test --rule no-console-log --tool Write --file app.ts --content 'console.log("hi")'
 
 # Test with file
-pavlov test --rule no-console-log --tool Write --file app.ts --content-file /path/to/sample.ts
+nudge test --rule no-console-log --tool Write --file app.ts --content-file /path/to/sample.ts
 
 # Test user prompt rule
-pavlov test --rule server-start-hint --prompt "how do I start the server?"
+nudge test --rule server-start-hint --prompt "how do I start the server?"
 ```
 
 Output:
@@ -327,8 +327,8 @@ src/
 │   ├── eval.rs          # Rule evaluation and response aggregation
 │   └── schema.rs        # Rule schema types
 ├── cmd/
-│   ├── validate.rs      # New: pavlov validate
-│   └── test.rs          # New: pavlov test
+│   ├── validate.rs      # New: nudge validate
+│   └── test.rs          # New: nudge test
 examples/
 ├── rules/
 │   └── rust.yaml        # Example rules (current rules, rewritten as YAML)
@@ -465,18 +465,18 @@ pub fn load_all_rules() -> Result<Vec<CompiledRule>> {
     let mut rules = vec![];
 
     // 1. User-level rules
-    if let Some(config_dir) = dirs::config_dir() {
-        let path = config_dir.join("pavlov/rules.yaml");
+    if let Some(proj_dirs) = ProjectDirs::from("com", "attunehq", "nudge") {
+        let path = proj_dirs.config_dir().join("rules.yaml");
         rules.extend(load_rules_from_file(&path)?);
     }
 
     // 2. Project-level single file
-    rules.extend(load_rules_from_file(Path::new(".pavlov.yaml"))?);
+    rules.extend(load_rules_from_file(Path::new(".nudge.yaml"))?);
 
     // 3. Project-level directory (walk all .yaml files)
-    let pavlov_dir = Path::new(".pavlov");
-    if pavlov_dir.is_dir() {
-        for entry in walkdir::WalkDir::new(pavlov_dir)
+    let nudge_dir = Path::new(".nudge");
+    if nudge_dir.is_dir() {
+        for entry in walkdir::WalkDir::new(nudge_dir)
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| e.path().extension() == Some("yaml".as_ref()))
@@ -560,7 +560,7 @@ impl CompiledRule {
 
 3. **Implement evaluation**: Replace `evaluate_all()` with `RuleRegistry` that aggregates all matching rules.
 
-4. **Add CLI commands**: `pavlov validate` and `pavlov test` for rule development.
+4. **Add CLI commands**: `nudge validate` and `nudge test` for rule development.
 
 ## Alternatives Considered
 
@@ -597,12 +597,12 @@ impl CompiledRule {
 
 5. **All matching rules fire**: Rather than first-match-wins, all rules that match are evaluated and their messages concatenated. If any rule returns `interrupt`, the operation is blocked. This allows multiple rules to provide feedback simultaneously.
 
-6. **Flexible project structure**: Projects can use `.pavlov.yaml` for a single file, `.pavlov/*.yaml` for organized rule files, or both. File names don't matter - only the content.
+6. **Flexible project structure**: Projects can use `.nudge.yaml` for a single file, `.nudge/*.yaml` for organized rule files, or both. File names don't matter - only the content.
 
 ## Appendix: Full Schema Reference
 
 ```yaml
-# .pavlov/rules.yaml (or .pavlov.yaml, or .pavlov/*.yaml)
+# .nudge/rules.yaml (or .nudge.yaml, or .nudge/*.yaml)
 
 # Schema version (required)
 version: 1
@@ -661,4 +661,4 @@ rules:
 ## References
 
 - [Claude Code Hooks Documentation](https://docs.anthropic.com/en/docs/claude-code/hooks)
-- [Example Pavlov rules](../examples/rules/rust.yaml)
+- [Example Nudge rules](../examples/rules/rust.yaml)

@@ -2,8 +2,8 @@
 
 use clap::Args;
 use color_eyre::{Result, eyre::Context};
-use pavlov::claude::hook::{Hook, Response};
-use pavlov::rules;
+use nudge::claude::hook::{Hook, Response};
+use nudge::rules;
 use tracing::instrument;
 
 #[derive(Args, Clone, Debug)]

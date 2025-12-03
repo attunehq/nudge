@@ -6,7 +6,7 @@ use bon::Builder;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// Hooks handled by Pavlov.
+/// Hooks handled by Nudge.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "hook_event_name")]
 pub enum Hook {
@@ -41,8 +41,9 @@ pub struct PreToolUsePayload {
     pub tool_use_id: String,
 
     /// The input to the tool.
-    ///
     /// This is a JSON object whose shape is determined by `tool_name`.
+    ///
+    /// TODO: Refactor to a more structured type.
     pub tool_input: Value,
 }
 
@@ -56,13 +57,15 @@ pub struct PostToolUsePayload {
     pub tool_use_id: String,
 
     /// The input to the tool.
-    ///
     /// This is a JSON object whose shape is determined by `tool_name`.
+    ///
+    /// TODO: Refactor to a more structured type.
     pub tool_input: Value,
 
     /// The response from the tool.
-    ///
     /// This is a JSON object whose shape is determined by `tool_name`.
+    ///
+    /// TODO: Refactor to a more structured type.
     pub tool_response: Value,
 }
 

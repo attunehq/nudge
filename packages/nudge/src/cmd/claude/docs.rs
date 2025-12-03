@@ -1,4 +1,4 @@
-//! Documentation for writing Pavlov rules.
+//! Documentation for writing Nudge rules.
 
 use clap::Args;
 use color_eyre::Result;
@@ -11,15 +11,15 @@ pub fn main(_config: Config) -> Result<()> {
     Ok(())
 }
 
-const DOCS: &str = r#"# Pavlov Rule Writing Guide
+const DOCS: &str = r#"# Nudge Rule Writing Guide
 
-## What is Pavlov?
+## What is Nudge?
 
-Pavlov is a **collaborative partner** for Claude Code. It watches `Write` and `Edit`
+Nudge is a **collaborative partner** for Claude Code. It watches `Write` and `Edit`
 operations and reminds you about coding conventions—so you can focus on the user's
 actual problem instead of tracking dozens of stylistic details.
 
-**Pavlov is on your side.** When it sends a message, it's not a reprimand—it's a
+**Nudge is on your side.** When it sends a message, it's not a reprimand—it's a
 colleague tapping you on the shoulder. The messages are direct (sometimes blunt)
 because that's what cuts through when you're focused. Trust the feedback.
 
@@ -28,9 +28,9 @@ because that's what cuts through when you're focused. Trust the feedback.
 Rules are loaded from these locations (all additive):
 
 ```
-~/.config/pavlov/rules.yaml    # User-level (personal preferences)
-.pavlov.yaml                   # Project root (single file)
-.pavlov/**/*.yaml              # Project directory (organized by topic)
+~/Library/Application Support/com.attunehq.nudge/rules.yaml  # User-level (macOS)
+.nudge.yaml                   # Project root (single file)
+.nudge/**/*.yaml              # Project directory (organized by topic)
 ```
 
 ## Rule Format
@@ -74,7 +74,7 @@ Use these in your `message` to be specific about what needs to change:
 
 ## Writing Effective Messages
 
-Pavlov messages must be **direct** to be effective. Gentle suggestions get ignored.
+Nudge messages must be **direct** to be effective. Gentle suggestions get ignored.
 
 **Pattern:** what's wrong → where → how to fix → retry
 
@@ -157,10 +157,10 @@ the operation is blocked.
 
 ```bash
 # Validate rule syntax
-pavlov validate
+nudge validate
 
 # Test a specific rule
-pavlov test --rule no-inline-imports --tool Write --file test.rs --content "fn f() { use std::io; }"
+nudge test --rule no-inline-imports --tool Write --file test.rs --content "fn f() { use std::io; }"
 ```
 
 ## Rule Writing Is Iterative

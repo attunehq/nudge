@@ -1,4 +1,4 @@
-# Test rules for Pavlov integration tests.
+# Test rules for Nudge integration tests.
 # Keep these rules simple and focused on testing the rule system itself.
 
 version: 1

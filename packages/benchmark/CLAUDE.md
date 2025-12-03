@@ -1,6 +1,6 @@
 # Benchmark Package
 
-This package contains the benchmark CLI for testing Pavlov rule enforcement.
+This package contains the benchmark CLI for testing Nudge rule enforcement.
 
 ## Status: Deprioritized
 

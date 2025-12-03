@@ -118,26 +118,26 @@ impl Agent {
         }
     }
 
-    /// Configure Pavlov for the agent.
+    /// Configure Nudge for the agent.
     #[tracing::instrument]
-    pub fn configure_pavlov(&self, project: &Path) -> Result<()> {
+    pub fn configure_nudge(&self, project: &Path) -> Result<()> {
         match self {
-            Agent::ClaudeCode(_) => std::process::Command::new("pavlov")
+            Agent::ClaudeCode(_) => std::process::Command::new("nudge")
                 .arg("claude")
                 .arg("setup")
                 .current_dir(project)
-                .tap(|cmd| tracing::debug!(?cmd, "running Pavlov setup"))
+                .tap(|cmd| tracing::debug!(?cmd, "running Nudge setup"))
                 .output()
-                .with_context(|| format!("run Pavlov setup for {self:?}"))
+                .with_context(|| format!("run Nudge setup for {self:?}"))
                 .and_then(|output| {
                     if output.status.success() {
-                        tracing::debug!("Pavlov setup succeeded");
+                        tracing::debug!("Nudge setup succeeded");
                         Ok(())
                     } else {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        tracing::debug!(?stderr, ?stdout, "Pavlov setup failed");
-                        Err(eyre!("run Pavlov setup"))
+                        tracing::debug!(?stderr, ?stdout, "Nudge setup failed");
+                        Err(eyre!("run Nudge setup"))
                             .section(stdout.to_string().header("Stdout:"))
                             .section(stderr.to_string().header("Stderr:"))
                     }
@@ -209,8 +209,8 @@ pub enum Guidance {
     #[default]
     None,
 
-    /// Set up Pavlov in the environment.
-    Pavlov,
+    /// Set up Nudge in the environment.
+    Nudge,
 
     /// Write the scenario's guidance content to the agent's context file.
     ///
@@ -223,7 +223,7 @@ impl std::fmt::Display for Guidance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::None => write!(f, "None"),
-            Self::Pavlov => write!(f, "Pavlov"),
+            Self::Nudge => write!(f, "Nudge"),
             Self::File => write!(f, "File"),
         }
     }
