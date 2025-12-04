@@ -23,6 +23,10 @@ pub enum Hook {
 
     /// Sent when the user submits a prompt.
     UserPromptSubmit(UserPromptSubmitPayload),
+
+    /// Other hook types that Nudge doesn't handle.
+    #[serde(other)]
+    Other,
 }
 
 impl Hook {
@@ -32,8 +36,10 @@ impl Hook {
             Hook::PreToolUse(payload) => match payload {
                 PreToolUsePayload::Write(payload) => Source::from(&payload.tool_input.content),
                 PreToolUsePayload::Edit(payload) => Source::from(&payload.tool_input.new_string),
+                PreToolUsePayload::Other => Source::from(""),
             },
             Hook::UserPromptSubmit(payload) => Source::from(&payload.prompt),
+            Hook::Other => Source::from(""),
         }
     }
 }
@@ -63,6 +69,10 @@ pub enum PreToolUsePayload {
 
     /// The Edit tool.
     Edit(PreToolUseEditPayload),
+
+    /// Other tools that Nudge doesn't handle.
+    #[serde(other)]
+    Other,
 }
 
 /// Payload for the `Edit` tool.

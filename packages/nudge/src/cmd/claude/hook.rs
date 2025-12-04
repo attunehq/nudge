@@ -29,6 +29,7 @@ pub fn main(_config: Config) -> Result<()> {
     match hook {
         Hook::PreToolUse(payload) => main_pretooluse(payload, &rules),
         Hook::UserPromptSubmit(payload) => main_userpromptsubmit(payload, &rules),
+        Hook::Other => Ok(()), // Passthrough for unhandled hook types
     }
 }
 
@@ -36,6 +37,7 @@ fn main_pretooluse(payload: PreToolUsePayload, rules: &[Rule]) -> Result<()> {
     match payload {
         PreToolUsePayload::Write(payload) => main_pretooluse_write(payload, rules),
         PreToolUsePayload::Edit(payload) => main_pretooluse_edit(payload, rules),
+        PreToolUsePayload::Other => Ok(()), // Passthrough for unhandled tool types
     }
 }
 

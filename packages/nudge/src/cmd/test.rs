@@ -61,6 +61,7 @@ pub fn main(config: Config) -> Result<()> {
         let hook_type = match &hook {
             Hook::PreToolUse(_) => "Interrupt",
             Hook::UserPromptSubmit(_) => "Continue",
+            Hook::Other => "Passthrough",
         };
         println!("Result: {hook_type}");
         println!();
@@ -93,6 +94,7 @@ fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<nudge::snippet::Span>, Source
                 let source = Source::from(&payload.tool_input.new_string);
                 (spans, source)
             }
+            PreToolUsePayload::Other => (Vec::new(), Source::from("")),
         },
         Hook::UserPromptSubmit(payload) => {
             let spans = rule
@@ -102,6 +104,7 @@ fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<nudge::snippet::Span>, Source
             let source = Source::from(&payload.prompt);
             (spans, source)
         }
+        Hook::Other => (Vec::new(), Source::from("")),
     }
 }
 
