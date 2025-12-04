@@ -34,6 +34,9 @@ cargo test -p nudge test_name
 # Run the CLI
 cargo run -p nudge -- claude hook      # Respond to hook (reads JSON from stdin)
 cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.json
+cargo run -p nudge -- claude docs      # Print rule writing documentation
+cargo run -p nudge -- test             # Test a rule against sample input
+cargo run -p nudge -- validate         # Validate rule config files
 ```
 
 ## Architecture
@@ -43,23 +46,35 @@ cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.jso
 ```
 nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
 nudge claude setup  - Writes hook configuration to .claude/settings.json
+nudge claude docs   - Prints documentation for writing rules
+nudge test          - Test a specific rule against sample input
+nudge validate      - Validate and display parsed rule configs
 ```
 
 ### Module Layout
 
 - `src/main.rs` - CLI entry point using clap
-- `src/cmd/claude/hook.rs` - Hook command: deserializes input, calls `rules::evaluate_all()`, emits response
+- `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.json
-- `src/rules.rs` - All rule functions and `evaluate_all()` dispatcher
-- `src/claude/hook.rs` - Types for hook payloads and responses (Hook, Response, etc.)
+- `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
+- `src/cmd/test.rs` - Test command: test a rule against sample input
+- `src/cmd/validate.rs` - Validate command: parse and display rule configs
+- `src/rules.rs` - Rule loading from config files
+- `src/rules/schema.rs` - Rule schema types and matchers (serde types that double as evaluators)
+- `src/claude/hook.rs` - Hook payload and response types
+- `src/snippet.rs` - Code snippet rendering for rule violations (uses `annotate-snippets`)
 
 ### How Nudge Communicates
 
 When Nudge has something to share, it responds in one of three ways:
 
 - **Passthrough**: Nothing to note—carry on!
-- **Continue**: The code is written, and Nudge sends you a gentle reminder to consider
-- **Interrupt**: Nudge caught something worth fixing first—it'll explain what and why
+- **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
+- **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
+
+The response type is determined by the hook type:
+- `PreToolUse` rules always **interrupt** (block the Write/Edit operation)
+- `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 
 ## Keeping Documentation in Sync
 
@@ -69,7 +84,7 @@ Nudge has three documentation sources that must stay aligned. When updating one,
 |----------|----------|---------|-------|
 | **CLAUDE.md** | You, developing Nudge | How Nudge works under the hood | Architecture, internals, testing patterns |
 | **README.md** | Humans evaluating or contributing | Why Nudge exists and what it believes | Philosophy, motivation, the collaborative framing |
-| **`nudge claude docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, template variables, examples |
+| **`nudge claude docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, examples |
 
 **CLAUDE.md** (this file) is for *developing* Nudge—understanding the module layout, how to add features, how tests work.
 
@@ -77,4 +92,4 @@ Nudge has three documentation sources that must stay aligned. When updating one,
 
 **`nudge claude docs`** (`src/cmd/claude/docs.rs`) is for *using* Nudge—a self-contained reference that future Claude instances or humans can consult when writing rules. It should be scannable, copy-pasteable, and not assume any prior context.
 
-When you change something fundamental (like adding a template variable, changing the rule format, or refining the collaborative framing), update all three.
+When you change something fundamental (like changing the rule format or refining the collaborative framing), update all three.

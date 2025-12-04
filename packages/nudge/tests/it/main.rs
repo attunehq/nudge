@@ -119,30 +119,11 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
 
     // For interrupt responses, output goes to stderr
     // For continue responses, output goes to stdout
-    // Combine them but filter out compiler warnings
-    let is_json = |line: &str| {
-        let trimmed = line.trim();
-        trimmed.starts_with('{') || trimmed.starts_with('"')
-    };
-
-    let combined = if !stdout.trim().is_empty() && is_json(stdout.trim()) {
+    // cargo -q suppresses compiler warnings, so we can use output directly
+    let combined = if !stdout.trim().is_empty() {
         stdout.trim().to_string()
-    } else if !stderr.trim().is_empty() {
-        // Filter out compiler warnings from stderr
-        stderr
-            .lines()
-            .filter(|line| {
-                let trimmed = line.trim();
-                !trimmed.starts_with("warning:")
-                    && !trimmed.contains("--> packages/")
-                    && !trimmed.contains("= note:")
-                    && !trimmed.starts_with('|')
-                    && !trimmed.is_empty()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
     } else {
-        String::new()
+        stderr.trim().to_string()
     };
 
     (exit_code, combined)
@@ -151,7 +132,7 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
 pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
     match expected {
         Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0)");
+            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0), output: {output}");
             assert!(
                 output.is_empty(),
                 "expected no output for passthrough, got: {output}"
@@ -160,19 +141,16 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
         Expected::Continue => {
             pretty_assert_eq!(exit_code, 0, "expected continue (exit 0)");
             assert!(
-                output.contains(r#""continue":true"#),
-                "expected continue:true in output, got: {output}"
+                !output.is_empty(),
+                "expected non-empty output for continue, got nothing"
             );
+            // Continue responses are plain text for UserPromptSubmit
         }
         Expected::Interrupt => {
-            pretty_assert_eq!(
-                exit_code,
-                2,
-                "expected interrupt (exit 2), output: {output}"
-            );
+            pretty_assert_eq!(exit_code, 0, "expected interrupt (exit 0), output: {output}");
             assert!(
-                output.contains(r#""continue":false"#),
-                "expected continue:false in output, got: {output}"
+                output.contains(r#""permissionDecision":"deny""#),
+                "expected permissionDecision:deny in output, got: {output}"
             );
         }
     }

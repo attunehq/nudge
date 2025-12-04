@@ -16,9 +16,9 @@ Nudge offloads those details. You encode your preferences once, and Nudge catche
 
 Nudge uses Claude Code's [hooks system](https://docs.anthropic.com/en/docs/claude-code/hooks) to watch what it does. When something matches a rule you've defined:
 
-- **Continue**: The code is written, and Nudge injects a gentle reminder for Claude to consider
-- **Interrupt**: Nudge catches the issue before it's written and explains what to do instead
-- **Passthrough**: No opinion, everything proceeds normally
+- **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
+- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide Claude
+- **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
 
@@ -27,7 +27,6 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Preference           | What Nudge reminds Claude about                            |
 |----------------------|-------------------------------------------------------------|
 | No inline imports    | Move `use` statements to the top of the file                |
-| Field spacing        | Add blank lines between struct fields for readability       |
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
@@ -44,16 +43,28 @@ This isn't about being harsh, it's about being effective. Think of a rally copil
 
 **Guidelines for rule messages:**
 
-- **Be specific**: "Move `use` statements to the top of the file" not "Consider reorganizing imports"
+- **Be specific**: "Move this import to the top of the file" not "Consider reorganizing imports"
 - **Be direct**: "Stop. Fix this first." not "You might want to think about..."
-- **Explain why** (briefly): "Use turbofish- LHS annotations clutter the variable name"
+- **Explain why** (briefly): "Use turbofish—LHS annotations clutter the variable name"
 - **Give the fix**: Don't just say what's wrong; say what to do instead
 - **End with "then retry"**: Tell Claude to retry the operation after fixing
-- **Use template variables**: `{{ lines }}`, `{{ file_path }}`, etc. to point to exactly what needs to change
+- **Write for one match**: Your message appears at each match location in a code snippet
 
-The pattern: **what's wrong** → **where** → **how to fix** → **retry**.
+Nudge displays violations like Rust compiler errors—your message appears directly at the matched code:
 
-For the full rule syntax, template variables, and copy-pasteable examples, run `nudge claude docs`.
+```
+error: rule violation
+  |
+2 |     use std::io;
+  | ^^^^^^^^ Move this import to the top of the file, then retry.
+3 |     use std::fs;
+  | ^^^^^^^^ Move this import to the top of the file, then retry.
+  |
+```
+
+The pattern: **what's wrong** → **how to fix** → **retry**.
+
+For the full rule syntax and copy-pasteable examples, run `nudge claude docs`.
 
 ### Rule Writing Is Iterative
 
@@ -108,7 +119,14 @@ You'll see Nudge's hook being called and its response in the logs.
 
 ### Manual Testing
 
-You can test Nudge directly by piping hook JSON to it:
+You can test a specific rule with the `test` subcommand:
+
+```bash
+nudge test --rule no-inline-imports --tool Write --file test.rs \
+  --content $'fn main() {\n    use std::io;\n}'
+```
+
+Or pipe raw hook JSON to nudge directly:
 
 ```bash
 echo '{
@@ -123,12 +141,11 @@ echo '{
     "file_path": "test.rs",
     "content": "fn main() {\n    use std::io;\n}"
   }
-}' | cargo run -p nudge -- claude hook
+}' | nudge claude hook
 
-# Exit code 2 = Interrupt (Nudge caught something, instructs Claude to reconsider)
-# Exit code 0 with JSON = Continue (code written, with a soft reminder)
-# Exit code 0 with no output = Passthrough (nothing to note)
-echo $?
+# Exit 0 with JSON output = Interrupt (rule matched, operation blocked)
+# Exit 0 with plain text = Continue (UserPromptSubmit context injected)
+# Exit 0 with no output = Passthrough (nothing to note)
 ```
 
 ## Development

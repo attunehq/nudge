@@ -1,94 +1,84 @@
-# Example Nudge rules for Rust code style enforcement.
+# Nudge rules for Rust code style enforcement.
 #
 # These rules demonstrate how to convert common Rust coding guidelines
 # into Nudge rule definitions. Copy and adapt for your projects.
-#
-# To use: copy this file to `.nudge/rules.yaml` in your project.
 
 version: 1
 
 rules:
   # Catch `use` statements inside function bodies.
-  # Pattern: lines starting with horizontal whitespace (not newlines) followed by `use `
-  # Uses [ \t]+ instead of \s+ to avoid matching across line boundaries.
+  # Pattern: lines starting with horizontal whitespace followed by `use `.
+  # Limitation: This also triggers on `use` statements inside `mod test`;
+  #             to fix this we need to add treesitter parsing support.
   - name: no-inline-imports
     description: Move imports to the top of the file
+    message: Move this `use` statement to the top of the file with other imports, then retry.
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      content: "(?m)^[ \\t]+use "
-    action: interrupt
-    message: |
-      Move the `use` statement(s) on lines {{ lines }} to the top of the file with other imports, then retry this exact operation.
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "(?m)^[ \\t]+use "
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "(?m)^[ \\t]+use "
 
   # Catch left-hand side type annotations in variable declarations.
   # Pattern: `let name: Type = ...` or `let mut name: Type = ...`
   - name: no-lhs-type-annotations
     description: Use type inference or turbofish instead of LHS annotations
+    message: "Remove this type annotation. Use turbofish (`collect::<Vec<_>>()`) or type inference instead, then retry."
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      # Matches: let name: Type, let mut name: Type
-      # Excludes lines starting with // (handled in message)
-      content: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
-    action: interrupt
-    message: |
-      Remove LHS type annotations on lines {{ lines }}. Use turbofish (`collect::<Vec<_>>()`) or type inference instead, then retry.
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
 
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
-  # This targets code usage (method calls, function calls, generics) not imports.
   - name: no-qualified-paths
     description: Simplify qualified paths by adding imports
+    message: "Simplify this path by adding a `use` import at file top, then retry. Exception: keep qualified if it improves clarity."
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      # Matches: std::foo::bar::method, std::foo::bar(), std::foo::Bar<T>
-      # Only triggers for `std` paths; internal module paths like `cmd::foo::bar` are fine
-      content: "std(::[a-zA-Z_][a-zA-Z0-9_]*){2,}(::|\\(|<)"
-    action: interrupt
-    message: |
-      Simplify qualified paths on lines {{ lines }} by adding `use` imports at file top, then retry.
-      Exception: keep qualified if it improves clarity (e.g., `serde_json::to_string`).
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "std(::[a-zA-Z_][a-zA-Z0-9_]*){2,}(::|\\(|<)"
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "std(::[a-zA-Z_][a-zA-Z0-9_]*){2,}(::|\\(|<)"
 
   # Suggest using `pretty_assertions` for better test output.
   - name: prefer-pretty-assertions
     description: Use pretty_assertions in tests for better diff output
+    message: "Use `pretty_assert_eq!` instead. Add `use pretty_assertions::assert_eq as pretty_assert_eq;` at file top, then retry."
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      # Matches files using assert_eq! (likely tests)
-      content: "assert_eq!"
-    action: interrupt
-    message: |
-      Add `use pretty_assertions::assert_eq as pretty_assert_eq;` and use `pretty_assert_eq!` instead of `assert_eq!`, then retry.
-
-      Required changes:
-      - Ensure `pretty_assertions` is in dev-dependencies (run `cargo add pretty_assertions --dev` if needed)
-      - Add import: `use pretty_assertions::assert_eq as pretty_assert_eq;`
-      - Use `pretty_assert_eq!` instead of `assert_eq!`
-
-  # Require blank lines between struct fields and enum variants.
-  - name: require-field-spacing
-    description: Add blank lines between struct fields and enum variants
-    on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      # This is a simplified version - the original Rust code had complex logic
-      # to detect consecutive fields/variants without spacing.
-      # For full fidelity, you may need multiple rules or a custom tool.
-      content: "^\\s+(pub(\\s*\\([^)]*\\))?\\s+)?\\w+\\s*:\\s*\\S"
-    action: continue
-    message: |
-      Remember to add blank lines between struct fields and enum variants for readability.
-      Check lines {{ lines }} for potential spacing issues.
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "assert_eq!"
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "assert_eq!"

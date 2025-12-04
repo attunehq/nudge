@@ -3,197 +3,272 @@
 use std::path::PathBuf;
 
 use bon::Builder;
-use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use color_eyre::eyre::Result;
+use derive_more::{AsRef, Display};
+use serde::{Deserialize, Serialize, Serializer};
 
-/// Hooks handled by Nudge.
+use crate::{
+    rules::{
+        ContentMatcher, PreToolUseEditMatcher, PreToolUseWriteMatcher, UserPromptSubmitMatcher,
+    },
+    snippet::{Source, Span},
+};
+
+/// Claude Code hooks handled by Nudge.
 #[derive(Debug, Deserialize)]
 #[serde(tag = "hook_event_name")]
 pub enum Hook {
     /// Sent before a tool is used.
     PreToolUse(PreToolUsePayload),
 
-    /// Sent after a tool is used.
-    PostToolUse(PostToolUsePayload),
-
-    /// Sent when the main agent finishes sending output.
-    Stop(StopPayload),
-
     /// Sent when the user submits a prompt.
     UserPromptSubmit(UserPromptSubmitPayload),
 }
 
-/// Shared fields in all hook payloads.
-#[derive(Debug, Deserialize)]
-pub struct Context {
-    pub session_id: String,
-    pub transcript_path: PathBuf,
-    pub permission_mode: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PreToolUsePayload {
-    #[serde(flatten)]
-    pub context: Context,
-
-    pub cwd: PathBuf,
-    pub tool_name: String,
-    pub tool_use_id: String,
-
-    /// The input to the tool.
-    /// This is a JSON object whose shape is determined by `tool_name`.
-    ///
-    /// TODO: Refactor to a more structured type.
-    pub tool_input: Value,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PostToolUsePayload {
-    #[serde(flatten)]
-    pub context: Context,
-
-    pub cwd: PathBuf,
-    pub tool_name: String,
-    pub tool_use_id: String,
-
-    /// The input to the tool.
-    /// This is a JSON object whose shape is determined by `tool_name`.
-    ///
-    /// TODO: Refactor to a more structured type.
-    pub tool_input: Value,
-
-    /// The response from the tool.
-    /// This is a JSON object whose shape is determined by `tool_name`.
-    ///
-    /// TODO: Refactor to a more structured type.
-    pub tool_response: Value,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StopPayload {
-    #[serde(flatten)]
-    pub context: Context,
-
-    pub stop_hook_active: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct UserPromptSubmitPayload {
-    #[serde(flatten)]
-    pub context: Context,
-
-    pub cwd: PathBuf,
-    pub prompt: String,
-}
-
-/// The response to a hook.
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum Response {
-    /// Pass the operation through without modification.
-    ///
-    /// Returns exit code 0 and emits no data. Use when the hook has nothing
-    /// to say about the operation.
-    Passthrough,
-
-    /// Block the operation and provide feedback.
-    ///
-    /// Returns exit code 2 and emits the response serialized as JSON. The tool
-    /// use is **stopped**: Claude does not proceed with the operation.
-    ///
-    /// Use for hard rules where the code is clearly wrong and should be fixed
-    /// before proceeding (e.g., imports inside function bodies, missing blank
-    /// lines between struct fields).
-    Interrupt(InterruptResponse),
-
-    /// Allow the operation but inject guidance into the conversation.
-    ///
-    /// Returns exit code 0 and emits the response serialized as JSON. The tool
-    /// use **proceeds**: Claude writes the file, but sees the guidance message.
-    ///
-    /// Use for soft suggestions where the code works but could be improved
-    /// (e.g., stylistic preferences like turbofish vs LHS type annotations).
-    Continue(ContinueResponse),
-}
-
-/// Hook-specific output for PreToolUse hooks.
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct PreToolUseOutput {
-    /// Must be "PreToolUse" for Claude Code to accept the response.
-    pub hook_event_name: PreToolUseEventName,
-}
-
-/// Marker type that serializes to "PreToolUse".
-#[derive(Debug, Default)]
-pub struct PreToolUseEventName;
-
-impl Serialize for PreToolUseEventName {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str("PreToolUse")
+impl Hook {
+    /// The source snippet evaluated by the hook.
+    pub fn source(&self) -> Source {
+        match self {
+            Hook::PreToolUse(payload) => match payload {
+                PreToolUsePayload::Write(payload) => Source::from(&payload.tool_input.content),
+                PreToolUsePayload::Edit(payload) => Source::from(&payload.tool_input.new_string),
+            },
+            Hook::UserPromptSubmit(payload) => Source::from(&payload.prompt),
+        }
     }
 }
 
-#[derive(Debug, Serialize, Builder)]
-#[serde(rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct ContinueResponse {
-    /// Skipped so that the builder can't set it.
-    ///
-    /// Claude Code uses this field to determine whether to continue, but we use
-    /// separate types to indicate this, so we hard code it into the type for
-    /// easy serialization.
-    #[builder(skip = true)]
-    pub r#continue: bool,
+/// Shared fields in all Claude Code hook payloads.
+#[derive(Debug, Deserialize)]
+pub struct Context {
+    /// The session ID.
+    pub session_id: String,
 
-    /// Whether to suppress the operation's output.
-    #[builder(default = false)]
-    pub suppress_output: bool,
+    /// The path to the chat transcript.
+    pub transcript_path: PathBuf,
 
-    /// A system message to add to the transcript.
-    #[builder(into)]
-    pub system_message: String,
+    /// The permission mode for the chat.
+    pub permission_mode: String,
 
-    /// A JSON object whose shape is determined by the hook.
-    #[builder(into, default = Value::Object(Map::new()))]
-    pub hook_specific_output: Value,
+    /// The current working directory.
+    pub cwd: PathBuf,
 }
 
-#[derive(Debug, Serialize, Builder)]
-#[serde(rename_all = "camelCase")]
-#[non_exhaustive]
-pub struct InterruptResponse {
-    /// Skipped so that the builder can't set it.
-    ///
-    /// Claude Code uses this field to determine whether to continue, but we use
-    /// separate types to indicate this, so we hard code it into the type for
-    /// easy serialization.
-    #[builder(skip = false)]
-    pub r#continue: bool,
+/// Payload for the `PreToolUse` hook.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "tool_name")]
+pub enum PreToolUsePayload {
+    /// The Write tool.
+    Write(PreToolUseWritePayload),
 
-    /// The reason for interrupting the operation.
-    #[builder(into)]
-    pub stop_reason: String,
-
-    /// Whether to suppress the operation's output.
-    #[builder(default = false)]
-    pub suppress_output: bool,
-
-    /// A system message to add to the transcript.
-    #[builder(into)]
-    pub system_message: String,
-
-    /// A JSON object whose shape is determined by the hook.
-    #[builder(into, default = Value::Object(Map::new()))]
-    pub hook_specific_output: Value,
+    /// The Edit tool.
+    Edit(PreToolUseEditPayload),
 }
 
-/// Configures a hook in Claude Code's settings.json.
+/// Payload for the `Edit` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseEditPayload {
+    /// The context of the hook.
+    #[serde(flatten)]
+    pub context: Context,
+
+    /// The ID of the tool use.
+    pub tool_use_id: String,
+
+    /// The input to the tool.
+    pub tool_input: PreToolUseEditInput,
+}
+
+impl PreToolUseEditPayload {
+    /// Evaluate the payload against the given rule.
+    ///
+    /// Returns the spans of all matches if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &PreToolUseEditMatcher) -> Vec<Span> {
+        if matcher.file.is_match_path(&self.tool_input.file_path) {
+            evaluate_all_matched(&self.tool_input.new_string, &matcher.new_content)
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// Input for the `Edit` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseEditInput {
+    /// The path to the file to edit.
+    pub file_path: PathBuf,
+
+    /// The old content to replace.
+    pub old_string: String,
+
+    /// The new content to write.
+    pub new_string: String,
+}
+
+/// Payload for the `Write` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseWritePayload {
+    /// The context of the hook.
+    #[serde(flatten)]
+    pub context: Context,
+
+    /// The ID of the tool use.
+    pub tool_use_id: String,
+
+    /// The input to the tool.
+    pub tool_input: PreToolUseWriteInput,
+}
+
+impl PreToolUseWritePayload {
+    /// Evaluate the payload against the given rule.
+    ///
+    /// Returns the spans of all matches if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &PreToolUseWriteMatcher) -> Vec<Span> {
+        if matcher.file.is_match_path(&self.tool_input.file_path) {
+            evaluate_all_matched(&self.tool_input.content, &matcher.content)
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+/// Input for the `Write` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseWriteInput {
+    /// The path to the file to write to.
+    pub file_path: PathBuf,
+
+    /// The content to write to the file.
+    pub content: String,
+}
+
+/// Payload for the `UserPromptSubmit` hook.
+#[derive(Debug, Deserialize)]
+pub struct UserPromptSubmitPayload {
+    /// The context of the hook.
+    #[serde(flatten)]
+    pub context: Context,
+
+    /// The user's prompt.
+    pub prompt: String,
+}
+
+impl UserPromptSubmitPayload {
+    /// Evaluate the payload against the given rule.
+    ///
+    /// Returns the spans of all matches if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &UserPromptSubmitMatcher) -> Vec<Span> {
+        evaluate_all_matched(&self.prompt, &matcher.prompt)
+    }
+}
+
+/// The response to a `PreToolUse` hook.
+#[derive(Debug)]
+pub enum PreToolUseResponse {
+    /// Pass the operation through without modification.
+    Passthrough,
+
+    /// Block the operation and provide feedback to Claude.
+    Interrupt(PreToolUseInterruptResponse),
+}
+
+/// Interrupt a `PreToolUse` hook and provides feedback to Claude Code.
+#[derive(Debug, Clone, Builder)]
+pub struct PreToolUseInterruptResponse {
+    /// The reason for the decision being made, displayed to Claude Code.
+    #[builder(into)]
+    model_feedback: String,
+
+    /// The message to display to the user when this response is emitted.
+    #[builder(into, default = "Nudge blocked operation due to rule violation")]
+    user_message: String,
+}
+
+/// Claude Code expects a two-level structured response, but that's annoying to
+/// work with for our use case, so we just translate it inside this `Serialize`
+/// implementation.
+impl Serialize for PreToolUseInterruptResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let output = PreToolUseHookSpecificOutput::builder()
+            .permission_decision_reason(&self.model_feedback)
+            .build();
+        let envelope = HookResponseEnvelope::builder()
+            .system_message(&self.user_message)
+            .hook_specific_output(output)
+            .build();
+        envelope.serialize(serializer)
+    }
+}
+
+/// The response to a `UserPromptSubmit` hook.
+#[derive(Debug, Clone, AsRef, Display)]
+pub struct UserPromptSubmitResponse(String);
+
+impl<S: Into<String>> From<S> for UserPromptSubmitResponse {
+    fn from(value: S) -> Self {
+        UserPromptSubmitResponse(value.into())
+    }
+}
+
+/// The top-level structure of a Claude Code hook response.
+#[derive(Debug, Serialize, Clone, Builder)]
+#[serde(rename_all = "camelCase")]
+struct HookResponseEnvelope<T> {
+    /// Whether Claude Code should continue after hook execution.
+    ///
+    /// This should nearly always be `true` so that Claude Code can respond to
+    /// the hook event- for example, don't use this to reject a `PreToolUse`
+    /// hook unless you want Claude Code to immediately abort the operation and
+    /// do nothing else until the user prompts again.
+    #[serde(rename = "continue")]
+    #[builder(default = true)]
+    should_continue: bool,
+
+    /// The message shown to the user when `should_continue` is false.
+    #[builder(into, default = "Nudge blocked operation due to rule violation")]
+    stop_reason: String,
+
+    /// Whether to hide the output of the hook from the user.
+    #[builder(default = false)]
+    suppress_output: bool,
+
+    /// Message to display to the user when this response is emitted.
+    #[builder(into)]
+    system_message: String,
+
+    /// Hook specific output.
+    hook_specific_output: Option<T>,
+}
+
+/// Hook specific output for `PreToolUse` hooks.
+#[derive(Debug, Serialize, Clone, Builder)]
+#[serde(rename_all = "camelCase")]
+struct PreToolUseHookSpecificOutput {
+    /// The hook event name.
+    #[builder(skip = String::from("PreToolUse"))]
+    hook_event_name: String,
+
+    /// The permission decision.
+    #[builder(skip = String::from("deny"))]
+    permission_decision: String,
+
+    /// The reason for the decision being made, displayed to Claude Code.
+    #[builder(into)]
+    permission_decision_reason: String,
+}
+
+/// Configures a hook in Claude Code's settings.
 #[derive(Debug, Serialize, Clone, Builder)]
 #[non_exhaustive]
 pub struct Config {
-    /// The type of hook to run. Valid options are `command` or `prompt`, but we
-    /// always want `command`.
+    /// The type of hook to run.
+    ///
+    /// Valid options are `command` or `prompt`, but we always want `command`:
+    /// `prompt` hooks are run inside of Claude Code itself and cannot be
+    /// intercepted by Nudge.
     #[builder(skip = String::from("command"))]
     pub r#type: String,
 
@@ -201,7 +276,7 @@ pub struct Config {
     #[builder(into)]
     pub command: String,
 
-    /// Terminate
+    /// Terminate the command after this many seconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
 }
@@ -229,4 +304,20 @@ pub struct Matcher {
     #[builder(with = |i: impl IntoIterator<Item = impl Into<Config>>| i.into_iter().map(Into::into).collect())]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hooks: Vec<Config>,
+}
+
+/// Evaluate all matchers in a given content and return the spans of all matches,
+/// if and only if all the matchers matched the content.
+///
+/// If any matcher did not match the content, an empty vector is returned.
+fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Span> {
+    let mut spans = Vec::new();
+    for matcher in matchers {
+        let matches = matcher.matches(content);
+        if matches.is_empty() {
+            return Vec::new();
+        }
+        spans.extend(matches);
+    }
+    spans
 }

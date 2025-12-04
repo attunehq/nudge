@@ -12,12 +12,16 @@ fn test_multiple_rules_fire() {
     let input = write_hook("test.rs", content);
     let (exit_code, output) = run_hook(&sh, &input);
 
-    // Should be interrupt (any interrupt = overall interrupt)
-    pretty_assert_eq!(exit_code, 2, "expected interrupt when multiple rules fire");
-
-    // Messages should be concatenated with separator
+    // Should be interrupt (exit 0 with deny in response)
+    pretty_assert_eq!(exit_code, 0, "expected interrupt (exit 0)");
     assert!(
-        output.contains("---") || output.contains("Move the `use` statement"),
-        "expected messages from multiple rules"
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected deny in response, got: {output}"
+    );
+
+    // Should contain messages from both rules
+    assert!(
+        output.contains("Move this `use` statement"),
+        "expected inline imports message, got: {output}"
     );
 }

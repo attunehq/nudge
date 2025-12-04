@@ -3,12 +3,15 @@
 use std::path::PathBuf;
 
 use clap::Args;
-use color_eyre::eyre::{Context, Result, bail};
+use color_eyre::eyre::{Context, Result, bail, eyre};
+use itertools::Itertools;
 use serde_json::json;
 
-use nudge::claude::hook::Hook;
-use nudge::rules::config::load_rules;
-use nudge::rules::eval::CompiledRule;
+use nudge::{
+    claude::hook::{Hook, PreToolUsePayload},
+    rules::{self, Rule},
+    snippet::Source,
+};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -16,7 +19,7 @@ pub struct Config {
     #[arg(long)]
     pub rule: String,
 
-    /// Tool name (for PreToolUse/PostToolUse rules).
+    /// Tool name (for PreToolUse rules): Write or Edit.
     #[arg(long)]
     pub tool: Option<String>,
 
@@ -24,7 +27,7 @@ pub struct Config {
     #[arg(long)]
     pub file: Option<PathBuf>,
 
-    /// Content to test against (for Write tool).
+    /// Content to test against (for Write tool or Edit new_string).
     #[arg(long, conflicts_with = "content_file")]
     pub content: Option<String>,
 
@@ -38,36 +41,68 @@ pub struct Config {
 }
 
 pub fn main(config: Config) -> Result<()> {
-    let rules = load_rules()?;
+    let rules = rules::load_all()?;
     let rule = rules
         .into_iter()
         .find(|r| r.name == config.rule)
-        .ok_or_else(|| color_eyre::eyre::eyre!("Rule '{}' not found", config.rule))?;
-
-    let compiled = CompiledRule::compile(rule.clone())
-        .with_context(|| format!("failed to compile rule '{}'", config.rule))?;
+        .ok_or_else(|| eyre!("Rule '{}' not found", config.rule))?;
 
     let hook = build_hook(&config)?;
-    let result = compiled.evaluate(&hook);
 
     println!("Rule: {}", config.rule);
+    println!();
 
-    match result {
-        Some(res) => {
-            let action = res.action;
-            println!("Result: {action:?}");
-            println!("Message:");
-            for line in res.message.lines() {
-                println!("  {line}");
-            }
-        }
-        None => {
-            println!("Result: Passthrough");
-            println!("The rule did not match the provided input.");
-        }
+    let (matched, source) = evaluate_rule(&rule, &hook);
+
+    if matched.is_empty() {
+        println!("Result: Passthrough");
+        println!("The rule did not match the provided input.");
+    } else {
+        let hook_type = match &hook {
+            Hook::PreToolUse(_) => "Interrupt",
+            Hook::UserPromptSubmit(_) => "Continue",
+        };
+        println!("Result: {hook_type}");
+        println!();
+        println!("Matched content:");
+        let annotations = rule.annotate_spans(matched).collect_vec();
+        let snippet = source.annotate(annotations);
+        println!("{snippet}");
     }
 
     Ok(())
+}
+
+/// Evaluate a single rule against a hook, returning matched spans and the source.
+fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<nudge::snippet::Span>, Source) {
+    match hook {
+        Hook::PreToolUse(payload) => match payload {
+            PreToolUsePayload::Write(payload) => {
+                let spans = rule
+                    .hooks_pretooluse_write()
+                    .flat_map(|matcher| payload.evaluate(matcher))
+                    .collect_vec();
+                let source = Source::from(&payload.tool_input.content);
+                (spans, source)
+            }
+            PreToolUsePayload::Edit(payload) => {
+                let spans = rule
+                    .hooks_pretooluse_edit()
+                    .flat_map(|matcher| payload.evaluate(matcher))
+                    .collect_vec();
+                let source = Source::from(&payload.tool_input.new_string);
+                (spans, source)
+            }
+        },
+        Hook::UserPromptSubmit(payload) => {
+            let spans = rule
+                .hooks_userpromptsubmit()
+                .flat_map(|matcher| payload.evaluate(matcher))
+                .collect_vec();
+            let source = Source::from(&payload.prompt);
+            (spans, source)
+        }
+    }
 }
 
 /// Build a Hook from the CLI arguments.
@@ -131,9 +166,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
             "old_string": "",
             "new_string": content
         }),
-        _ => json!({
-            "file_path": file_path
-        }),
+        other => bail!("Unknown tool '{}'. Supported tools: Write, Edit", other),
     };
 
     let payload = json!({

@@ -11,7 +11,7 @@ fn test_interrupt_message_contains_rule_message() {
 
     // Should contain the message from the no-inline-imports rule
     assert!(
-        output.contains("Move the `use` statement"),
-        "expected rule message in output"
+        output.contains("Move this `use` statement"),
+        "expected rule message in output, got: {output}"
     );
 }

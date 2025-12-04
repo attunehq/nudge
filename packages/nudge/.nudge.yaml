@@ -9,26 +9,35 @@ rules:
   # (?m) enables multiline mode so ^ matches at line boundaries.
   - name: no-inline-imports
     description: Move imports to the top of the file
+    message: Move this `use` statement to the top of the file with other imports.
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      content: "(?m)^[ \\t]+use "
-    action: interrupt
-    message: |
-      Move the `use` statement(s) on lines {{ lines }} to the top of the file with other imports.
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "(?m)^[ \\t]+use "
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "(?m)^[ \\t]+use "
 
   # Rule 2: Catch LHS type annotations (simplified)
-  # (?m) enables multiline mode for consistent behavior with line-based patterns.
   - name: no-lhs-type-annotations
     description: Use type inference or turbofish instead
+    message: Remove LHS type annotations. Use turbofish or type inference instead.
     on:
-      hook: PreToolUse
-      tool: Write|Edit
-      file: "**/*.rs"
-    match:
-      content: "(?m)let\\s+\\w+\\s*:\\s*Vec<"
-    action: interrupt
-    message: |
-      Remove LHS type annotations. Use turbofish or type inference instead.
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "(?m)let\\s+\\w+\\s*:\\s*Vec<"
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "(?m)let\\s+\\w+\\s*:\\s*Vec<"

@@ -1,120 +1,119 @@
-//! Rule evaluation for Claude Code hooks.
-//!
-//! Rules are loaded from YAML configuration files and evaluated against hooks.
-//! All matching rules fire, and their messages are concatenated.
+//! Rule data types and loading operations.
 
-pub mod config;
-pub mod eval;
-pub mod schema;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::{ffi::OsStr, fs::read_to_string};
 
-use std::collections::HashSet;
+use color_eyre::{
+    SectionExt,
+    eyre::{Context, Result},
+};
+use directories::ProjectDirs;
+use tap::{Pipe, Tap};
+use walkdir::WalkDir;
 
-use color_eyre::eyre::{Context, Result};
+pub use schema::*;
 
-use crate::claude::hook::{ContinueResponse, Hook, InterruptResponse, PreToolUseOutput, Response};
-use crate::rules::schema::Action;
+mod schema;
 
-use self::config::load_rules;
-use self::eval::CompiledRule;
-
-/// Registry of all loaded rules.
-#[derive(Debug, Clone)]
-pub struct Registry {
-    rules: Vec<CompiledRule>,
-}
-
-impl Registry {
-    /// Create a new registry by loading rules from all sources.
-    ///
-    /// Loading order (all additive):
-    /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
-    /// 2. `.nudge.yaml` if it exists
-    /// 3. `.nudge/` directory walked recursively (sorted), loading all `*.yaml` files
-    #[tracing::instrument(name = "Registry::new")]
-    pub fn new() -> Result<Self> {
-        let mut rules = vec![];
-        let mut seen_names = HashSet::new();
-
-        let all_rules = load_rules().context("load rules")?;
-        for rule in all_rules {
-            if !seen_names.insert(rule.name.clone()) {
-                tracing::warn!("Multiple rules with name '{}' found", rule.name);
-            }
-
-            let compiled = CompiledRule::compile(rule).context("compile rule")?;
-            rules.push(compiled);
-        }
-
-        Ok(Self { rules })
-    }
-
-    /// Evaluate all rules against a hook.
-    ///
-    /// All matching rules fire. Messages are concatenated with `\n\n---\n\n`.
-    /// If any rule returns `interrupt`, the overall response is `interrupt`.
-    #[tracing::instrument(name = "Registry::evaluate")]
-    pub fn evaluate(&self, hook: &Hook) -> Response {
-        let mut messages = vec![];
-        let mut interrupt = false;
-
-        for rule in &self.rules {
-            if let Some(result) = rule.evaluate(hook) {
-                messages.push(result.message);
-                if result.action == Action::Interrupt {
-                    interrupt = true;
-                }
-            }
-        }
-
-        if messages.is_empty() {
-            return Response::Passthrough;
-        }
-
-        let message = messages.join("\n\n---\n\n");
-        if interrupt {
-            Response::Interrupt(
-                InterruptResponse::builder()
-                    .stop_reason("Rule violation detected")
-                    .system_message(message)
-                    .hook_specific_output(
-                        serde_json::to_value(PreToolUseOutput::default()).unwrap(),
-                    )
-                    .build(),
-            )
-        } else {
-            Response::Continue(
-                ContinueResponse::builder()
-                    .system_message(message)
-                    .hook_specific_output(
-                        serde_json::to_value(PreToolUseOutput::default()).unwrap(),
-                    )
-                    .build(),
-            )
-        }
-    }
-
-    /// Get the number of loaded rules.
-    pub fn len(&self) -> usize {
-        self.rules.len()
-    }
-
-    /// Check if no rules are loaded.
-    pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
-    }
-}
-
-/// Evaluate all rules against a hook.
-///
-/// This is a convenience function that creates a RuleRegistry and evaluates the hook.
-/// For repeated evaluations, prefer creating a RuleRegistry once and reusing it.
+/// Get the project directories for the application.
 #[tracing::instrument]
-pub fn evaluate_all(hook: &Hook) -> Response {
-    match Registry::new() {
-        Ok(registry) => registry.evaluate(hook),
-        Err(error) => {
-            tracing::error!("Failed to load rules: {error:?}");
-            Response::Passthrough
+pub fn project_dirs() -> Option<ProjectDirs> {
+    ProjectDirs::from("com", "attunehq", "nudge")
+}
+
+/// Load all rules from all sources.
+///
+/// Loading order (all additive):
+/// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
+/// 2. `.nudge.yaml` if it exists
+/// 3. `.nudge/` directory walked recursively, loading all `*.yaml` files
+#[tracing::instrument]
+pub fn load_all() -> Result<Vec<Rule>> {
+    load_all_attributed()?
+        .into_iter()
+        .map(|(_, rules)| rules)
+        .flatten()
+        .collect::<Vec<_>>()
+        .pipe(Ok)
+}
+
+/// Load all rules from all sources, returning each set of rules with the path
+/// to the config file that contained them.
+///
+/// Loading order (all additive):
+/// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
+/// 2. `.nudge.yaml` if it exists
+/// 3. `.nudge/` directory walked recursively, loading all `*.yaml` files
+#[tracing::instrument]
+pub fn load_all_attributed() -> Result<Vec<(PathBuf, Vec<Rule>)>> {
+    let mut rules = vec![];
+
+    if let Some(dirs) = project_dirs() {
+        let user_config = dirs.config_dir().join("rules.yaml");
+        let user_rules = load_from(&user_config)
+            .with_context(|| format!("load rules from user config: {user_config:?}"))?;
+        rules.push((user_config, user_rules));
+    }
+
+    let project_root_config = PathBuf::from(".nudge.yaml");
+    let project_root_rules = load_from(&project_root_config)
+        .with_context(|| format!("load rules from project root: {project_root_config:?}"))?;
+    rules.push((project_root_config, project_root_rules));
+
+    let root = Path::new(".nudge");
+    if root.is_dir() {
+        for entry in WalkDir::new(root).sort_by_file_name().into_iter() {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    tracing::warn!(?error, ?root, "walking directory");
+                    continue;
+                }
+            };
+
+            if entry.file_type().is_file() {
+                let config = entry.path().to_path_buf();
+                let config_rules = load_from(&config)
+                    .with_context(|| format!("load rules from file: {config:?}"))?;
+                rules.push((config, config_rules));
+            }
         }
+    }
+
+    Ok(rules)
+}
+
+/// Load rules from a single file.
+//
+// TODO: Support other file types.
+#[tracing::instrument]
+pub fn load_from(path: &Path) -> Result<Vec<Rule>> {
+    if path.extension() != Some(OsStr::new("yaml")) {
+        tracing::debug!("skipping non-yaml file");
+        return Ok(vec![]);
+    }
+
+    let content = match read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e).context(format!("read config file: {path:?}")),
+    };
+
+    serde_yaml::from_str::<RuleConfig>(&content)
+        .with_context(|| format!("parse config file: {path:?}"))
+        .with_context(|| content.header("File content:"))
+        .tap(|config| tracing::debug!(?config, "parsed config file"))
+        .map(|config| config.rules)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_nonexistent_file() {
+        let rules = load_from(Path::new("nonexistent.yaml")).unwrap();
+        assert!(rules.is_empty());
     }
 }
