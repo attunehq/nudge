@@ -22,6 +22,9 @@ enum Commands {
     /// Integration with Claude Code.
     Claude(cmd::claude::Config),
 
+    /// Display the syntax tree for code (for writing tree-sitter queries).
+    Syntaxtree(cmd::syntaxtree::Config),
+
     /// Validate rule configuration files.
     Validate(cmd::validate::Config),
 
@@ -71,6 +74,7 @@ fn main() -> Result<()> {
     // learn more about debugging nudge.
     match cli.command {
         Commands::Claude(config) => cmd::claude::main(config),
+        Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),
         Commands::Validate(config) => cmd::validate::main(config),
         Commands::Test(config) => cmd::test::main(config),
     }

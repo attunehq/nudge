@@ -714,9 +714,12 @@ dependencies = [
  "serde_yaml",
  "simple_test_case",
  "tap",
+ "tempfile",
  "tracing",
  "tracing-error",
  "tracing-subscriber",
+ "tree-sitter 0.25.10",
+ "tree-sitter-rust",
  "walkdir",
  "xshell",
 ]

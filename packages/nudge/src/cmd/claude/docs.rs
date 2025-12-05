@@ -152,6 +152,43 @@ const DOCS: &str = cstr!("\
     • <cyan>End with \"then retry\":</cyan> Tell Claude to retry after fixing
     • <cyan>Write for one match:</cyan> The message appears at each match location
 
+<bold>Syntax Tree Matching (Tree-sitter)</bold>
+
+  For patterns that regex can't express precisely, use <cyan>kind: SyntaxTree</cyan> to match
+  against the parsed AST. This is useful when you need to match code structure,
+  not just text patterns.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: SyntaxTree</yellow>
+        <yellow>language: rust</yellow>              <dim># Required: rust (more languages coming)</dim>
+        <yellow>query: |</yellow>
+          <yellow>(function_item</yellow>
+            <yellow>name: (identifier) @fn_name)</yellow>
+        <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
+
+  <white>Query Syntax:</white>
+    Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
+    and captures are marked with <green>@name</green>.
+
+    <green>(function_item)</green>                    Match any function
+    <green>(function_item name: (identifier))</green> Match function with name field
+    <green>(identifier) @fn_name</green>              Capture the identifier as \"fn_name\"
+
+    See: <cyan>https://tree-sitter.github.io/tree-sitter/using-parsers/queries</cyan>
+
+  <white>Captures in Suggestions:</white>
+    Captures from the query can be referenced in suggestions just like regex:
+    <yellow>query: (identifier) @name</yellow>
+    <yellow>suggestion: \"Rename {{ $name }} to something descriptive\"</yellow>
+
+  <white>When to Use Each:</white>
+    <green>Regex</green>       Simple text patterns, doesn't need AST structure
+    <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
+
+  <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
+  <dim>passes silently. This is intentional—code being written is often incomplete.</dim>
+
 <bold>Examples</bold>
 
   <cyan>Block indented imports (Rust)</cyan>
@@ -197,6 +234,27 @@ const DOCS: &str = cstr!("\
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"(?P<<expr>>\\\\w+)\\\\.unwrap\\\\(\\\\)\"</yellow>
               <yellow>suggestion: \"Replace {{ $expr }}.unwrap() with {{ $expr }}.expect(\\\"...\\\")\"</yellow>
+
+  <cyan>Block use statements inside function bodies (SyntaxTree)</cyan>
+
+    <dim># This matches `use` statements that are children of function bodies,</dim>
+    <dim># avoiding false positives in `mod test {}` blocks that regex would catch.</dim>
+
+    <yellow>- name: no-inline-imports-precise</yellow>
+      <yellow>description: Move imports to the top of the file</yellow>
+      <yellow>message: \"Move `use {{ $path }}` to the top of the file, then retry.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: SyntaxTree</yellow>
+              <yellow>language: rust</yellow>
+              <yellow>query: |</yellow>
+                <yellow>(function_item</yellow>
+                  <yellow>body: (block</yellow>
+                    <yellow>(use_declaration</yellow>
+                      <yellow>argument: (scoped_identifier) @path)))</yellow>
 
 <bold>Testing Rules</bold>
 

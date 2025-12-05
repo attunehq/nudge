@@ -7,6 +7,7 @@ use glob::Pattern;
 use monostate::MustBe;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use tree_sitter::{Language as TsLanguage, Parser, Query, QueryCursor, StreamingIterator};
 
 use crate::{
     fmap_match,
@@ -229,7 +230,11 @@ pub struct PreToolUseEditMatcher {
 }
 
 /// The method used to match hook content.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// Uses custom deserialization because the `SyntaxTree` variant needs to
+/// compile tree-sitter queries at parse time, which requires the `language`
+/// field to be available when processing the `query` field.
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind")]
 pub enum ContentMatcher {
     /// Match on a regular expression.
@@ -245,6 +250,89 @@ pub enum ContentMatcher {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
+
+    /// Match on a tree-sitter syntax query.
+    ///
+    /// Tree-sitter queries match against the AST structure of code, enabling
+    /// precise pattern matching that regex cannot achieve (e.g., matching
+    /// `use` statements only inside function bodies, not in `mod test` blocks).
+    ///
+    /// Query syntax: <https://tree-sitter.github.io/tree-sitter/using-parsers/queries>
+    SyntaxTree {
+        /// The language grammar to use for parsing.
+        ///
+        /// Required because tree-sitter queries must be compiled against a
+        /// specific grammar, and we validate queries at rule load time rather
+        /// than deferring to match time.
+        language: Language,
+
+        /// The tree-sitter query pattern.
+        query: TreeSitterQuery,
+
+        /// Optional suggestion template, same as Regex variant.
+        ///
+        /// Captures from the query (e.g., `@fn_name`) can be referenced as
+        /// `{{ $fn_name }}` in the suggestion template.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+}
+
+impl<'de> Deserialize<'de> for ContentMatcher {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // Intermediate representation that can deserialize both variants.
+        // We use raw strings for fields that need post-processing.
+        #[derive(Deserialize)]
+        struct Raw {
+            kind: String,
+            // Regex fields
+            pattern: Option<String>,
+            // SyntaxTree fields
+            language: Option<Language>,
+            query: Option<String>,
+            // Shared field
+            suggestion: Option<String>,
+        }
+
+        let raw = Raw::deserialize(deserializer)?;
+
+        match raw.kind.as_str() {
+            "Regex" => {
+                let pattern_str = raw.pattern.ok_or_else(|| {
+                    serde::de::Error::missing_field("pattern")
+                })?;
+                let pattern = Regex::new(&pattern_str)
+                    .map(RegexMatcher)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(ContentMatcher::Regex {
+                    pattern,
+                    suggestion: raw.suggestion,
+                })
+            }
+            "SyntaxTree" => {
+                let language = raw.language.ok_or_else(|| {
+                    serde::de::Error::missing_field("language")
+                })?;
+                let query_str = raw.query.ok_or_else(|| {
+                    serde::de::Error::missing_field("query")
+                })?;
+                let query = TreeSitterQuery::new(language, query_str)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(ContentMatcher::SyntaxTree {
+                    language,
+                    query,
+                    suggestion: raw.suggestion,
+                })
+            }
+            other => Err(serde::de::Error::unknown_variant(
+                other,
+                &["Regex", "SyntaxTree"],
+            )),
+        }
+    }
 }
 
 impl ContentMatcher {
@@ -252,6 +340,16 @@ impl ContentMatcher {
     pub fn is_match(&self, s: &str) -> bool {
         match self {
             ContentMatcher::Regex { pattern, .. } => pattern.is_match(s),
+            ContentMatcher::SyntaxTree {
+                language, query, ..
+            } => {
+                let Some(tree) = language.parse(s) else {
+                    return false;
+                };
+                let mut cursor = QueryCursor::new();
+                let mut matches = cursor.matches(query.as_ref(), tree.root_node(), s.as_bytes());
+                matches.next().is_some()
+            }
         }
     }
 
@@ -261,6 +359,20 @@ impl ContentMatcher {
     pub fn matches(&self, s: &str) -> Vec<Span> {
         match self {
             ContentMatcher::Regex { pattern, .. } => pattern.matches(s),
+            ContentMatcher::SyntaxTree {
+                language, query, ..
+            } => {
+                let Some(tree) = language.parse(s) else {
+                    return Vec::new();
+                };
+                let mut cursor = QueryCursor::new();
+                let mut ts_matches = cursor.matches(query.as_ref(), tree.root_node(), s.as_bytes());
+                let mut spans = Vec::new();
+                while let Some(m) = ts_matches.next() {
+                    spans.push(union_of_captures(m));
+                }
+                spans
+            }
         }
     }
 
@@ -286,8 +398,78 @@ impl ContentMatcher {
 
                 matches
             }
+            ContentMatcher::SyntaxTree {
+                language,
+                query,
+                suggestion,
+            } => {
+                let Some(tree) = language.parse(s) else {
+                    return Vec::new();
+                };
+
+                let mut cursor = QueryCursor::new();
+                let capture_names = query.as_ref().capture_names();
+                let mut ts_matches = cursor.matches(query.as_ref(), tree.root_node(), s.as_bytes());
+
+                let mut matches = Vec::new();
+                while let Some(m) = ts_matches.next() {
+                    let span = union_of_captures(m);
+                    let mut captures = Captures::new();
+
+                    // Extract named captures as source text, matching regex behavior.
+                    // This allows suggestions to reference captures like {{ $fn_name }}.
+                    for capture in m.captures {
+                        if let Some(name) = capture_names.get(capture.index as usize) {
+                            let text = capture
+                                .node
+                                .utf8_text(s.as_bytes())
+                                .unwrap_or_default()
+                                .to_string();
+                            captures.insert(name.to_string(), text);
+                        }
+                    }
+
+                    matches.push(Match { span, captures });
+                }
+
+                if let Some(suggestion_template) = suggestion {
+                    for m in &mut matches {
+                        let interpolated = template::interpolate(suggestion_template, &m.captures);
+                        m.captures.insert("suggestion".to_string(), interpolated);
+                    }
+                }
+
+                matches
+            }
         }
     }
+}
+
+/// Compute the union span of all captures in a tree-sitter match.
+///
+/// Tree-sitter matches can have multiple captures; we highlight the entire
+/// matched region rather than individual captures for consistency with how
+/// regex matches display the full match.
+fn union_of_captures(m: &tree_sitter::QueryMatch) -> Span {
+    if m.captures.is_empty() {
+        // Empty captures shouldn't happen with valid queries that have @captures,
+        // but return a placeholder span pointing to file start if it does.
+        tracing::warn!("tree-sitter match has no captures");
+        return Span { start: 0, end: 0 };
+    }
+
+    let (start, end) = m.captures.iter().fold((usize::MAX, 0), |(start, end), c| {
+        let range = c.node.byte_range();
+        (start.min(range.start), end.max(range.end))
+    });
+
+    // Defensive: ensure valid span even if captures have unexpected ranges
+    if start > end {
+        tracing::warn!("tree-sitter match produced invalid byte ranges");
+        return Span { start: 0, end: 0 };
+    }
+
+    Span { start, end }
 }
 
 /// Matches the UserPromptSubmit hook.
@@ -446,3 +628,295 @@ impl Serialize for RegexMatcher {
         serializer.serialize_str(&self.0.to_string())
     }
 }
+
+/// Supported languages for tree-sitter parsing.
+///
+/// Adding a new language requires:
+/// 1. Adding the grammar crate to Cargo.toml (e.g., `tree-sitter-python`)
+/// 2. Adding a variant to this enum
+/// 3. Adding a match arm to `grammar()` that returns the language
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Language {
+    /// The Rust programming language.
+    Rust,
+}
+
+impl Language {
+    /// Get the tree-sitter grammar for this language.
+    pub fn grammar(self) -> TsLanguage {
+        match self {
+            Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+        }
+    }
+
+    /// Parse source code into a syntax tree.
+    ///
+    /// Returns `None` if parsing fails (e.g., malformed code). We intentionally
+    /// don't block on parse errors since code being written is often incomplete.
+    pub fn parse(self, source: &str) -> Option<tree_sitter::Tree> {
+        use std::sync::Mutex;
+
+        // Reuse parsers across calls. Parser creation has non-trivial overhead,
+        // and parsers are designed to be reused. We use Mutex because parsing
+        // is stateful (the parser tracks incremental parse state).
+        static RUST_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_rust::LANGUAGE.into())
+                .expect("failed to set Rust language");
+            Mutex::new(parser)
+        });
+
+        let mut parser = match self {
+            Language::Rust => RUST_PARSER.lock().ok()?,
+        };
+
+        let tree = parser.parse(source, None)?;
+
+        // Log a warning if the tree has errors, but still return it.
+        // Partial parses can still match valid subtrees.
+        if tree.root_node().has_error() {
+            tracing::debug!(language = ?self, "parsed code contains syntax errors");
+        }
+
+        Some(tree)
+    }
+}
+
+/// A compiled tree-sitter query.
+///
+/// Wraps `tree_sitter::Query` with the original source and language for
+/// serialization and cloning. Queries are compiled at deserialization time
+/// to catch errors early (at rule load time, not match time).
+#[derive(Debug)]
+pub struct TreeSitterQuery {
+    inner: Query,
+    source: String,
+    language: Language,
+}
+
+impl TreeSitterQuery {
+    /// Compile a query from source for the given language.
+    pub fn new(language: Language, source: impl Into<String>) -> Result<Self, tree_sitter::QueryError> {
+        let source = source.into();
+        let inner = Query::new(&language.grammar(), &source)?;
+        Ok(Self {
+            inner,
+            source,
+            language,
+        })
+    }
+}
+
+impl AsRef<Query> for TreeSitterQuery {
+    fn as_ref(&self) -> &Query {
+        &self.inner
+    }
+}
+
+impl Clone for TreeSitterQuery {
+    fn clone(&self) -> Self {
+        // Safe to unwrap: if it compiled once, it will compile again
+        Self::new(self.language, &self.source).expect("query compiled before, should compile again")
+    }
+}
+
+impl Serialize for TreeSitterQuery {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.source)
+    }
+}
+
+/// Deserialize a tree-sitter query.
+///
+/// This requires special handling because tree-sitter queries must be compiled
+/// against a language grammar. We use `deserialize_with` at the struct level
+/// to access the sibling `language` field.
+impl<'de> Deserialize<'de> for TreeSitterQuery {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // This impl exists only to satisfy the trait bound. Actual deserialization
+        // happens via the custom deserializer for ContentMatcher::SyntaxTree.
+        Err(serde::de::Error::custom(
+            "TreeSitterQuery cannot be deserialized standalone; use ContentMatcher::SyntaxTree",
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_language_parse_valid_rust() {
+        let code = "fn main() { println!(\"hello\"); }";
+        let tree = Language::Rust.parse(code);
+        assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_invalid_returns_tree_with_errors() {
+        // Tree-sitter is error-tolerant; it returns a tree even for invalid code
+        let code = "fn main( { }";
+        let tree = Language::Rust.parse(code);
+        assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_valid() {
+        let query = TreeSitterQuery::new(Language::Rust, "(function_item)");
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_invalid() {
+        let query = TreeSitterQuery::new(Language::Rust, "(not_a_real_node)");
+        assert!(query.is_err());
+    }
+
+    #[test]
+    fn test_content_matcher_syntax_tree_deserialize() {
+        let yaml = r#"
+            kind: SyntaxTree
+            language: rust
+            query: "(function_item)"
+        "#;
+        let matcher: ContentMatcher = serde_yaml::from_str(yaml).unwrap();
+        assert!(matches!(matcher, ContentMatcher::SyntaxTree { .. }));
+    }
+
+    #[test]
+    fn test_content_matcher_syntax_tree_deserialize_invalid_query() {
+        let yaml = r#"
+            kind: SyntaxTree
+            language: rust
+            query: "(not_a_real_node)"
+        "#;
+        let result: Result<ContentMatcher, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_syntax_tree_is_match() {
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(Language::Rust, "(function_item)").unwrap(),
+            suggestion: None,
+        };
+        assert!(matcher.is_match("fn foo() {}"));
+        assert!(!matcher.is_match("let x = 1;"));
+    }
+
+    #[test]
+    fn test_syntax_tree_matches_returns_spans() {
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(Language::Rust, "(function_item) @fn").unwrap(),
+            suggestion: None,
+        };
+        let code = "fn foo() {}\nfn bar() {}";
+        let spans = matcher.matches(code);
+        assert_eq!(spans.len(), 2);
+    }
+
+    #[test]
+    fn test_syntax_tree_captures_as_source_text() {
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(
+                Language::Rust,
+                "(function_item name: (identifier) @fn_name)",
+            )
+            .unwrap(),
+            suggestion: None,
+        };
+        let code = "fn my_function() {}";
+        let matches = matcher.matches_with_context(code);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].captures.get("fn_name"), Some(&"my_function".to_string()));
+    }
+
+    #[test]
+    fn test_syntax_tree_suggestion_interpolation() {
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(
+                Language::Rust,
+                "(function_item name: (identifier) @fn_name)",
+            )
+            .unwrap(),
+            suggestion: Some("Rename {{ $fn_name }} to something descriptive".to_string()),
+        };
+        let code = "fn x() {}";
+        let matches = matcher.matches_with_context(code);
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].captures.get("suggestion"),
+            Some(&"Rename x to something descriptive".to_string())
+        );
+    }
+
+    #[test]
+    fn test_syntax_tree_use_in_function_body() {
+        // This is the motivating use case: match `use` inside function bodies
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(
+                Language::Rust,
+                "(function_item body: (block (use_declaration) @use))",
+            )
+            .unwrap(),
+            suggestion: None,
+        };
+
+        // Should match: use inside function
+        let code_match = "fn foo() { use std::io; }";
+        assert!(matcher.is_match(code_match));
+
+        // Should NOT match: top-level use
+        let code_no_match = "use std::io;\nfn foo() {}";
+        assert!(!matcher.is_match(code_no_match));
+    }
+
+    #[test]
+    fn test_syntax_tree_malformed_code_passes() {
+        // Malformed code should not match (passes silently)
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(Language::Rust, "(function_item)").unwrap(),
+            suggestion: None,
+        };
+        // Completely malformed - no function keyword
+        let malformed = "{{{{";
+        // Tree-sitter is error-tolerant, but this won't match function_item
+        assert!(!matcher.is_match(malformed));
+    }
+
+    #[test]
+    fn test_union_of_captures_multiple() {
+        // Test that the union span covers all captures
+        let matcher = ContentMatcher::SyntaxTree {
+            language: Language::Rust,
+            query: TreeSitterQuery::new(
+                Language::Rust,
+                "(function_item name: (identifier) @name body: (block) @body)",
+            )
+            .unwrap(),
+            suggestion: None,
+        };
+        let code = "fn foo() { let x = 1; }";
+        let spans = matcher.matches(code);
+        assert_eq!(spans.len(), 1);
+        // The span should cover from "foo" through the end of the block
+        let matched_text = &code[spans[0].start..spans[0].end];
+        assert!(matched_text.contains("foo"));
+        assert!(matched_text.contains("let x = 1"));
+    }
+}
+

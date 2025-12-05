@@ -12,6 +12,7 @@ mod inline_imports;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;
+mod syntax_tree;
 mod user_prompt;
 
 use std::io::Write as _;

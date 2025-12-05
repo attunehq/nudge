@@ -106,3 +106,46 @@ fn test_test_rule_not_found() {
         "test should report rule not found, got: {stderr}"
     );
 }
+
+#[test]
+fn test_syntaxtree_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "rust",
+        "fn main() {}",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    // Should show the function_item node
+    assert!(
+        stdout.contains("function_item"),
+        "syntaxtree should show function_item node, got: {stdout}"
+    );
+    // Should show the identifier for 'main'
+    assert!(
+        stdout.contains("identifier") && stdout.contains("main"),
+        "syntaxtree should show identifier 'main', got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_shows_field_names() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "rust",
+        "fn foo() { let x = 1; }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    // Should show field names like 'name:' and 'body:'
+    assert!(
+        stdout.contains("name:"),
+        "syntaxtree should show 'name:' field, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("body:"),
+        "syntaxtree should show 'body:' field, got: {stdout}"
+    );
+}

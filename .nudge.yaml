@@ -8,8 +8,8 @@ version: 1
 rules:
   # Catch `use` statements inside function bodies.
   # Pattern: lines starting with horizontal whitespace followed by `use `.
-  # Limitation: This also triggers on `use` statements inside `mod test`;
-  #             to fix this we need to add treesitter parsing support.
+  # Note: This regex has false positives (e.g., `use` inside `mod test`).
+  #       For precise AST-based matching, use the SyntaxTree matcher below.
   - name: no-inline-imports
     description: Move imports to the top of the file
     message: Move this `use` statement to the top of the file with other imports, then retry.
