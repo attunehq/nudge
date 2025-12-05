@@ -58,7 +58,10 @@ mod tests {
         captures.insert("0".to_string(), "foo.unwrap()".to_string());
         captures.insert("1".to_string(), "foo".to_string());
 
-        let result = interpolate("Replace {{ $1 }}.unwrap() with {{ $1 }}.expect()", &captures);
+        let result = interpolate(
+            "Replace {{ $1 }}.unwrap() with {{ $1 }}.expect()",
+            &captures,
+        );
         assert_eq!(result, "Replace foo.unwrap() with foo.expect()");
     }
 
@@ -82,7 +85,10 @@ mod tests {
     #[test]
     fn test_suggestion_interpolation() {
         let mut captures = Captures::new();
-        captures.insert("suggestion".to_string(), "use .expect() instead".to_string());
+        captures.insert(
+            "suggestion".to_string(),
+            "use .expect() instead".to_string(),
+        );
 
         let result = interpolate("Don't use .unwrap(). {{ $suggestion }}", &captures);
         assert_eq!(result, "Don't use .unwrap(). use .expect() instead");

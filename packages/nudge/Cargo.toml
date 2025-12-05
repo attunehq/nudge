@@ -15,6 +15,7 @@ regex = "1.12.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
+shell-words = "1.1"
 tap = "1.0.1"
 tracing = "0.1.41"
 tracing-error = "0.2.1"

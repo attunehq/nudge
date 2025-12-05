@@ -189,6 +189,38 @@ const DOCS: &str = cstr!("\
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional—code being written is often incomplete.</dim>
 
+<bold>External Program Matching</bold>
+
+  Use <cyan>kind: External</cyan> to delegate matching to an external program (linter, formatter,
+  etc). The content is piped to stdin; if the program exits non-zero, the rule matches.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: External</yellow>
+        <yellow>command: [\"program\", \"arg1\", \"arg2\"]</yellow>
+
+  <white>How It Works:</white>
+    1. Content being written/edited is piped to the command's stdin
+    2. If exit code is <green>0</green>: no violation (rule doesn't match)
+    3. If exit code is <red>non-zero</red>: violation detected (rule matches)
+    4. The <green>{{ $command }}</green> capture is set to the formatted command string
+
+  <white>No Snippet Display:</white>
+    External matchers don't identify specific locations, so no code snippet is shown.
+    Use <green>{{ $command }}</green> in your message to tell the user how to see details:
+
+    <yellow>message: |</yellow>
+      <yellow>Format this markdown table so columns are aligned.</yellow>
+      <yellow>Pipe the content to `{{ $command }}` to see tool output.</yellow>
+
+  <white>When to Use:</white>
+    <green>External</green>     Leverage existing linters (markdownlint, prettier --check, etc.)
+    <green>Regex</green>        Simple patterns you can express in regex
+    <green>SyntaxTree</green>   Structural patterns in supported languages
+
+  <dim>Note: External commands add latency. Use sparingly for checks that are</dim>
+  <dim>difficult or impossible to express with Regex or SyntaxTree matchers.</dim>
+
 <bold>Examples</bold>
 
   <cyan>Block indented imports (Rust)</cyan>
@@ -255,6 +287,25 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Enforce markdown table formatting (External)</cyan>
+
+    <dim># Uses markdownlint to check that tables have aligned columns.</dim>
+    <dim># The command receives file content via stdin and exits non-zero if</dim>
+    <dim># the table isn't properly formatted.</dim>
+
+    <yellow>- name: format-markdown-tables</yellow>
+      <yellow>description: Ensure markdown tables have aligned columns</yellow>
+      <yellow>message: |</yellow>
+        <yellow>Format this markdown table so columns are aligned.</yellow>
+        <yellow>Pipe the content to `{{ $command }}` to see tool output.</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.md\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: External</yellow>
+              <yellow>command: [\"npx\", \"markdownlint\", \"--stdin\", \"-c\", \"{\\\"MD060\\\":{\\\"style\\\":\\\"aligned\\\"}}\"]</yellow>
 
 <bold>Testing Rules</bold>
 

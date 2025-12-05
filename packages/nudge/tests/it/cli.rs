@@ -109,12 +109,8 @@ fn test_test_rule_not_found() {
 
 #[test]
 fn test_syntaxtree_inline_code() {
-    let (exit_code, stdout, _stderr) = run_nudge(&[
-        "syntaxtree",
-        "--language",
-        "rust",
-        "fn main() {}",
-    ]);
+    let (exit_code, stdout, _stderr) =
+        run_nudge(&["syntaxtree", "--language", "rust", "fn main() {}"]);
 
     pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
     // Should show the function_item node

@@ -25,11 +25,11 @@ pub fn main(config: Config) -> Result<()> {
             println!("{}", cformat!("<bold>Available scenarios:</>"));
             for scenario in scenarios {
                 let name = &scenario.name;
-                let description = scenario
-                    .description
-                    .as_deref()
-                    .unwrap_or("No description");
-                println!("  {}", cformat!("<cyan>-</> <green>{name}</>: <dim>{description}</>"));
+                let description = scenario.description.as_deref().unwrap_or("No description");
+                println!(
+                    "  {}",
+                    cformat!("<cyan>-</> <green>{name}</>: <dim>{description}</>")
+                );
             }
         }
         Some(name) => {

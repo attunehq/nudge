@@ -9,6 +9,8 @@ use annotate_snippets::{Level, Renderer, Snippet};
 use bon::Builder;
 use derive_more::AsRef;
 
+use crate::template::Captures;
+
 /// Source code to be annotated.
 #[derive(Debug, Clone, PartialEq, Eq, AsRef)]
 pub struct Source(String);
@@ -143,7 +145,7 @@ pub struct Match {
     /// Keys are `"0"`, `"1"`, `"2"` for positional captures,
     /// and the capture name for named captures.
     #[builder(default)]
-    pub captures: crate::template::Captures,
+    pub captures: Captures,
 }
 
 impl From<Span> for Match {

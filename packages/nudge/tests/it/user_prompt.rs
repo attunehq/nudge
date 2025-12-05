@@ -1,6 +1,6 @@
 //! UserPromptSubmit Hook Tests
 
-use crate::{assert_expected, run_hook, user_prompt_hook, Expected};
+use crate::{Expected, assert_expected, run_hook, user_prompt_hook};
 use xshell::Shell;
 
 #[test]

@@ -1,13 +1,20 @@
 //! Schema types for user-defined rules.
 
-use std::{path::Path, sync::LazyLock};
+use std::{
+    io::Write,
+    path::Path,
+    process::{Command, Stdio},
+    sync::LazyLock,
+};
 
 use derive_more::Display;
 use glob::Pattern;
 use monostate::MustBe;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use tree_sitter::{Language as TsLanguage, Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{
+    Language as TsLanguage, Parser, Query, QueryCursor, QueryError, StreamingIterator,
+};
 
 use crate::{
     fmap_match,
@@ -276,6 +283,23 @@ pub enum ContentMatcher {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
+
+    /// Match using an external program.
+    ///
+    /// Runs the specified command with the content piped to stdin. If the
+    /// command exits with a non-zero status, the rule matches.
+    ///
+    /// This enables integration with external linters and formatters like
+    /// `markdownlint`, `prettier --check`, etc.
+    External {
+        /// The command to run, as a list of arguments.
+        ///
+        /// The first element is the program, subsequent elements are arguments.
+        /// The content being checked is piped to the command's stdin.
+        ///
+        /// Example: `["npx", "markdownlint", "--stdin"]`
+        command: Vec<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for ContentMatcher {
@@ -283,7 +307,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
     where
         D: Deserializer<'de>,
     {
-        // Intermediate representation that can deserialize both variants.
+        // Intermediate representation that can deserialize all variants.
         // We use raw strings for fields that need post-processing.
         #[derive(Deserialize)]
         struct Raw {
@@ -293,6 +317,8 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             // SyntaxTree fields
             language: Option<Language>,
             query: Option<String>,
+            // External fields
+            command: Option<Vec<String>>,
             // Shared field
             suggestion: Option<String>,
         }
@@ -301,9 +327,9 @@ impl<'de> Deserialize<'de> for ContentMatcher {
 
         match raw.kind.as_str() {
             "Regex" => {
-                let pattern_str = raw.pattern.ok_or_else(|| {
-                    serde::de::Error::missing_field("pattern")
-                })?;
+                let pattern_str = raw
+                    .pattern
+                    .ok_or_else(|| serde::de::Error::missing_field("pattern"))?;
                 let pattern = Regex::new(&pattern_str)
                     .map(RegexMatcher)
                     .map_err(serde::de::Error::custom)?;
@@ -313,23 +339,32 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 })
             }
             "SyntaxTree" => {
-                let language = raw.language.ok_or_else(|| {
-                    serde::de::Error::missing_field("language")
-                })?;
-                let query_str = raw.query.ok_or_else(|| {
-                    serde::de::Error::missing_field("query")
-                })?;
-                let query = TreeSitterQuery::new(language, query_str)
-                    .map_err(serde::de::Error::custom)?;
+                let language = raw
+                    .language
+                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
+                let query_str = raw
+                    .query
+                    .ok_or_else(|| serde::de::Error::missing_field("query"))?;
+                let query =
+                    TreeSitterQuery::new(language, query_str).map_err(serde::de::Error::custom)?;
                 Ok(ContentMatcher::SyntaxTree {
                     language,
                     query,
                     suggestion: raw.suggestion,
                 })
             }
+            "External" => {
+                let command = raw
+                    .command
+                    .ok_or_else(|| serde::de::Error::missing_field("command"))?;
+                if command.is_empty() {
+                    return Err(serde::de::Error::custom("command cannot be empty"));
+                }
+                Ok(ContentMatcher::External { command })
+            }
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree"],
+                &["Regex", "SyntaxTree", "External"],
             )),
         }
     }
@@ -350,12 +385,16 @@ impl ContentMatcher {
                 let mut matches = cursor.matches(query.as_ref(), tree.root_node(), s.as_bytes());
                 matches.next().is_some()
             }
+            ContentMatcher::External { command } => run_external_command(command, s).is_some(),
         }
     }
 
     /// Get the spans of all matches in a given string.
     ///
     /// Spans are returned in the order of the matches, and are non-overlapping.
+    ///
+    /// `External` matchers are arbitrary programs that don't return span
+    /// context, so any such "match" returns a span covering the entire content.
     pub fn matches(&self, s: &str) -> Vec<Span> {
         match self {
             ContentMatcher::Regex { pattern, .. } => pattern.matches(s),
@@ -373,6 +412,13 @@ impl ContentMatcher {
                 }
                 spans
             }
+            ContentMatcher::External { command } => {
+                if run_external_command(command, s).is_some() {
+                    vec![Span::from(0..s.len())]
+                } else {
+                    Vec::new()
+                }
+            }
         }
     }
 
@@ -380,6 +426,9 @@ impl ContentMatcher {
     ///
     /// If this matcher has a suggestion template, it will be interpolated
     /// with the match's captures and added to the context as `suggestion`.
+    ///
+    /// `External` matchers are arbitrary programs that don't return span
+    /// context, so any such "match" returns a span covering the entire content.
     pub fn matches_with_context(&self, s: &str) -> Vec<Match> {
         match self {
             ContentMatcher::Regex {
@@ -441,6 +490,68 @@ impl ContentMatcher {
 
                 matches
             }
+            ContentMatcher::External { command } => {
+                if let Some(command) = run_external_command(command, s) {
+                    let captures = Captures::from_iter([("command".to_string(), command)]);
+                    vec![Match {
+                        span: Span::from(0..s.len()),
+                        captures,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            }
+        }
+    }
+}
+
+/// Run an external command with content piped to stdin.
+///
+/// Returns `Some(formatted_command)` if the command exits with non-zero status
+/// (indicating a match/violation), or `None` if the command succeeds (no violation).
+fn run_external_command(command: &[String], content: &str) -> Option<String> {
+    let Some((program, args)) = command.split_first() else {
+        tracing::warn!("external command is empty");
+        return None;
+    };
+
+    let mut child = match Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => {
+            tracing::warn!(?program, error = %e, "failed to spawn external command");
+            return None;
+        }
+    };
+
+    // Write content to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        if let Err(e) = stdin.write_all(content.as_bytes()) {
+            tracing::warn!(?program, error = %e, "failed to write to external command stdin");
+            return None;
+        }
+    }
+
+    // Wait for the command to complete
+    match child.wait() {
+        Ok(status) => {
+            if status.success() {
+                // Command succeeded = no violation
+                None
+            } else {
+                // Command failed = violation detected
+                // Format the command for the hint message
+                Some(shell_words::join(command))
+            }
+        }
+        Err(e) => {
+            tracing::warn!(?program, error = %e, "failed to wait for external command");
+            None
         }
     }
 }
@@ -698,7 +809,7 @@ pub struct TreeSitterQuery {
 
 impl TreeSitterQuery {
     /// Compile a query from source for the given language.
-    pub fn new(language: Language, source: impl Into<String>) -> Result<Self, tree_sitter::QueryError> {
+    pub fn new(language: Language, source: impl Into<String>) -> Result<Self, QueryError> {
         let source = source.into();
         let inner = Query::new(&language.grammar(), &source)?;
         Ok(Self {
@@ -839,7 +950,10 @@ mod tests {
         let code = "fn my_function() {}";
         let matches = matcher.matches_with_context(code);
         assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].captures.get("fn_name"), Some(&"my_function".to_string()));
+        assert_eq!(
+            matches[0].captures.get("fn_name"),
+            Some(&"my_function".to_string())
+        );
     }
 
     #[test]
@@ -918,5 +1032,84 @@ mod tests {
         assert!(matched_text.contains("foo"));
         assert!(matched_text.contains("let x = 1"));
     }
-}
 
+    #[test]
+    fn test_external_deserialize() {
+        let yaml = r#"
+            kind: External
+            command: ["grep", "-q", "error"]
+        "#;
+        let matcher: ContentMatcher = serde_yaml::from_str(yaml).unwrap();
+        assert!(matches!(matcher, ContentMatcher::External { .. }));
+    }
+
+    #[test]
+    fn test_external_deserialize_empty_command() {
+        let yaml = r#"
+            kind: External
+            command: []
+        "#;
+        let result: Result<ContentMatcher, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_external_is_match_when_command_fails() {
+        // `false` is a command that always exits with code 1
+        let matcher = ContentMatcher::External {
+            command: vec!["false".to_string()],
+        };
+        assert!(matcher.is_match("any content"));
+    }
+
+    #[test]
+    fn test_external_is_not_match_when_command_succeeds() {
+        // `true` is a command that always exits with code 0
+        let matcher = ContentMatcher::External {
+            command: vec!["true".to_string()],
+        };
+        assert!(!matcher.is_match("any content"));
+    }
+
+    #[test]
+    fn test_external_matches_with_context_sets_command_capture() {
+        // `false` always fails
+        let matcher = ContentMatcher::External {
+            command: vec!["false".to_string()],
+        };
+        let matches = matcher.matches_with_context("content");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(
+            matches[0].captures.get("command"),
+            Some(&"false".to_string())
+        );
+    }
+
+    #[test]
+    fn test_external_matches_with_context_formats_command_with_args() {
+        // `sh -c 'exit 1'` always fails and tests multi-arg formatting
+        let matcher = ContentMatcher::External {
+            command: vec!["sh".to_string(), "-c".to_string(), "exit 1".to_string()],
+        };
+        let matches = matcher.matches_with_context("content");
+        assert_eq!(matches.len(), 1);
+        // shell_words::join should quote the argument with spaces
+        assert_eq!(
+            matches[0].captures.get("command"),
+            Some(&"sh -c 'exit 1'".to_string())
+        );
+    }
+
+    #[test]
+    fn test_external_passes_content_to_stdin() {
+        // Use grep to check that specific content is passed via stdin
+        let matcher = ContentMatcher::External {
+            command: vec!["grep".to_string(), "-q".to_string(), "needle".to_string()],
+        };
+        // grep -q exits 0 if pattern found, 1 if not
+        // So if "needle" is in content, grep succeeds (no match)
+        // If "needle" is NOT in content, grep fails (match)
+        assert!(!matcher.is_match("haystack with needle inside"));
+        assert!(matcher.is_match("haystack without the search term"));
+    }
+}

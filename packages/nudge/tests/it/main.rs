@@ -8,6 +8,7 @@
 mod basic;
 mod cli;
 mod edit_tool;
+mod external;
 mod inline_imports;
 mod message_content;
 mod multiple_rules;
@@ -87,7 +88,6 @@ pub fn user_prompt_hook(prompt: &str) -> String {
 
 /// Run nudge claude hook with the given input JSON and return (exit_code, output).
 pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
-
     // Build and get the binary path
     let status = Command::new("cargo")
         .args(["build", "--quiet", "-p", "nudge"])
@@ -133,7 +133,11 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
 pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
     match expected {
         Expected::Passthrough => {
-            pretty_assert_eq!(exit_code, 0, "expected passthrough (exit 0), output: {output}");
+            pretty_assert_eq!(
+                exit_code,
+                0,
+                "expected passthrough (exit 0), output: {output}"
+            );
             assert!(
                 output.is_empty(),
                 "expected no output for passthrough, got: {output}"
@@ -148,7 +152,11 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
             // Continue responses are plain text for UserPromptSubmit
         }
         Expected::Interrupt => {
-            pretty_assert_eq!(exit_code, 0, "expected interrupt (exit 0), output: {output}");
+            pretty_assert_eq!(
+                exit_code,
+                0,
+                "expected interrupt (exit 0), output: {output}"
+            );
             assert!(
                 output.contains(r#""permissionDecision":"deny""#),
                 "expected permissionDecision:deny in output, got: {output}"
@@ -159,7 +167,6 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
 
 /// Run a nudge subcommand and return (exit_code, stdout, stderr).
 pub fn run_nudge(args: &[&str]) -> (i32, String, String) {
-
     let status = Command::new("cargo")
         .args(["build", "--quiet", "-p", "nudge"])
         .status()

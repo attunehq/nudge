@@ -1,6 +1,6 @@
 //! Inline Imports Rule Tests
 
-use crate::{assert_expected, run_hook, write_hook, Expected};
+use crate::{Expected, assert_expected, run_hook, write_hook};
 use simple_test_case::test_case;
 use xshell::Shell;
 
