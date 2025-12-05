@@ -11,7 +11,7 @@ use crate::{
     rules::{
         ContentMatcher, PreToolUseEditMatcher, PreToolUseWriteMatcher, UserPromptSubmitMatcher,
     },
-    snippet::{Source, Span},
+    snippet::{Match, Source},
 };
 
 /// Claude Code hooks handled by Nudge.
@@ -92,8 +92,8 @@ pub struct PreToolUseEditPayload {
 impl PreToolUseEditPayload {
     /// Evaluate the payload against the given rule.
     ///
-    /// Returns the spans of all matches if the rule matched the payload.
-    pub fn evaluate(&self, matcher: &PreToolUseEditMatcher) -> Vec<Span> {
+    /// Returns matches with capture groups if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &PreToolUseEditMatcher) -> Vec<Match> {
         if matcher.file.is_match_path(&self.tool_input.file_path) {
             evaluate_all_matched(&self.tool_input.new_string, &matcher.new_content)
         } else {
@@ -132,8 +132,8 @@ pub struct PreToolUseWritePayload {
 impl PreToolUseWritePayload {
     /// Evaluate the payload against the given rule.
     ///
-    /// Returns the spans of all matches if the rule matched the payload.
-    pub fn evaluate(&self, matcher: &PreToolUseWriteMatcher) -> Vec<Span> {
+    /// Returns matches with capture groups if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &PreToolUseWriteMatcher) -> Vec<Match> {
         if matcher.file.is_match_path(&self.tool_input.file_path) {
             evaluate_all_matched(&self.tool_input.content, &matcher.content)
         } else {
@@ -166,8 +166,8 @@ pub struct UserPromptSubmitPayload {
 impl UserPromptSubmitPayload {
     /// Evaluate the payload against the given rule.
     ///
-    /// Returns the spans of all matches if the rule matched the payload.
-    pub fn evaluate(&self, matcher: &UserPromptSubmitMatcher) -> Vec<Span> {
+    /// Returns matches with capture groups if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &UserPromptSubmitMatcher) -> Vec<Match> {
         evaluate_all_matched(&self.prompt, &matcher.prompt)
     }
 }
@@ -316,18 +316,18 @@ pub struct Matcher {
     pub hooks: Vec<Config>,
 }
 
-/// Evaluate all matchers in a given content and return the spans of all matches,
+/// Evaluate all matchers in a given content and return matches with capture groups,
 /// if and only if all the matchers matched the content.
 ///
 /// If any matcher did not match the content, an empty vector is returned.
-fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Span> {
-    let mut spans = Vec::new();
+fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
+    let mut matches = Vec::new();
     for matcher in matchers {
-        let matches = matcher.matches(content);
-        if matches.is_empty() {
+        let matcher_matches = matcher.matches_with_context(content);
+        if matcher_matches.is_empty() {
             return Vec::new();
         }
-        spans.extend(matches);
+        matches.extend(matcher_matches);
     }
-    spans
+    matches
 }

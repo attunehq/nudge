@@ -54,6 +54,7 @@ const DOCS: &str = cstr!("\
           <yellow>content:</yellow>                   <dim># Patterns to match (Write tool)</dim>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"your-regex\"</yellow>
+              <yellow>suggestion: \"optional\"</yellow>   <dim># Template for suggested fix</dim>
 
         <yellow>- hook: PreToolUse</yellow>          <dim># Same rule can match multiple scenarios</dim>
           <yellow>tool: Edit</yellow>
@@ -61,6 +62,7 @@ const DOCS: &str = cstr!("\
           <yellow>new_content:</yellow>              <dim># Patterns to match (Edit tool)</dim>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"your-regex\"</yellow>
+              <yellow>suggestion: \"optional\"</yellow>
 
 <bold>Hook Types</bold>
 
@@ -92,6 +94,29 @@ const DOCS: &str = cstr!("\
   <green>(?x)</green>  <white>verbose mode:</white> ignore whitespace, allow line comments (starting with #)
 
   <dim>Example:</dim> <green>(?m)^[ \\t]+import </green> <dim>matches indented import statements</dim>
+
+<bold>Suggestions and Capture Groups</bold>
+
+  Use <cyan>suggestion:</cyan> to provide context-aware replacement suggestions using capture groups.
+
+  <white>Capture Group Syntax:</white>
+    <green>{{ $1 }}</green>, <green>{{ $2 }}</green>   Positional capture groups (numbered from 1)
+    <green>{{ $name }}</green>        Named capture groups <dim>(use (?P<<name>>...) in pattern)</dim>
+    <green>{{ $suggestion }}</green>  Interpolate suggestion into message
+
+  <white>Two-phase interpolation:</white>
+    1. Suggestion template is interpolated with capture groups
+    2. Message template is interpolated with <green>{{ $suggestion }}</green>
+
+  <dim>Example:</dim>
+    <yellow>pattern: \"(?P<<var>>\\\\w+)\\\\.unwrap\\\\(\\\\)\"</yellow>
+    <yellow>suggestion: \"{{ $var }}.expect(\\\"error message\\\")\"</yellow>
+    <yellow>message: \"Replace with {{ $suggestion }}\"</yellow>
+
+  <dim>For input</dim> <green>foo.unwrap()</green><dim>, shows:</dim>
+    <green>Replace with foo.expect(\"error message\")</green>
+
+  Each match gets its own suggestion with its specific captures.
 
 <bold>How Messages Are Displayed</bold>
 
@@ -158,6 +183,20 @@ const DOCS: &str = cstr!("\
           <yellow>prompt:</yellow>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"(?i)start.*(server|dev)|run.*local\"</yellow>
+
+  <cyan>Suggest .expect() instead of .unwrap() (with suggestions)</cyan>
+
+    <yellow>- name: no-unwrap</yellow>
+      <yellow>description: Use .expect() for better error messages</yellow>
+      <yellow>message: \"{{ $suggestion }}\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"(?P<<expr>>\\\\w+)\\\\.unwrap\\\\(\\\\)\"</yellow>
+              <yellow>suggestion: \"Replace {{ $expr }}.unwrap() with {{ $expr }}.expect(\\\"...\\\")\"</yellow>
 
 <bold>Testing Rules</bold>
 

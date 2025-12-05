@@ -45,7 +45,7 @@ fn main_pretooluse_write(payload: PreToolUseWritePayload, rules: &[Rule]) -> Res
     rules
         .iter()
         .flat_map(|rule| repeat(rule).zip(rule.hooks_pretooluse_write()))
-        .flat_map(|(rule, matcher)| rule.annotate_spans(payload.evaluate(matcher)))
+        .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
         .collect_vec()
         .pipe(|matches| respond_pretooluse(payload.tool_input.content, matches))
 }
@@ -54,7 +54,7 @@ fn main_pretooluse_edit(payload: PreToolUseEditPayload, rules: &[Rule]) -> Resul
     rules
         .iter()
         .flat_map(|rule| repeat(rule).zip(rule.hooks_pretooluse_edit()))
-        .flat_map(|(rule, matcher)| rule.annotate_spans(payload.evaluate(matcher)))
+        .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
         .collect_vec()
         .pipe(|matches| respond_pretooluse(payload.tool_input.new_string, matches))
 }
@@ -84,7 +84,7 @@ fn main_userpromptsubmit(payload: UserPromptSubmitPayload, rules: &[Rule]) -> Re
     rules
         .iter()
         .flat_map(|rule| repeat(rule).zip(rule.hooks_userpromptsubmit()))
-        .flat_map(|(rule, matcher)| rule.annotate_spans(payload.evaluate(matcher)))
+        .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
         .collect_vec()
         .pipe(|matches| respond_userpromptsubmit(payload.prompt, matches))
 }

@@ -30,6 +30,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
+| No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 
 Other Attune codebases of course have other rules.
 
@@ -47,6 +48,7 @@ This isn't about being harsh, it's about being effective. Think of a rally copil
 - **Be direct**: "Stop. Fix this first." not "You might want to think about..."
 - **Explain why** (briefly): "Use turbofish—LHS annotations clutter the variable name"
 - **Give the fix**: Don't just say what's wrong; say what to do instead
+- **Use suggestions**: Capture groups let you generate context-aware fixes (see `nudge claude docs`)
 - **End with "then retry"**: Tell Claude to retry the operation after fixing
 - **Write for one match**: Your message appears at each match location in a code snippet
 

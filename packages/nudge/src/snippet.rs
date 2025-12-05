@@ -128,6 +128,42 @@ impl From<(usize, usize)> for Span {
     }
 }
 
+/// A match with capture groups for template interpolation.
+///
+/// Carries both the location (span) and captured data from a regex match,
+/// enabling per-match interpolation of suggestions.
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+pub struct Match {
+    /// The byte range of the match.
+    #[builder(into)]
+    pub span: Span,
+
+    /// Captured groups from the regex match.
+    ///
+    /// Keys are `"0"`, `"1"`, `"2"` for positional captures,
+    /// and the capture name for named captures.
+    #[builder(default)]
+    pub captures: crate::template::Captures,
+}
+
+impl From<Span> for Match {
+    fn from(span: Span) -> Self {
+        Self {
+            span,
+            captures: Default::default(),
+        }
+    }
+}
+
+impl From<Range<usize>> for Match {
+    fn from(range: Range<usize>) -> Self {
+        Self {
+            span: Span::from(range),
+            captures: Default::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

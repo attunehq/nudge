@@ -10,7 +10,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     fmap_match,
-    snippet::{Annotation, Span},
+    snippet::{Annotation, Match, Span},
+    template::{self, Captures},
 };
 
 /// A rule configuration file.
@@ -85,6 +86,21 @@ impl Rule {
                 .span(span)
                 .label(&self.message)
                 .build()
+        })
+    }
+
+    /// Annotate matches with interpolated messages.
+    ///
+    /// Each match's captures are used to interpolate the rule's message.
+    /// If the match contains a `suggestion` key in its captures, that
+    /// can be referenced in the message as `{{ $suggestion }}`.
+    pub fn annotate_matches(
+        &self,
+        matches: impl IntoIterator<Item = Match>,
+    ) -> impl Iterator<Item = Annotation> {
+        matches.into_iter().map(|m| {
+            let label = template::interpolate(&self.message, &m.captures);
+            Annotation::builder().span(m.span).label(label).build()
         })
     }
 }
@@ -214,17 +230,28 @@ pub struct PreToolUseEditMatcher {
 
 /// The method used to match hook content.
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "pattern")]
+#[serde(tag = "kind")]
 pub enum ContentMatcher {
     /// Match on a regular expression.
-    Regex(RegexMatcher),
+    Regex {
+        /// The regex pattern to match.
+        pattern: RegexMatcher,
+
+        /// Optional suggestion template for this matcher.
+        ///
+        /// When provided, the suggestion is interpolated with the match's
+        /// capture groups and added to the match context as `suggestion`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl ContentMatcher {
     /// Test whether this pattern matches a given string.
     pub fn is_match(&self, s: &str) -> bool {
         match self {
-            ContentMatcher::Regex(matcher) => matcher.is_match(s),
+            ContentMatcher::Regex { pattern, .. } => pattern.is_match(s),
         }
     }
 
@@ -233,7 +260,32 @@ impl ContentMatcher {
     /// Spans are returned in the order of the matches, and are non-overlapping.
     pub fn matches(&self, s: &str) -> Vec<Span> {
         match self {
-            ContentMatcher::Regex(matcher) => matcher.matches(s),
+            ContentMatcher::Regex { pattern, .. } => pattern.matches(s),
+        }
+    }
+
+    /// Get matches with capture groups for template interpolation.
+    ///
+    /// If this matcher has a suggestion template, it will be interpolated
+    /// with the match's captures and added to the context as `suggestion`.
+    pub fn matches_with_context(&self, s: &str) -> Vec<Match> {
+        match self {
+            ContentMatcher::Regex {
+                pattern,
+                suggestion,
+            } => {
+                let mut matches = pattern.matches_with_context(s);
+
+                // If there's a suggestion template, interpolate it per-match
+                if let Some(suggestion_template) = suggestion {
+                    for m in &mut matches {
+                        let interpolated = template::interpolate(suggestion_template, &m.captures);
+                        m.captures.insert("suggestion".to_string(), interpolated);
+                    }
+                }
+
+                matches
+            }
         }
     }
 }
@@ -332,6 +384,40 @@ impl RegexMatcher {
     /// Spans are returned in the order of the matches, and are non-overlapping.
     pub fn matches(&self, s: &str) -> Vec<Span> {
         self.0.find_iter(s).map(|m| m.range().into()).collect()
+    }
+
+    /// Get matches with capture groups for template interpolation.
+    ///
+    /// Returns `Match` objects containing both the span and captured values.
+    /// Captures are stored as:
+    /// - `"0"`, `"1"`, `"2"`, etc. for positional captures
+    /// - Named keys for named capture groups (e.g., `"var_name"`)
+    pub fn matches_with_context(&self, s: &str) -> Vec<Match> {
+        self.0
+            .captures_iter(s)
+            .map(|caps| {
+                let full_match = caps.get(0).expect("capture 0 always exists");
+                let span = Span::from(full_match.range());
+
+                let mut captures = Captures::new();
+
+                // Add positional captures
+                for i in 0..caps.len() {
+                    if let Some(cap) = caps.get(i) {
+                        captures.insert(i.to_string(), cap.as_str().to_string());
+                    }
+                }
+
+                // Add named captures
+                for name in self.0.capture_names().flatten() {
+                    if let Some(cap) = caps.name(name) {
+                        captures.insert(name.to_string(), cap.as_str().to_string());
+                    }
+                }
+
+                Match { span, captures }
+            })
+            .collect()
     }
 }
 

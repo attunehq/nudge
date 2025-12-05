@@ -3,6 +3,7 @@
 pub mod claude;
 pub mod rules;
 pub mod snippet;
+pub mod template;
 
 /// Convenience macro for `filter_map`ing a pattern that contains a single item.
 /// Returns `Some(item)` if the item matches the pattern, `None` otherwise.

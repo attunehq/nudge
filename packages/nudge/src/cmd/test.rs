@@ -10,7 +10,7 @@ use serde_json::json;
 use nudge::{
     claude::hook::{Hook, PreToolUsePayload},
     rules::{self, Rule},
-    snippet::Source,
+    snippet::{Match, Source},
 };
 
 #[derive(Args, Clone, Debug)]
@@ -66,7 +66,7 @@ pub fn main(config: Config) -> Result<()> {
         println!("Result: {hook_type}");
         println!();
         println!("Matched content:");
-        let annotations = rule.annotate_spans(matched).collect_vec();
+        let annotations = rule.annotate_matches(matched).collect_vec();
         let snippet = source.annotate(annotations);
         println!("{snippet}");
     }
@@ -74,35 +74,35 @@ pub fn main(config: Config) -> Result<()> {
     Ok(())
 }
 
-/// Evaluate a single rule against a hook, returning matched spans and the source.
-fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<nudge::snippet::Span>, Source) {
+/// Evaluate a single rule against a hook, returning matches and the source.
+fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<Match>, Source) {
     match hook {
         Hook::PreToolUse(payload) => match payload {
             PreToolUsePayload::Write(payload) => {
-                let spans = rule
+                let matches = rule
                     .hooks_pretooluse_write()
                     .flat_map(|matcher| payload.evaluate(matcher))
                     .collect_vec();
                 let source = Source::from(&payload.tool_input.content);
-                (spans, source)
+                (matches, source)
             }
             PreToolUsePayload::Edit(payload) => {
-                let spans = rule
+                let matches = rule
                     .hooks_pretooluse_edit()
                     .flat_map(|matcher| payload.evaluate(matcher))
                     .collect_vec();
                 let source = Source::from(&payload.tool_input.new_string);
-                (spans, source)
+                (matches, source)
             }
             PreToolUsePayload::Other => (Vec::new(), Source::from("")),
         },
         Hook::UserPromptSubmit(payload) => {
-            let spans = rule
+            let matches = rule
                 .hooks_userpromptsubmit()
                 .flat_map(|matcher| payload.evaluate(matcher))
                 .collect_vec();
             let source = Source::from(&payload.prompt);
-            (spans, source)
+            (matches, source)
         }
         Hook::Other => (Vec::new(), Source::from("")),
     }
