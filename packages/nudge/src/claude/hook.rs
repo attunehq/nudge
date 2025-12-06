@@ -9,7 +9,8 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{
     rules::{
-        ContentMatcher, PreToolUseEditMatcher, PreToolUseWriteMatcher, UserPromptSubmitMatcher,
+        ContentMatcher, PreToolUseEditMatcher, PreToolUseWebFetchMatcher, PreToolUseWriteMatcher,
+        UrlMatcher, UserPromptSubmitMatcher,
     },
     snippet::{Match, Source},
 };
@@ -36,6 +37,7 @@ impl Hook {
             Hook::PreToolUse(payload) => match payload {
                 PreToolUsePayload::Write(payload) => Source::from(&payload.tool_input.content),
                 PreToolUsePayload::Edit(payload) => Source::from(&payload.tool_input.new_string),
+                PreToolUsePayload::WebFetch(payload) => Source::from(&payload.tool_input.url),
                 PreToolUsePayload::Other => Source::from(""),
             },
             Hook::UserPromptSubmit(payload) => Source::from(&payload.prompt),
@@ -69,6 +71,9 @@ pub enum PreToolUsePayload {
 
     /// The Edit tool.
     Edit(PreToolUseEditPayload),
+
+    /// The WebFetch tool.
+    WebFetch(PreToolUseWebFetchPayload),
 
     /// Other tools that Nudge doesn't handle.
     #[serde(other)]
@@ -150,6 +155,39 @@ pub struct PreToolUseWriteInput {
 
     /// The content to write to the file.
     pub content: String,
+}
+
+/// Payload for the `WebFetch` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseWebFetchPayload {
+    /// The context of the hook.
+    #[serde(flatten)]
+    pub context: Context,
+
+    /// The ID of the tool use.
+    pub tool_use_id: String,
+
+    /// The input to the tool.
+    pub tool_input: PreToolUseWebFetchInput,
+}
+
+impl PreToolUseWebFetchPayload {
+    /// Evaluate the payload against the given rule.
+    ///
+    /// Returns matches with capture groups if the rule matched the payload.
+    pub fn evaluate(&self, matcher: &PreToolUseWebFetchMatcher) -> Vec<Match> {
+        evaluate_all_url_matched(&self.tool_input.url, &matcher.url)
+    }
+}
+
+/// Input for the `WebFetch` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseWebFetchInput {
+    /// The URL to fetch.
+    pub url: String,
+
+    /// The prompt describing what to extract from the page.
+    pub prompt: String,
 }
 
 /// Payload for the `UserPromptSubmit` hook.
@@ -324,6 +362,22 @@ fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match
     let mut matches = Vec::new();
     for matcher in matchers {
         let matcher_matches = matcher.matches_with_context(content);
+        if matcher_matches.is_empty() {
+            return Vec::new();
+        }
+        matches.extend(matcher_matches);
+    }
+    matches
+}
+
+/// Evaluate all URL matchers in a given URL and return matches with capture groups,
+/// if and only if all the matchers matched the URL.
+///
+/// If any matcher did not match the URL, an empty vector is returned.
+fn evaluate_all_url_matched(url: &str, matchers: &[UrlMatcher]) -> Vec<Match> {
+    let mut matches = Vec::new();
+    for matcher in matchers {
+        let matcher_matches = matcher.matches_with_context(url);
         if matcher_matches.is_empty() {
             return Vec::new();
         }

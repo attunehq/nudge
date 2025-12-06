@@ -77,6 +77,14 @@ impl Rule {
             .filter_map(fmap_match!(PreToolUseMatcher::Edit))
     }
 
+    /// Convenience method to filter hooks to `PreToolUse::WebFetch`.
+    pub fn hooks_pretooluse_webfetch(&self) -> impl Iterator<Item = &PreToolUseWebFetchMatcher> {
+        self.on
+            .iter()
+            .filter_map(fmap_match!(Hook::PreToolUse))
+            .filter_map(fmap_match!(PreToolUseMatcher::WebFetch))
+    }
+
     /// Convenience method to filter hooks to `UserPromptSubmit`.
     pub fn hooks_userpromptsubmit(&self) -> impl Iterator<Item = &UserPromptSubmitMatcher> {
         self.on
@@ -190,6 +198,9 @@ pub enum PreToolUseMatcher {
 
     /// Matches the Edit tool.
     Edit(PreToolUseEditMatcher),
+
+    /// Matches the WebFetch tool.
+    WebFetch(PreToolUseWebFetchMatcher),
 }
 
 /// Matches the Write tool.
@@ -234,6 +245,21 @@ pub struct PreToolUseEditMatcher {
     /// patterns, the rule is triggered.
     #[serde(default)]
     pub new_content: Vec<ContentMatcher>,
+}
+
+/// Matches the WebFetch tool.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PreToolUseWebFetchMatcher {
+    // Monostate fields to parse the overall object.
+    hook: MustBe!("PreToolUse"),
+    tool: MustBe!("WebFetch"),
+
+    /// URL patterns to match.
+    ///
+    /// When the URL being fetched by the agent matches all of these
+    /// patterns, the rule is triggered.
+    #[serde(default)]
+    pub url: Vec<UrlMatcher>,
 }
 
 /// The method used to match hook content.
@@ -500,6 +526,101 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+        }
+    }
+}
+
+/// The method used to match URLs.
+///
+/// Similar to [`ContentMatcher`] but only supports regex patterns, since URLs
+/// are simple strings without syntax tree structure.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum UrlMatcher {
+    /// Match on a regular expression.
+    Regex {
+        /// The regex pattern to match against the URL.
+        pattern: RegexMatcher,
+
+        /// Optional suggestion template for this matcher.
+        ///
+        /// When provided, the suggestion is interpolated with the match's
+        /// capture groups and added to the match context as `suggestion`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+}
+
+impl<'de> Deserialize<'de> for UrlMatcher {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            kind: String,
+            pattern: Option<String>,
+            suggestion: Option<String>,
+        }
+
+        let raw = Raw::deserialize(deserializer)?;
+
+        match raw.kind.as_str() {
+            "Regex" => {
+                let pattern_str = raw
+                    .pattern
+                    .ok_or_else(|| serde::de::Error::missing_field("pattern"))?;
+                let pattern = Regex::new(&pattern_str)
+                    .map(RegexMatcher)
+                    .map_err(serde::de::Error::custom)?;
+                Ok(UrlMatcher::Regex {
+                    pattern,
+                    suggestion: raw.suggestion,
+                })
+            }
+            other => Err(serde::de::Error::unknown_variant(other, &["Regex"])),
+        }
+    }
+}
+
+impl UrlMatcher {
+    /// Test whether this pattern matches a given URL.
+    pub fn is_match(&self, url: &str) -> bool {
+        match self {
+            UrlMatcher::Regex { pattern, .. } => pattern.is_match(url),
+        }
+    }
+
+    /// Get the spans of all matches in a given URL.
+    pub fn matches(&self, url: &str) -> Vec<Span> {
+        match self {
+            UrlMatcher::Regex { pattern, .. } => pattern.matches(url),
+        }
+    }
+
+    /// Get matches with capture groups for template interpolation.
+    ///
+    /// If this matcher has a suggestion template, it will be interpolated
+    /// with the match's captures and added to the context as `suggestion`.
+    pub fn matches_with_context(&self, url: &str) -> Vec<Match> {
+        match self {
+            UrlMatcher::Regex {
+                pattern,
+                suggestion,
+            } => {
+                let mut matches = pattern.matches_with_context(url);
+
+                // If there's a suggestion template, interpolate it per-match
+                if let Some(suggestion_template) = suggestion {
+                    for m in &mut matches {
+                        let interpolated = template::interpolate(suggestion_template, &m.captures);
+                        m.captures.insert("suggestion".to_string(), interpolated);
+                    }
+                }
+
+                matches
             }
         }
     }

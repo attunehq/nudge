@@ -103,3 +103,16 @@ rules:
           - kind: Regex
             pattern: "(?P<expr>[a-zA-Z_][a-zA-Z0-9_]*)\\.unwrap\\(\\)"
             suggestion: 'Replace `{{ $expr }}.unwrap()` with `{{ $expr }}.expect("descriptive error message")`'
+
+  # Redirect docs.rs fetches to local cargo registry.
+  # Demonstrates the WebFetch matcher with URL capture groups.
+  - name: prefer-local-docs
+    description: Read local crate source instead of fetching from docs.rs
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: WebFetch
+        url:
+          - kind: Regex
+            pattern: "docs\\.rs/(?P<crate>[^/]+)"
+            suggestion: "Don't fetch from docs.rs. Instead, read the local source at ~/.cargo/registry/src/*/{{ $crate }}-*"

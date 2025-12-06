@@ -15,6 +15,7 @@ mod multiple_rules;
 mod non_rust_files;
 mod syntax_tree;
 mod user_prompt;
+mod webfetch;
 
 use std::io::Write as _;
 use std::process::{Command, Stdio};
@@ -82,6 +83,24 @@ pub fn user_prompt_hook(prompt: &str) -> String {
         "permission_mode": "default",
         "cwd": "/tmp",
         "prompt": prompt
+    })
+    .to_string()
+}
+
+/// Build a PreToolUse hook JSON payload for WebFetch tool.
+pub fn webfetch_hook(url: &str, prompt: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": "/tmp",
+        "tool_name": "WebFetch",
+        "tool_use_id": "123",
+        "tool_input": {
+            "url": url,
+            "prompt": prompt
+        }
     })
     .to_string()
 }

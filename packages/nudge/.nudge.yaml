@@ -41,3 +41,15 @@ rules:
         new_content:
           - kind: Regex
             pattern: "(?m)let\\s+\\w+\\s*:\\s*Vec<"
+
+  # Rule 3: Redirect docs.rs fetches to local cargo registry
+  - name: prefer-local-docs
+    description: Read local crate source instead of fetching from docs.rs
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: WebFetch
+        url:
+          - kind: Regex
+            pattern: "docs\\.rs/(?P<crate>[^/]+)"
+            suggestion: "Don't fetch from docs.rs. Instead, read the local source at ~/.cargo/registry/src/*/{{ $crate }}-*"

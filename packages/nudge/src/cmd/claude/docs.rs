@@ -17,9 +17,9 @@ const DOCS: &str = cstr!("\
 
 <bold>What is Nudge?</bold>
 
-  Nudge is a <cyan>collaborative partner</cyan> for Claude Code. It watches Write and Edit
-  operations and reminds you about coding conventions—so you can focus on the
-  user's actual problem instead of tracking dozens of stylistic details.
+  Nudge is a <cyan>collaborative partner</cyan> for Claude Code. It watches Write, Edit,
+  and WebFetch operations and reminds you about coding conventions—so you can
+  focus on the user's actual problem instead of tracking dozens of stylistic details.
 
   <green>Nudge is on your side.</green> When it sends a message, it's not a reprimand—it's
   a colleague tapping you on the shoulder. The messages are direct (sometimes
@@ -49,7 +49,7 @@ const DOCS: &str = cstr!("\
 
       <yellow>on:</yellow>                           <dim># List of matchers (any match triggers the rule)</dim>
         <yellow>- hook: PreToolUse</yellow>          <dim># PreToolUse or UserPromptSubmit</dim>
-          <yellow>tool: Write</yellow>               <dim># Write or Edit (PreToolUse only)</dim>
+          <yellow>tool: Write</yellow>               <dim># Write, Edit, or WebFetch (PreToolUse only)</dim>
           <yellow>file: \"**/*.rs\"</yellow>           <dim># Glob pattern for file path</dim>
           <yellow>content:</yellow>                   <dim># Patterns to match (Write tool)</dim>
             <yellow>- kind: Regex</yellow>
@@ -66,19 +66,22 @@ const DOCS: &str = cstr!("\
 
 <bold>Hook Types</bold>
 
-  <green>PreToolUse</green>        Triggers before Write/Edit operations. Always <cyan>interrupts</cyan>
-                    (blocks the operation until the issue is fixed).
+  <green>PreToolUse</green>        Triggers before Write/Edit/WebFetch operations. Always
+                    <cyan>interrupts</cyan> (blocks the operation until the issue is fixed).
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
                     (injects context into the conversation).
 
 <bold>Tool Types (PreToolUse only)</bold>
 
-  <green>Write</green>   Match content being written to a new file
-          Use <cyan>content:</cyan> to specify patterns to match
+  <green>Write</green>      Match content being written to a new file
+             Use <cyan>content:</cyan> to specify patterns to match
 
-  <green>Edit</green>    Match content being edited in an existing file
-          Use <cyan>new_content:</cyan> to match the replacement text
+  <green>Edit</green>       Match content being edited in an existing file
+             Use <cyan>new_content:</cyan> to match the replacement text
+
+  <green>WebFetch</green>   Match URLs being fetched
+             Use <cyan>url:</cyan> to specify URL patterns to match
 
 <bold>Regex Inline Flags</bold>
 
@@ -306,6 +309,22 @@ const DOCS: &str = cstr!("\
           <yellow>content:</yellow>
             <yellow>- kind: External</yellow>
               <yellow>command: [\"npx\", \"markdownlint\", \"--stdin\", \"-c\", \"{\\\"MD060\\\":{\\\"style\\\":\\\"aligned\\\"}}\"]</yellow>
+
+  <cyan>Redirect docs.rs to local source (WebFetch)</cyan>
+
+    <dim># When Claude tries to fetch from docs.rs, redirect to local cargo registry.</dim>
+    <dim># Uses capture groups to extract the crate name from the URL.</dim>
+
+    <yellow>- name: prefer-local-docs</yellow>
+      <yellow>description: Read local crate source instead of fetching from docs.rs</yellow>
+      <yellow>message: \"{{ $suggestion }}\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: WebFetch</yellow>
+          <yellow>url:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"docs\\\\.rs/(?P<<crate>>[^/]+)\"</yellow>
+              <yellow>suggestion: \"Read local source at ~/.cargo/registry/src/*/{{ $crate }}-*\"</yellow>
 
 <bold>Testing Rules</bold>
 

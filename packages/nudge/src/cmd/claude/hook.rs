@@ -9,7 +9,8 @@ use itertools::Itertools;
 use nudge::{
     claude::hook::{
         Hook, PreToolUseEditPayload, PreToolUseInterruptResponse, PreToolUsePayload,
-        PreToolUseWritePayload, UserPromptSubmitPayload, UserPromptSubmitResponse,
+        PreToolUseWebFetchPayload, PreToolUseWritePayload, UserPromptSubmitPayload,
+        UserPromptSubmitResponse,
     },
     rules::{self, Rule},
     snippet::{Annotation, Source},
@@ -37,6 +38,7 @@ fn main_pretooluse(payload: PreToolUsePayload, rules: &[Rule]) -> Result<()> {
     match payload {
         PreToolUsePayload::Write(payload) => main_pretooluse_write(payload, rules),
         PreToolUsePayload::Edit(payload) => main_pretooluse_edit(payload, rules),
+        PreToolUsePayload::WebFetch(payload) => main_pretooluse_webfetch(payload, rules),
         PreToolUsePayload::Other => Ok(()), // Passthrough for unhandled tool types
     }
 }
@@ -57,6 +59,15 @@ fn main_pretooluse_edit(payload: PreToolUseEditPayload, rules: &[Rule]) -> Resul
         .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
         .collect_vec()
         .pipe(|matches| respond_pretooluse(payload.tool_input.new_string, matches))
+}
+
+fn main_pretooluse_webfetch(payload: PreToolUseWebFetchPayload, rules: &[Rule]) -> Result<()> {
+    rules
+        .iter()
+        .flat_map(|rule| repeat(rule).zip(rule.hooks_pretooluse_webfetch()))
+        .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
+        .collect_vec()
+        .pipe(|matches| respond_pretooluse(payload.tool_input.url, matches))
 }
 
 fn respond_pretooluse(content: impl Into<Source>, annotations: Vec<Annotation>) -> Result<()> {

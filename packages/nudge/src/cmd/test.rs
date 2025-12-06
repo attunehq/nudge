@@ -19,13 +19,17 @@ pub struct Config {
     #[arg(long)]
     pub rule: String,
 
-    /// Tool name (for PreToolUse rules): Write or Edit.
+    /// Tool name (for PreToolUse rules): Write, Edit, or WebFetch.
     #[arg(long)]
     pub tool: Option<String>,
 
     /// File path (for rules with file patterns).
     #[arg(long)]
     pub file: Option<PathBuf>,
+
+    /// URL to test against (for WebFetch tool).
+    #[arg(long)]
+    pub url: Option<String>,
 
     /// Content to test against (for Write tool or Edit new_string).
     #[arg(long, conflicts_with = "content_file")]
@@ -94,6 +98,14 @@ fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<Match>, Source) {
                 let source = Source::from(&payload.tool_input.new_string);
                 (matches, source)
             }
+            PreToolUsePayload::WebFetch(payload) => {
+                let matches = rule
+                    .hooks_pretooluse_webfetch()
+                    .flat_map(|matcher| payload.evaluate(matcher))
+                    .collect_vec();
+                let source = Source::from(&payload.tool_input.url);
+                (matches, source)
+            }
             PreToolUsePayload::Other => (Vec::new(), Source::from("")),
         },
         Hook::UserPromptSubmit(payload) => {
@@ -117,6 +129,7 @@ fn build_hook(config: &Config) -> Result<Hook> {
 
     if config.tool.is_some()
         || config.file.is_some()
+        || config.url.is_some()
         || config.content.is_some()
         || config.content_file.is_some()
     {
@@ -169,7 +182,21 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
             "old_string": "",
             "new_string": content
         }),
-        other => bail!("Unknown tool '{}'. Supported tools: Write, Edit", other),
+        "WebFetch" => {
+            let url = config
+                .url
+                .as_ref()
+                .map(|u| u.clone())
+                .unwrap_or_else(|| "https://example.com".to_string());
+            json!({
+                "url": url,
+                "prompt": content
+            })
+        }
+        other => bail!(
+            "Unknown tool '{}'. Supported tools: Write, Edit, WebFetch",
+            other
+        ),
     };
 
     let payload = json!({
