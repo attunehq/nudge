@@ -6,6 +6,7 @@ use tracing::instrument;
 
 pub mod docs;
 pub mod hook;
+pub mod run;
 pub mod setup;
 
 #[derive(Args, Clone, Debug)]
@@ -24,6 +25,9 @@ enum Commands {
 
     /// Show documentation for writing Nudge rules.
     Docs(docs::Config),
+
+    /// Run Claude Code with Nudge as the frontend.
+    Run(run::Config),
 }
 
 #[instrument]
@@ -32,5 +36,6 @@ pub fn main(config: Config) -> Result<()> {
         Commands::Hook(config) => hook::main(config),
         Commands::Setup(config) => setup::main(config),
         Commands::Docs(config) => docs::main(config),
+        Commands::Run(config) => run::main(config),
     }
 }
