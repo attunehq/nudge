@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize, Serializer};
 
 use crate::{
     rules::{
-        ContentMatcher, PreToolUseEditMatcher, PreToolUseWebFetchMatcher, PreToolUseWriteMatcher,
-        UrlMatcher, UserPromptSubmitMatcher,
+        ContentMatcher, PreToolUseBashMatcher, PreToolUseEditMatcher, PreToolUseWebFetchMatcher,
+        PreToolUseWriteMatcher, UrlMatcher, UserPromptSubmitMatcher,
     },
     snippet::{Match, Source},
 };
@@ -38,6 +38,7 @@ impl Hook {
                 PreToolUsePayload::Write(payload) => Source::from(&payload.tool_input.content),
                 PreToolUsePayload::Edit(payload) => Source::from(&payload.tool_input.new_string),
                 PreToolUsePayload::WebFetch(payload) => Source::from(&payload.tool_input.url),
+                PreToolUsePayload::Bash(payload) => Source::from(&payload.tool_input.command),
                 PreToolUsePayload::Other => Source::from(""),
             },
             Hook::UserPromptSubmit(payload) => Source::from(&payload.prompt),
@@ -74,6 +75,9 @@ pub enum PreToolUsePayload {
 
     /// The WebFetch tool.
     WebFetch(PreToolUseWebFetchPayload),
+
+    /// The Bash tool.
+    Bash(PreToolUseBashPayload),
 
     /// Other tools that Nudge doesn't handle.
     #[serde(other)]
@@ -188,6 +192,49 @@ pub struct PreToolUseWebFetchInput {
 
     /// The prompt describing what to extract from the page.
     pub prompt: String,
+}
+
+/// Payload for the `Bash` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseBashPayload {
+    /// The context of the hook.
+    #[serde(flatten)]
+    pub context: Context,
+
+    /// The ID of the tool use.
+    pub tool_use_id: String,
+
+    /// The input to the tool.
+    pub tool_input: PreToolUseBashInput,
+}
+
+impl PreToolUseBashPayload {
+    /// Evaluate the payload against the given rule.
+    ///
+    /// Returns matches with capture groups if the rule matched the payload.
+    /// First checks all project_state matchers; if any fail, returns empty.
+    /// Then evaluates command matchers against the command string.
+    pub fn evaluate(&self, matcher: &PreToolUseBashMatcher) -> Vec<Match> {
+        // Check project state matchers first (all must pass)
+        for state_matcher in &matcher.project_state {
+            if !state_matcher.is_match(&self.context.cwd) {
+                return Vec::new();
+            }
+        }
+        // Then evaluate command matchers
+        evaluate_all_matched(&self.tool_input.command, &matcher.command)
+    }
+}
+
+/// Input for the `Bash` tool.
+#[derive(Debug, Deserialize)]
+pub struct PreToolUseBashInput {
+    /// The command to execute.
+    pub command: String,
+
+    /// Human-readable description of what the command does.
+    #[serde(default)]
+    pub description: Option<String>,
 }
 
 /// Payload for the `UserPromptSubmit` hook.

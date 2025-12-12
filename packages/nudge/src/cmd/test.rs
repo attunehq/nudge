@@ -106,6 +106,14 @@ fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<Match>, Source) {
                 let source = Source::from(&payload.tool_input.url);
                 (matches, source)
             }
+            PreToolUsePayload::Bash(payload) => {
+                let matches = rule
+                    .hooks_pretooluse_bash()
+                    .flat_map(|matcher| payload.evaluate(matcher))
+                    .collect_vec();
+                let source = Source::from(&payload.tool_input.command);
+                (matches, source)
+            }
             PreToolUsePayload::Other => (Vec::new(), Source::from("")),
         },
         Hook::UserPromptSubmit(payload) => {

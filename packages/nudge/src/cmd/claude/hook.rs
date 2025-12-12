@@ -8,9 +8,9 @@ use indoc::formatdoc;
 use itertools::Itertools;
 use nudge::{
     claude::hook::{
-        Hook, PreToolUseEditPayload, PreToolUseInterruptResponse, PreToolUsePayload,
-        PreToolUseWebFetchPayload, PreToolUseWritePayload, UserPromptSubmitPayload,
-        UserPromptSubmitResponse,
+        Hook, PreToolUseBashPayload, PreToolUseEditPayload, PreToolUseInterruptResponse,
+        PreToolUsePayload, PreToolUseWebFetchPayload, PreToolUseWritePayload,
+        UserPromptSubmitPayload, UserPromptSubmitResponse,
     },
     rules::{self, Rule},
     snippet::{Annotation, Source},
@@ -39,6 +39,7 @@ fn main_pretooluse(payload: PreToolUsePayload, rules: &[Rule]) -> Result<()> {
         PreToolUsePayload::Write(payload) => main_pretooluse_write(payload, rules),
         PreToolUsePayload::Edit(payload) => main_pretooluse_edit(payload, rules),
         PreToolUsePayload::WebFetch(payload) => main_pretooluse_webfetch(payload, rules),
+        PreToolUsePayload::Bash(payload) => main_pretooluse_bash(payload, rules),
         PreToolUsePayload::Other => Ok(()), // Passthrough for unhandled tool types
     }
 }
@@ -68,6 +69,15 @@ fn main_pretooluse_webfetch(payload: PreToolUseWebFetchPayload, rules: &[Rule]) 
         .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
         .collect_vec()
         .pipe(|matches| respond_pretooluse(payload.tool_input.url, matches))
+}
+
+fn main_pretooluse_bash(payload: PreToolUseBashPayload, rules: &[Rule]) -> Result<()> {
+    rules
+        .iter()
+        .flat_map(|rule| repeat(rule).zip(rule.hooks_pretooluse_bash()))
+        .flat_map(|(rule, matcher)| rule.annotate_matches(payload.evaluate(matcher)))
+        .collect_vec()
+        .pipe(|matches| respond_pretooluse(payload.tool_input.command, matches))
 }
 
 fn respond_pretooluse(content: impl Into<Source>, annotations: Vec<Annotation>) -> Result<()> {

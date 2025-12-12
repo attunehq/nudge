@@ -85,6 +85,14 @@ impl Rule {
             .filter_map(fmap_match!(PreToolUseMatcher::WebFetch))
     }
 
+    /// Convenience method to filter hooks to `PreToolUse::Bash`.
+    pub fn hooks_pretooluse_bash(&self) -> impl Iterator<Item = &PreToolUseBashMatcher> {
+        self.on
+            .iter()
+            .filter_map(fmap_match!(Hook::PreToolUse))
+            .filter_map(fmap_match!(PreToolUseMatcher::Bash))
+    }
+
     /// Convenience method to filter hooks to `UserPromptSubmit`.
     pub fn hooks_userpromptsubmit(&self) -> impl Iterator<Item = &UserPromptSubmitMatcher> {
         self.on
@@ -201,6 +209,9 @@ pub enum PreToolUseMatcher {
 
     /// Matches the WebFetch tool.
     WebFetch(PreToolUseWebFetchMatcher),
+
+    /// Matches the Bash tool.
+    Bash(PreToolUseBashMatcher),
 }
 
 /// Matches the Write tool.
@@ -260,6 +271,29 @@ pub struct PreToolUseWebFetchMatcher {
     /// patterns, the rule is triggered.
     #[serde(default)]
     pub url: Vec<UrlMatcher>,
+}
+
+/// Matches the Bash tool.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PreToolUseBashMatcher {
+    // Monostate fields to parse the overall object.
+    hook: MustBe!("PreToolUse"),
+    tool: MustBe!("Bash"),
+
+    /// Command patterns to match.
+    ///
+    /// When the command being executed by the agent matches all of these
+    /// patterns, the rule is triggered.
+    #[serde(default)]
+    pub command: Vec<ContentMatcher>,
+
+    /// Project state matchers.
+    ///
+    /// When all project state matchers match, the rule proceeds to evaluate
+    /// the command matchers. If any project state matcher does not match,
+    /// the rule does not fire.
+    #[serde(default)]
+    pub project_state: Vec<ProjectStateMatcher>,
 }
 
 /// The method used to match hook content.
@@ -621,6 +655,79 @@ impl UrlMatcher {
                 }
 
                 matches
+            }
+        }
+    }
+}
+
+/// Matcher for project state conditions.
+///
+/// Project state matchers evaluate conditions about the project environment
+/// (e.g., git state) rather than the content of the tool input. All project
+/// state matchers in a rule must match for the rule to proceed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind")]
+pub enum ProjectStateMatcher {
+    /// Match against git repository state.
+    Git {
+        /// Match against the current branch name.
+        ///
+        /// All branch matchers must match the current branch name for this
+        /// git matcher to pass.
+        #[serde(default)]
+        branch: Vec<ContentMatcher>,
+    },
+}
+
+impl<'de> Deserialize<'de> for ProjectStateMatcher {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Raw {
+            kind: String,
+            #[serde(default)]
+            branch: Vec<ContentMatcher>,
+        }
+
+        let raw = Raw::deserialize(deserializer)?;
+
+        match raw.kind.as_str() {
+            "Git" => Ok(ProjectStateMatcher::Git { branch: raw.branch }),
+            other => Err(serde::de::Error::unknown_variant(other, &["Git"])),
+        }
+    }
+}
+
+impl ProjectStateMatcher {
+    /// Evaluate this matcher against the project state at the given path.
+    ///
+    /// Returns `true` if the matcher matches, `false` otherwise.
+    /// Logs a warning if the project state cannot be determined (e.g., not
+    /// in a git repository).
+    pub fn is_match(&self, cwd: &Path) -> bool {
+        match self {
+            ProjectStateMatcher::Git { branch } => {
+                if branch.is_empty() {
+                    // No branch matchers = always match (just checking we're in a git repo)
+                    if crate::git::current_branch(cwd).is_some() {
+                        return true;
+                    }
+                    tracing::warn!(?cwd, "project_state.Git matcher: not in a git repository");
+                    return false;
+                }
+
+                let Some(current_branch) = crate::git::current_branch(cwd) else {
+                    tracing::warn!(
+                        ?cwd,
+                        "project_state.Git matcher: could not determine current branch"
+                    );
+                    return false;
+                };
+
+                // All branch matchers must match
+                branch.iter().all(|m| m.is_match(&current_branch))
             }
         }
     }
@@ -1232,5 +1339,70 @@ mod tests {
         // If "needle" is NOT in content, grep fails (match)
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));
+    }
+
+    #[test]
+    fn test_bash_matcher_deserialize() {
+        let yaml = r#"
+            hook: PreToolUse
+            tool: Bash
+            command:
+              - kind: Regex
+                pattern: "git\\s+push"
+        "#;
+        let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(matcher.command.len(), 1);
+        assert!(matcher.project_state.is_empty());
+    }
+
+    #[test]
+    fn test_bash_matcher_with_project_state_deserialize() {
+        let yaml = r#"
+            hook: PreToolUse
+            tool: Bash
+            command:
+              - kind: Regex
+                pattern: "git\\s+push"
+            project_state:
+              - kind: Git
+                branch:
+                  - kind: Regex
+                    pattern: "^main$"
+        "#;
+        let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(matcher.command.len(), 1);
+        assert_eq!(matcher.project_state.len(), 1);
+    }
+
+    #[test]
+    fn test_project_state_git_deserialize() {
+        let yaml = r#"
+            kind: Git
+            branch:
+              - kind: Regex
+                pattern: "^main$"
+        "#;
+        let matcher: ProjectStateMatcher = serde_yaml::from_str(yaml).unwrap();
+        assert!(matches!(matcher, ProjectStateMatcher::Git { .. }));
+    }
+
+    #[test]
+    fn test_project_state_git_empty_branch() {
+        let yaml = r#"
+            kind: Git
+            branch: []
+        "#;
+        let matcher: ProjectStateMatcher = serde_yaml::from_str(yaml).unwrap();
+        let ProjectStateMatcher::Git { branch } = matcher;
+        assert!(branch.is_empty());
+    }
+
+    #[test]
+    fn test_project_state_invalid_kind() {
+        let yaml = r#"
+            kind: InvalidKind
+        "#;
+        let result: Result<ProjectStateMatcher, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err());
     }
 }
