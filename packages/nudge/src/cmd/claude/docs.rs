@@ -18,7 +18,7 @@ const DOCS: &str = cstr!("\
 <bold>What is Nudge?</bold>
 
   Nudge is a <cyan>collaborative partner</cyan> for Claude Code. It watches Write, Edit,
-  and WebFetch operations and reminds you about coding conventions—so you can
+  WebFetch, and Bash operations and reminds you about coding conventions—so you can
   focus on the user's actual problem instead of tracking dozens of stylistic details.
 
   <green>Nudge is on your side.</green> When it sends a message, it's not a reprimand—it's
@@ -66,7 +66,7 @@ const DOCS: &str = cstr!("\
 
 <bold>Hook Types</bold>
 
-  <green>PreToolUse</green>        Triggers before Write/Edit/WebFetch operations. Always
+  <green>PreToolUse</green>        Triggers before Write/Edit/WebFetch/Bash operations. Always
                     <cyan>interrupts</cyan> (blocks the operation until the issue is fixed).
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
@@ -82,6 +82,10 @@ const DOCS: &str = cstr!("\
 
   <green>WebFetch</green>   Match URLs being fetched
              Use <cyan>url:</cyan> to specify URL patterns to match
+
+  <green>Bash</green>       Match shell commands being executed
+             Use <cyan>command:</cyan> to specify patterns to match
+             Use <cyan>project_state:</cyan> to add conditional filters (e.g., git branch)
 
 <bold>Regex Inline Flags</bold>
 
@@ -224,6 +228,32 @@ const DOCS: &str = cstr!("\
   <dim>Note: External commands add latency. Use sparingly for checks that are</dim>
   <dim>difficult or impossible to express with Regex or SyntaxTree matchers.</dim>
 
+<bold>Project State Matching (Bash tool only)</bold>
+
+  The Bash tool supports <cyan>project_state:</cyan> matchers that evaluate conditions about
+  the project environment (like git state) before checking the command pattern.
+  All project_state matchers must pass for command matching to proceed.
+
+  <white>Git Branch Matching:</white>
+    <yellow>project_state:</yellow>
+      <yellow>- kind: Git</yellow>
+        <yellow>branch:</yellow>
+          <yellow>- kind: Regex</yellow>
+            <yellow>pattern: \"^main$\"</yellow>    <dim># Only match on main branch</dim>
+
+  <white>How It Works:</white>
+    1. All project_state matchers are evaluated first (all must pass)
+    2. If any project_state matcher fails, the rule doesn't fire
+    3. If all pass, command matchers are evaluated normally
+    4. If not in a git repo, Git matchers log a warning and return false
+
+  <white>Available Project State Matchers:</white>
+    <green>Git</green>        Match git repository state
+               <cyan>branch:</cyan> match current branch name against content matchers
+
+  <dim>Note: project_state is only available for Bash tool rules. It's designed for</dim>
+  <dim>cases where the same command should be allowed/blocked based on context.</dim>
+
 <bold>Examples</bold>
 
   <cyan>Block indented imports (Rust)</cyan>
@@ -325,6 +355,40 @@ const DOCS: &str = cstr!("\
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"docs\\\\.rs/(?P<<crate>>[^/]+)\"</yellow>
               <yellow>suggestion: \"Read local source at ~/.cargo/registry/src/*/{{ $crate }}-*\"</yellow>
+
+  <cyan>Block git push on main branch (Bash + project_state)</cyan>
+
+    <dim># Prevent pushing directly to main even when git settings allow it.</dim>
+    <dim># Uses project_state to only fire when on the main branch.</dim>
+
+    <yellow>- name: block-main-push</yellow>
+      <yellow>description: Block git push on main branch</yellow>
+      <yellow>message: \"`git push` is not allowed on `main`. Create a feature branch first.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Bash</yellow>
+          <yellow>command:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"git\\\\s+push\"</yellow>
+          <yellow>project_state:</yellow>
+            <yellow>- kind: Git</yellow>
+              <yellow>branch:</yellow>
+                <yellow>- kind: Regex</yellow>
+                  <yellow>pattern: \"^main$\"</yellow>
+
+  <cyan>Block dangerous commands (Bash)</cyan>
+
+    <dim># Prevent accidentally running dangerous commands like rm -rf /</dim>
+
+    <yellow>- name: block-dangerous-rm</yellow>
+      <yellow>description: Block dangerous rm commands</yellow>
+      <yellow>message: \"This command could delete critical files. Please verify the path.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Bash</yellow>
+          <yellow>command:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"rm\\\\s+-[rf]*\\\\s+/\"</yellow>
 
 <bold>Testing Rules</bold>
 

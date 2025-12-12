@@ -6,6 +6,7 @@
 //! - Rules produce correct responses (interrupt vs continue vs passthrough)
 
 mod basic;
+mod bash;
 mod cli;
 mod edit_tool;
 mod external;
@@ -100,6 +101,29 @@ pub fn webfetch_hook(url: &str, prompt: &str) -> String {
         "tool_input": {
             "url": url,
             "prompt": prompt
+        }
+    })
+    .to_string()
+}
+
+/// Build a PreToolUse hook JSON payload for Bash tool.
+pub fn bash_hook(command: &str) -> String {
+    bash_hook_with_cwd(command, "/tmp")
+}
+
+/// Build a PreToolUse hook JSON payload for Bash tool with custom cwd.
+pub fn bash_hook_with_cwd(command: &str, cwd: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": cwd,
+        "tool_name": "Bash",
+        "tool_use_id": "123",
+        "tool_input": {
+            "command": command,
+            "description": "Test command"
         }
     })
     .to_string()
