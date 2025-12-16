@@ -33,7 +33,7 @@ cargo test -p nudge test_name
 
 # Run the CLI
 cargo run -p nudge -- claude hook      # Respond to hook (reads JSON from stdin)
-cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.json
+cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.local.json
 cargo run -p nudge -- claude docs      # Print rule writing documentation
 cargo run -p nudge -- test             # Test a rule against sample input
 cargo run -p nudge -- validate         # Validate rule config files
@@ -45,7 +45,7 @@ cargo run -p nudge -- validate         # Validate rule config files
 
 ```
 nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge claude setup  - Writes hook configuration to .claude/settings.json
+nudge claude setup  - Writes hook configuration to .claude/settings.local.json
 nudge claude docs   - Prints documentation for writing rules
 nudge test          - Test a specific rule against sample input
 nudge validate      - Validate and display parsed rule configs
@@ -55,7 +55,7 @@ nudge validate      - Validate and display parsed rule configs
 
 - `src/main.rs` - CLI entry point using clap
 - `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
-- `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.json
+- `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
 - `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs

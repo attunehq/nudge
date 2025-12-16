@@ -94,7 +94,7 @@ Navigate to any project where you use Claude Code and run:
 nudge claude setup
 ```
 
-This adds Nudge to `.claude/settings.json`. You can verify with `/hooks` in Claude Code.
+This adds Nudge to `.claude/settings.local.json`. You can verify with `/hooks` in Claude Code.
 
 > [!NOTE]
 > Claude Code loads hooks on startup, so you'll need to restart open sessions (`claude -c` is an easy way to do this without breaking your flow). Future changes to rules are internal to Nudge and therefore do not need a Claude Code restart.
