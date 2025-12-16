@@ -43,7 +43,7 @@ pub fn main(config: Config) -> Result<()> {
         .claude_dir
         .canonicalize()
         .with_context(|| format!("canonicalize claude dir: {:?}", config.claude_dir))?;
-    let settings_file = dotclaude.join("settings.json");
+    let settings_file = dotclaude.join("settings.local.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 
     let nudge_path = std::env::current_exe()
@@ -71,8 +71,8 @@ pub fn main(config: Config) -> Result<()> {
     tracing::debug!(?desired_hooks, "generate desired hooks");
 
     let mut settings = if settings_file.exists() {
-        let content = fs::read_to_string(&settings_file).context("read existing settings.json")?;
-        serde_json::from_str::<Value>(&content).context("parse existing settings.json")?
+        let content = fs::read_to_string(&settings_file).context("read existing settings.local.json")?;
+        serde_json::from_str::<Value>(&content).context("parse existing settings.local.json")?
     } else {
         serde_json::json!({})
     };
@@ -115,7 +115,10 @@ pub fn main(config: Config) -> Result<()> {
     println!();
 
     if !config.skip_claude_md {
-        offer_claude_md_section(&dotclaude)?;
+        let project_root = dotclaude
+            .parent()
+            .ok_or_eyre("get parent directory of .claude")?;
+        offer_claude_md_section(project_root)?;
     }
 
     println!("Next steps:");
@@ -125,9 +128,9 @@ pub fn main(config: Config) -> Result<()> {
     Ok(())
 }
 
-/// Offer to add a Nudge section to CLAUDE.md.
-fn offer_claude_md_section(dotclaude: &PathBuf) -> Result<()> {
-    let claude_md_path = dotclaude.join("CLAUDE.md");
+/// Offer to add a Nudge section to CLAUDE.md in the project root.
+fn offer_claude_md_section(project_root: &std::path::Path) -> Result<()> {
+    let claude_md_path = project_root.join("CLAUDE.md");
     if claude_md_path.exists() {
         let content = fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
         if content.contains("## Nudge") {

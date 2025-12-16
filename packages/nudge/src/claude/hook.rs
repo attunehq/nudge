@@ -382,7 +382,7 @@ impl From<&Config> for Config {
     }
 }
 
-/// Configures hook matching strategy in Claude Code's settings.json.
+/// Configures hook matching strategy in Claude Code's settings.local.json.
 #[derive(Debug, Serialize, Clone, Builder)]
 #[non_exhaustive]
 pub struct Matcher {
