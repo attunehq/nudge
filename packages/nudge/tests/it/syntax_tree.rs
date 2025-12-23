@@ -224,3 +224,110 @@ rules:
         "expected suggestion to contain function name, got: {output}"
     );
 }
+
+// TypeScript Tests
+
+#[test]
+fn test_typescript_syntax_tree_matches_console_log() {
+    let config = r#"
+version: 1
+rules:
+  - name: no-console-log
+    description: Remove console.log statements
+    message: "Remove console.log before committing."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (call_expression
+                function: (member_expression
+                  object: (identifier) @obj
+                  property: (property_identifier) @prop)
+                (#eq? @obj "console")
+                (#eq? @prop "log"))
+"#;
+
+    let dir = setup_config(config);
+
+    // This should trigger: console.log in TypeScript file
+    let input = write_hook("test.ts", "function main() {\n    console.log('hello');\n}");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for console.log, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_syntax_tree_passes_without_console_log() {
+    let config = r#"
+version: 1
+rules:
+  - name: no-console-log
+    description: Remove console.log statements
+    message: "Remove console.log before committing."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (call_expression
+                function: (member_expression
+                  object: (identifier) @obj
+                  property: (property_identifier) @prop)
+                (#eq? @obj "console")
+                (#eq? @prop "log"))
+"#;
+
+    let dir = setup_config(config);
+
+    // This should pass: no console.log
+    let input = write_hook("test.ts", "function greet(name: string): string {\n    return `Hello, ${name}`;\n}");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough without console.log, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_syntax_tree_with_capture_interpolation() {
+    let config = r#"
+version: 1
+rules:
+  - name: function-name-check
+    description: Check function naming in TypeScript
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(function_declaration name: (identifier) @fn_name)"
+            suggestion: "Found TypeScript function named `{{ $fn_name }}`"
+"#;
+
+    let dir = setup_config(config);
+
+    let input = write_hook("test.ts", "function myTypeScriptFunction(): void {}");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains("myTypeScriptFunction"),
+        "expected suggestion to contain function name, got: {output}"
+    );
+}
