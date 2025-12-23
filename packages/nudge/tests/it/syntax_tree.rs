@@ -498,3 +498,223 @@ rules:
         "expected passthrough for static import, got: {output}"
     );
 }
+
+// =============================================================================
+// Category 2: Function Patterns
+// =============================================================================
+
+#[test]
+fn test_typescript_no_nested_functions() {
+    // Matches: function declarations inside function bodies
+    let config = r#"
+version: 1
+rules:
+  - name: no-nested-functions
+    description: Avoid nested function declarations
+    message: "Extract nested functions to module scope or use arrow functions."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (function_declaration
+                body: (statement_block
+                  (function_declaration) @nested))
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: nested function declaration
+    let input = write_hook(
+        "test.ts",
+        r#"function outer() {
+    function inner() {
+        return 42;
+    }
+    return inner();
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for nested function, got: {output}"
+    );
+
+    // Should pass: arrow function inside (not a declaration)
+    let input = write_hook(
+        "test.ts",
+        r#"function outer() {
+    const inner = () => 42;
+    return inner();
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for arrow function, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_arrow_in_class_property() {
+    // Matches: class properties initialized with arrow functions
+    let config = r#"
+version: 1
+rules:
+  - name: arrow-in-class-property
+    description: Detect arrow functions in class properties (potential this-binding issue)
+    message: "Consider using a method instead of arrow function property for {{ $prop }}."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (public_field_definition
+                name: (property_identifier) @prop
+                value: (arrow_function)) @field
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: arrow function in class property
+    let input = write_hook(
+        "test.ts",
+        r#"class Button {
+    onClick = () => {
+        console.log('clicked');
+    };
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for arrow in class property, got: {output}"
+    );
+    assert!(
+        output.contains("onClick"),
+        "expected property name in output, got: {output}"
+    );
+
+    // Should pass: regular method
+    let input = write_hook(
+        "test.ts",
+        r#"class Button {
+    onClick() {
+        console.log('clicked');
+    }
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for method, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_generator_functions() {
+    // Matches: generator functions (function*)
+    let config = r#"
+version: 1
+rules:
+  - name: no-generators
+    description: Prefer async/await over generators
+    message: "Avoid generator functions. Use async/await instead."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(generator_function_declaration) @generator"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: generator function
+    let input = write_hook(
+        "test.ts",
+        r#"function* idGenerator() {
+    let id = 0;
+    while (true) {
+        yield id++;
+    }
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for generator, got: {output}"
+    );
+
+    // Should pass: async function
+    let input = write_hook(
+        "test.ts",
+        r#"async function fetchData() {
+    return await fetch('/api');
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for async function, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_callback_functions() {
+    // Matches: function expressions passed as arguments (callbacks)
+    let config = r#"
+version: 1
+rules:
+  - name: no-function-callbacks
+    description: Prefer arrow functions for callbacks
+    message: "Use arrow functions for callbacks instead of function expressions."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(arguments (function_expression) @callback)"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: function expression as callback
+    let input = write_hook(
+        "test.ts",
+        r#"arr.map(function(x) {
+    return x * 2;
+});"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for function callback, got: {output}"
+    );
+
+    // Should pass: arrow function callback
+    let input = write_hook("test.ts", "arr.map((x) => x * 2);");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for arrow callback, got: {output}"
+    );
+}
