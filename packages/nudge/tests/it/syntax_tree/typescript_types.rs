@@ -69,7 +69,10 @@ rules:
     let dir = setup_config(config);
 
     // Should trigger: type assertion
-    let input = write_hook("test.ts", "const el = document.getElementById('app') as HTMLDivElement;");
+    let input = write_hook(
+        "test.ts",
+        "const el = document.getElementById('app') as HTMLDivElement;",
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -78,7 +81,10 @@ rules:
     );
 
     // Should pass: no assertion
-    let input = write_hook("test.ts", "const el: HTMLDivElement | null = document.getElementById('app');");
+    let input = write_hook(
+        "test.ts",
+        "const el: HTMLDivElement | null = document.getElementById('app');",
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0");
     assert!(

@@ -194,7 +194,10 @@ rules:
     );
 
     // Should pass: Promise.reject with Error
-    let input = write_hook("test.ts", "return Promise.reject(new Error('Failed to load'));");
+    let input = write_hook(
+        "test.ts",
+        "return Promise.reject(new Error('Failed to load'));",
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0");
     assert!(
