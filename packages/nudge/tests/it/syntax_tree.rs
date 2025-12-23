@@ -331,3 +331,170 @@ rules:
         "expected suggestion to contain function name, got: {output}"
     );
 }
+
+// =============================================================================
+// Category 1: Import/Export Patterns
+// =============================================================================
+
+#[test]
+fn test_typescript_no_wildcard_imports() {
+    // Matches: import * as foo from 'bar'
+    let config = r#"
+version: 1
+rules:
+  - name: no-wildcard-imports
+    description: Avoid wildcard imports for better tree-shaking
+    message: "Avoid wildcard imports. Import specific exports instead."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(import_statement (import_clause (namespace_import)) @wildcard)"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: wildcard import
+    let input = write_hook("test.ts", "import * as utils from './utils';");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for wildcard import, got: {output}"
+    );
+
+    // Should pass: named import
+    let input = write_hook("test.ts", "import { foo, bar } from './utils';");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for named import, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_default_export() {
+    // Matches: export default ...
+    let config = r#"
+version: 1
+rules:
+  - name: no-default-export
+    description: Use named exports for better refactoring support
+    message: "Use named exports instead of default exports."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(export_statement \"default\" @default)"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: default export
+    let input = write_hook("test.ts", "export default function greet() {}");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for default export, got: {output}"
+    );
+
+    // Should pass: named export
+    let input = write_hook("test.ts", "export function greet() {}");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for named export, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_relative_parent_imports() {
+    // Matches: import from '../' paths
+    let config = r#"
+version: 1
+rules:
+  - name: no-parent-imports
+    description: Avoid deep relative imports
+    message: "Avoid '../' imports. Use path aliases instead."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (import_statement
+                source: (string (string_fragment) @path)
+                (#match? @path "^\\.\\."))
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: parent directory import
+    let input = write_hook("test.ts", "import { foo } from '../utils';");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for parent import, got: {output}"
+    );
+
+    // Should pass: same-directory import
+    let input = write_hook("test.ts", "import { foo } from './utils';");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for local import, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_dynamic_imports() {
+    // Matches: import('module') - dynamic imports
+    let config = r#"
+version: 1
+rules:
+  - name: no-dynamic-imports
+    description: Avoid dynamic imports for better static analysis
+    message: "Avoid dynamic imports. Use static imports instead."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(call_expression function: (import)) @dynamic_import"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: dynamic import
+    let input = write_hook("test.ts", "const module = await import('./utils');");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for dynamic import, got: {output}"
+    );
+
+    // Should pass: static import
+    let input = write_hook("test.ts", "import { foo } from './utils';");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for static import, got: {output}"
+    );
+}
