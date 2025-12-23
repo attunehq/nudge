@@ -1092,3 +1092,186 @@ rules:
         "expected passthrough for reject Error, got: {output}"
     );
 }
+
+// =============================================================================
+// Category 5: Code Quality
+// =============================================================================
+
+#[test]
+fn test_typescript_no_debugger() {
+    // Matches: debugger statements
+    let config = r#"
+version: 1
+rules:
+  - name: no-debugger
+    description: Remove debugger statements before committing
+    message: "Remove debugger statement before committing."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: "(debugger_statement) @debugger"
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: debugger statement
+    let input = write_hook(
+        "test.ts",
+        r#"function debug() {
+    debugger;
+    console.log('debugging');
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for debugger, got: {output}"
+    );
+
+    // Should pass: no debugger
+    let input = write_hook(
+        "test.ts",
+        r#"function debug() {
+    console.log('debugging');
+}"#,
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough without debugger, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_nested_ternary() {
+    // Matches: ternary expressions nested inside ternary expressions
+    let config = r#"
+version: 1
+rules:
+  - name: no-nested-ternary
+    description: Avoid nested ternary expressions
+    message: "Nested ternaries are hard to read. Use if/else or extract to functions."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (ternary_expression
+                consequence: (ternary_expression) @nested)
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: nested ternary in consequence
+    let input = write_hook("test.ts", "const x = a ? b ? 1 : 2 : 3;");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for nested ternary, got: {output}"
+    );
+
+    // Should pass: simple ternary
+    let input = write_hook("test.ts", "const x = a ? 1 : 2;");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for simple ternary, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_magic_numbers_in_conditions() {
+    // Matches: numeric literals as right operand in binary expressions
+    let config = r#"
+version: 1
+rules:
+  - name: no-magic-numbers
+    description: Avoid magic numbers in conditions
+    message: "Extract magic number to a named constant."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (binary_expression
+                right: (number) @magic
+                (#match? @magic "^[0-9]{2,}"))
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: magic number (2+ digits) in comparison
+    let input = write_hook("test.ts", "if (users.length > 100) { paginate(); }");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for magic number, got: {output}"
+    );
+
+    // Should pass: small number (allowed)
+    let input = write_hook("test.ts", "if (items.length > 0) { process(); }");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for small number, got: {output}"
+    );
+}
+
+#[test]
+fn test_typescript_no_eval() {
+    // Matches: eval() calls
+    let config = r#"
+version: 1
+rules:
+  - name: no-eval
+    description: Avoid eval() for security reasons
+    message: "Never use eval(). It's a security risk."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (call_expression
+                function: (identifier) @fn
+                (#eq? @fn "eval"))
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: eval call
+    let input = write_hook("test.ts", "const result = eval('2 + 2');");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for eval, got: {output}"
+    );
+
+    // Should pass: no eval
+    let input = write_hook("test.ts", "const result = calculate('2 + 2');");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough without eval, got: {output}"
+    );
+}
