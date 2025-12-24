@@ -721,6 +721,7 @@ dependencies = [
  "tracing-subscriber",
  "tree-sitter 0.25.10",
  "tree-sitter-rust",
+ "tree-sitter-typescript",
  "walkdir",
  "xshell",
 ]
@@ -1272,6 +1273,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df8a158225e4a4d8505f071340bba9edd109b23f01b70540dccb7c799868f307"
 dependencies = [
  "tree-sitter 0.20.10",
+]
+
+[[package]]
+name = "tree-sitter-typescript"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c5f76ed8d947a75cc446d5fccd8b602ebf0cde64ccf2ffa434d873d7a575eff"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
 ]
 
 [[package]]

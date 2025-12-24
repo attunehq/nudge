@@ -4,6 +4,9 @@
 //! hook pipeline, including correct handling of AST-based patterns that regex
 //! cannot express.
 
+mod typescript_errors;
+mod typescript_types;
+
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
