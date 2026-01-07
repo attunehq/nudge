@@ -227,3 +227,51 @@ rules:
         "expected suggestion to contain function name, got: {output}"
     );
 }
+
+#[test]
+fn test_syntax_tree_respects_file_extension_filter() {
+    // Verify that a TypeScript rule with "**/*.ts" does not trigger on .js files
+    let config = r#"
+version: 1
+rules:
+  - name: no-console-log-ts
+    description: No console.log in TypeScript files
+    message: "Remove console.log from TypeScript code."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.ts"
+        content:
+          - kind: SyntaxTree
+            language: typescript
+            query: |
+              (call_expression
+                function: (member_expression
+                  object: (identifier) @obj
+                  property: (property_identifier) @prop)
+                (#eq? @obj "console")
+                (#eq? @prop "log"))
+"#;
+
+    let dir = setup_config(config);
+
+    // Should trigger: .ts file with console.log
+    let input = write_hook("test.ts", "console.log('hello');");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for .ts file, got: {output}"
+    );
+
+    // Should pass: .js file with console.log (rule only applies to .ts)
+    let input = write_hook("test.js", "console.log('hello');");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for .js file (rule applies to .ts only), got: {output}"
+    );
+}
