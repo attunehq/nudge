@@ -760,12 +760,13 @@ fn run_external_command(command: &[String], content: &str) -> Option<String> {
         }
     };
 
-    // Write content to stdin
-    if let Some(mut stdin) = child.stdin.take()
-        && let Err(e) = stdin.write_all(content.as_bytes())
-    {
-        tracing::warn!(?program, error = %e, "failed to write to external command stdin");
-        return None;
+    // Write content to stdin. We ignore write errors (e.g., EPIPE) because the
+    // command may exit before consuming all input (like `false` which exits
+    // immediately). What matters is the command's exit status, not whether it
+    // read all its input.
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(content.as_bytes());
+        // stdin is dropped here, closing the pipe
     }
 
     // Wait for the command to complete
