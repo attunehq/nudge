@@ -979,6 +979,8 @@ impl Serialize for RegexMatcher {
 pub enum Language {
     /// The Rust programming language.
     Rust,
+    /// The TypeScript programming language.
+    TypeScript,
 }
 
 impl Language {
@@ -986,6 +988,7 @@ impl Language {
     pub fn grammar(self) -> TsLanguage {
         match self {
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
+            Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
         }
     }
 
@@ -1007,8 +1010,17 @@ impl Language {
             Mutex::new(parser)
         });
 
+        static TYPESCRIPT_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+                .expect("failed to set TypeScript language");
+            Mutex::new(parser)
+        });
+
         let mut parser = match self {
             Language::Rust => RUST_PARSER.lock().ok()?,
+            Language::TypeScript => TYPESCRIPT_PARSER.lock().ok()?,
         };
 
         let tree = parser.parse(source, None)?;
