@@ -313,7 +313,8 @@ pub enum ContentMatcher {
         ///
         /// When provided, the suggestion is interpolated with the match's
         /// capture groups and added to the match context as `suggestion`.
-        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion
+        /// }}`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
@@ -581,7 +582,8 @@ pub enum UrlMatcher {
         ///
         /// When provided, the suggestion is interpolated with the match's
         /// capture groups and added to the match context as `suggestion`.
-        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion
+        /// }}`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
@@ -736,7 +738,8 @@ impl ProjectStateMatcher {
 /// Run an external command with content piped to stdin.
 ///
 /// Returns `Some(formatted_command)` if the command exits with non-zero status
-/// (indicating a match/violation), or `None` if the command succeeds (no violation).
+/// (indicating a match/violation), or `None` if the command succeeds (no
+/// violation).
 fn run_external_command(command: &[String], content: &str) -> Option<String> {
     let Some((program, args)) = command.split_first() else {
         tracing::warn!("external command is empty");
@@ -757,12 +760,13 @@ fn run_external_command(command: &[String], content: &str) -> Option<String> {
         }
     };
 
-    // Write content to stdin
+    // Write content to stdin. We ignore write errors (e.g., EPIPE) because the
+    // command may exit before consuming all input (like `false` which exits
+    // immediately). What matters is the command's exit status, not whether it
+    // read all its input.
     if let Some(mut stdin) = child.stdin.take() {
-        if let Err(e) = stdin.write_all(content.as_bytes()) {
-            tracing::warn!(?program, error = %e, "failed to write to external command stdin");
-            return None;
-        }
+        let _ = stdin.write_all(content.as_bytes());
+        // stdin is dropped here, closing the pipe
     }
 
     // Wait for the command to complete
@@ -995,7 +999,8 @@ impl Language {
     /// Parse source code into a syntax tree.
     ///
     /// Returns `None` if parsing fails (e.g., malformed code). We intentionally
-    /// don't block on parse errors since code being written is often incomplete.
+    /// don't block on parse errors since code being written is often
+    /// incomplete.
     pub fn parse(self, source: &str) -> Option<tree_sitter::Tree> {
         use std::sync::Mutex;
 
@@ -1327,16 +1332,21 @@ mod tests {
 
     #[test]
     fn test_external_matches_with_context_formats_command_with_args() {
-        // `sh -c 'exit 1'` always fails and tests multi-arg formatting
+        // `test 1 -eq 0` always fails (1 != 0) and tests multi-arg formatting
         let matcher = ContentMatcher::External {
-            command: vec!["sh".to_string(), "-c".to_string(), "exit 1".to_string()],
+            command: vec![
+                "test".to_string(),
+                "1".to_string(),
+                "-eq".to_string(),
+                "0".to_string(),
+            ],
         };
         let matches = matcher.matches_with_context("content");
         assert_eq!(matches.len(), 1);
-        // shell_words::join should quote the argument with spaces
+        // shell_words::join formats the command
         assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"sh -c 'exit 1'".to_string())
+            Some(&"test 1 -eq 0".to_string())
         );
     }
 

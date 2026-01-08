@@ -38,7 +38,10 @@ mod tests {
         let cwd = env::current_dir().expect("get cwd");
         let branch = current_branch(&cwd);
         // We should be on some branch (could be main, a feature branch, etc.)
-        assert!(branch.is_some(), "expected to be in a git repo with a branch");
+        assert!(
+            branch.is_some(),
+            "expected to be in a git repo with a branch"
+        );
     }
 
     #[test]

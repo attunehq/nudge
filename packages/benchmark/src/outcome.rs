@@ -61,7 +61,8 @@ impl Outcome {
         matches!(self, Self::Fail { .. })
     }
 
-    /// Returns the violations if this is a failure, or an empty slice if it's a pass.
+    /// Returns the violations if this is a failure, or an empty slice if it's a
+    /// pass.
     pub fn violations(&self) -> &[Violation] {
         match self {
             Self::Pass { .. } => &[],
@@ -69,7 +70,8 @@ impl Outcome {
         }
     }
 
-    /// Returns the evidence if this is a pass, or an empty slice if it's a failure.
+    /// Returns the evidence if this is a pass, or an empty slice if it's a
+    /// failure.
     pub fn evidence(&self) -> &[Evidence] {
         match self {
             Self::Pass { evidence } => evidence,
@@ -79,8 +81,9 @@ impl Outcome {
 
     /// Combine multiple outcomes into one.
     ///
-    /// If any outcome is a failure, the combined result is a failure with all violations.
-    /// Otherwise, the combined result is a pass with all evidence.
+    /// If any outcome is a failure, the combined result is a failure with all
+    /// violations. Otherwise, the combined result is a pass with all
+    /// evidence.
     pub fn combine(outcomes: impl IntoIterator<Item = Outcome>) -> Outcome {
         let mut all_violations = Vec::new();
         let mut all_evidence = Vec::new();
@@ -332,11 +335,11 @@ impl Display for CommandSucceeded {
         let exit_code = self.exit_code.unwrap_or_default();
         cwriteln!(f, "<green>command succeeded:</> <dim>{command}</>")?;
         cwriteln!(f, "<cyan>-</> <green>exit code:</> {exit_code}")?;
-        if let Some(stdout) = &self.stdout {
-            if !stdout.is_empty() {
-                cwriteln!(f, "<cyan>-</> <green>stdout:</>")?;
-                cwriteln!(f, "<dim>{}</>", stdout.indent(2))?;
-            }
+        if let Some(stdout) = &self.stdout
+            && !stdout.is_empty()
+        {
+            cwriteln!(f, "<cyan>-</> <green>stdout:</>")?;
+            cwriteln!(f, "<dim>{}</>", stdout.indent(2))?;
         }
         Ok(())
     }

@@ -71,7 +71,8 @@ pub fn main(config: Config) -> Result<()> {
     tracing::debug!(?desired_hooks, "generate desired hooks");
 
     let mut settings = if settings_file.exists() {
-        let content = fs::read_to_string(&settings_file).context("read existing settings.local.json")?;
+        let content =
+            fs::read_to_string(&settings_file).context("read existing settings.local.json")?;
         serde_json::from_str::<Value>(&content).context("parse existing settings.local.json")?
     } else {
         serde_json::json!({})

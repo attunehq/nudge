@@ -401,8 +401,8 @@ pub struct Matcher {
     pub hooks: Vec<Config>,
 }
 
-/// Evaluate all matchers in a given content and return matches with capture groups,
-/// if and only if all the matchers matched the content.
+/// Evaluate all matchers in a given content and return matches with capture
+/// groups, if and only if all the matchers matched the content.
 ///
 /// If any matcher did not match the content, an empty vector is returned.
 fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
@@ -417,8 +417,8 @@ fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match
     matches
 }
 
-/// Evaluate all URL matchers in a given URL and return matches with capture groups,
-/// if and only if all the matchers matched the URL.
+/// Evaluate all URL matchers in a given URL and return matches with capture
+/// groups, if and only if all the matchers matched the URL.
 ///
 /// If any matcher did not match the URL, an empty vector is returned.
 fn evaluate_all_url_matched(url: &str, matchers: &[UrlMatcher]) -> Vec<Match> {

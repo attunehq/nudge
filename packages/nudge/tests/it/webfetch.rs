@@ -1,13 +1,16 @@
 //! WebFetch Tool Tests
 
-use crate::{assert_expected, run_hook, webfetch_hook, Expected};
+use crate::{Expected, assert_expected, run_hook, webfetch_hook};
 use xshell::Shell;
 
 #[test]
 fn test_webfetch_docs_rs_triggers_interrupt() {
     let sh = Shell::new().unwrap();
     // WebFetch to docs.rs should trigger the rule
-    let input = webfetch_hook("https://docs.rs/serde/1.0.0/serde/", "What does this crate do?");
+    let input = webfetch_hook(
+        "https://docs.rs/serde/1.0.0/serde/",
+        "What does this crate do?",
+    );
     let (exit_code, output) = run_hook(&sh, &input);
     assert_expected(exit_code, &output, Expected::Interrupt);
 }

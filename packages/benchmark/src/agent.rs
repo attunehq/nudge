@@ -21,7 +21,8 @@ pub enum Agent {
 impl std::str::FromStr for Agent {
     type Err = String;
 
-    /// Parse an agent from a string like `claude-code:sonnet` or `claude-code:opus`.
+    /// Parse an agent from a string like `claude-code:sonnet` or
+    /// `claude-code:opus`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (agent, model) = s
             .split_once(':')

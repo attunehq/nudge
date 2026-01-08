@@ -2,6 +2,7 @@
 
 use std::{
     borrow::Cow,
+    cmp::Reverse,
     fmt::{Display, Formatter},
 };
 
@@ -52,7 +53,8 @@ impl<'a> Snippet<'a> {
         self.render_highlighted_with_color(highlight, HighlightColor::Yellow)
     }
 
-    /// Render the content of the snippet with the provided ranges highlighted in green.
+    /// Render the content of the snippet with the provided ranges highlighted
+    /// in green.
     pub fn render_highlighted_green(
         &self,
         highlight: impl IntoIterator<Item = impl Into<Span>>,
@@ -60,7 +62,8 @@ impl<'a> Snippet<'a> {
         self.render_highlighted_with_color(highlight, HighlightColor::Green)
     }
 
-    /// Render the content of the snippet with the provided ranges highlighted in a specific color.
+    /// Render the content of the snippet with the provided ranges highlighted
+    /// in a specific color.
     fn render_highlighted_with_color(
         &self,
         highlight: impl IntoIterator<Item = impl Into<Span>>,
@@ -71,17 +74,17 @@ impl<'a> Snippet<'a> {
         // Collect and sort spans in reverse order (by start position descending).
         // This ensures replacements don't invalidate byte positions of earlier spans.
         let mut spans = highlight.into_iter().map(Into::into).collect::<Vec<Span>>();
-        spans.sort_by(|a, b| b.start().cmp(&a.start()));
+        spans.sort_by_key(|s| Reverse(s.start()));
 
         // Merge overlapping spans. Since we're sorted descending by start,
         // we merge each span into the previous one if they overlap.
         let mut merged = Vec::<Span>::new();
         for span in spans {
-            if let Some(last) = merged.last_mut() {
-                if span.end() >= last.start() {
-                    *last = Span::new(span.start(), last.end());
-                    continue;
-                }
+            if let Some(last) = merged.last_mut()
+                && span.end() >= last.start()
+            {
+                *last = Span::new(span.start(), last.end());
+                continue;
             }
             merged.push(span);
         }
@@ -254,8 +257,8 @@ fn to_syntax_nodes<'a>(
     // Format with optional field name prefix
     // let field_prefix = field_name.map(|f| format!("{f}: ")).unwrap_or_default();
     // let position = cformat!("<dim>{pos}</> ");
-    // let node = cformat!("<cyan>{field_prefix}</><green>{kind}</> {text}\n").indent(depth * 2);
-    // output.push_str(&position);
+    // let node = cformat!("<cyan>{field_prefix}</><green>{kind}</>
+    // {text}\n").indent(depth * 2); output.push_str(&position);
     // output.push_str(&node);
 
     let node = self.to_syntax_node(source, depth, field_name);

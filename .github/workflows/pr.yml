@@ -1,0 +1,70 @@
+# CI checks for pull requests: lint, format, build, and test.
+name: PR
+
+on:
+    pull_request:
+        branches: [main]
+    merge_group:
+        types: [checks_requested]
+    workflow_dispatch:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: true
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    format:
+        name: Check format
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Install Rust nightly
+              run: |
+                  rustup toolchain install nightly
+                  rustup component add --toolchain nightly rustfmt
+            - uses: actions/checkout@v4
+            - run: cargo +nightly fmt --all --check
+
+    clippy:
+        name: Check clippy
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Install Rust
+              run: rustup show
+            - uses: actions/checkout@v4
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: clippy
+            - run: cargo clippy --all-targets --all-features -- -D warnings
+
+    test:
+        name: Run tests
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Install Rust
+              run: rustup show
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.head_ref }}
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: test
+            - run: cargo test --all-features -- --test-threads=1
+
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Install Rust
+              run: rustup show
+            - uses: actions/checkout@v4
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: build
+            - run: cargo build --all-targets --verbose

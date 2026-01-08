@@ -243,8 +243,9 @@ impl EvaluationCommand {
     /// Evaluate this command and return an outcome.
     ///
     /// Returns `Ok(Outcome::Pass { evidence })` if the evaluation passes,
-    /// `Ok(Outcome::Fail { violations })` if it fails with expectation violations,
-    /// or `Err` if there's a fatal error (e.g., file not found).
+    /// `Ok(Outcome::Fail { violations })` if it fails with expectation
+    /// violations, or `Err` if there's a fatal error (e.g., file not
+    /// found).
     #[tracing::instrument]
     pub fn evaluate(&self, project: &Path) -> Result<Outcome> {
         match self {
@@ -438,7 +439,8 @@ impl Command {
     }
 
     /// Evaluate the command and return an outcome.
-    /// Used for evaluation commands where failure is a violation, not a fatal error.
+    /// Used for evaluation commands where failure is a violation, not a fatal
+    /// error.
     #[tracing::instrument]
     pub fn evaluate(&self, project: &Path) -> Result<Outcome> {
         let output = std::process::Command::new(&self.binary)
@@ -446,7 +448,7 @@ impl Command {
             .current_dir(project)
             .tap(|cmd| tracing::debug!(?cmd, "running evaluation command"))
             .output()
-            .with_context(|| format!("run command"))
+            .with_context(|| "run command".to_string())
             .with_section(|| self.binary.clone().header("Command:"))
             .with_section(|| self.args.join("\n").header("Arguments:"))?;
 
@@ -630,7 +632,8 @@ pub struct BetweenFilter {
     #[serde(default)]
     pub contains: Option<String>,
 
-    /// If set, only matches where the between-text does NOT contain this string pass.
+    /// If set, only matches where the between-text does NOT contain this string
+    /// pass.
     #[builder(into)]
     #[serde(default)]
     pub not_contains: Option<String>,
@@ -639,7 +642,8 @@ pub struct BetweenFilter {
 impl BetweenFilter {
     /// Check if a match passes this filter.
     ///
-    /// Returns `true` if the match passes, `false` if it should be filtered out.
+    /// Returns `true` if the match passes, `false` if it should be filtered
+    /// out.
     pub fn matches(&self, source: &str, captures: &[crate::matcher::LabeledSpan]) -> bool {
         let Some(between) = self.extract_between(source, captures) else {
             return false;
@@ -730,7 +734,8 @@ pub struct FileEvaluation {
 }
 
 impl FileEvaluation {
-    /// Reads all files matching the glob pattern and returns their paths and contents.
+    /// Reads all files matching the glob pattern and returns their paths and
+    /// contents.
     ///
     /// The `path` field supports glob patterns like `**/*.rs` or `src/*.rs`.
     /// If no files match, returns an error.
