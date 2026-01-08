@@ -1,0 +1,297 @@
+# Build and publish nudge releases to GitHub Releases.
+#
+# Triggered on version tags (v*). Builds binaries for all supported platforms
+# in parallel on native runners, then creates a draft GitHub Release.
+#
+# The release is created as a draft so it can be reviewed and published
+# manually when ready.
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            dry_run:
+                description: "Dry run (skip release creation)"
+                type: boolean
+                default: false
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    prepare:
+        name: Prepare
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+            tag: ${{ steps.version.outputs.tag }}
+            prerelease: ${{ steps.version.outputs.prerelease }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Extract version from tag
+              id: version
+              run: |
+                  if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+                    TAG="${{ github.ref_name }}"
+                    VERSION="${TAG#v}"
+                  elif [[ "${{ inputs.dry_run }}" == "true" ]]; then
+                    # Allow dry runs on any branch using git describe
+                    TAG=$(git describe --always --tags)
+                    VERSION="${TAG#v}"
+                    echo "::notice::Dry run on non-tag ref, using git describe version: $TAG"
+                  else
+                    echo "::error::Release workflow must be triggered by a version tag (v*)"
+                    exit 1
+                  fi
+
+                  # Detect prerelease (anything with a dash after X.Y.Z, or non-semver like commit hashes)
+                  if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    PRERELEASE=false
+                  else
+                    PRERELEASE=true
+                  fi
+
+                  echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+                  echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+                  echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+                  echo "Releasing version: ${VERSION} (prerelease: ${PRERELEASE})"
+
+    build:
+        name: Build ${{ matrix.target }}
+        needs: prepare
+        runs-on: ${{ matrix.runner }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # macOS builds (both targets on macos-latest via --target)
+                    - target: x86_64-apple-darwin
+                      runner: macos-latest
+                      cross: false
+                    - target: aarch64-apple-darwin
+                      runner: macos-latest
+                      cross: false
+
+                    # Linux GNU builds
+                    - target: x86_64-unknown-linux-gnu
+                      runner: ubuntu-latest
+                      cross: false
+                    - target: aarch64-unknown-linux-gnu
+                      runner: ubuntu-latest
+                      cross: true
+
+                    # Linux musl builds
+                    - target: x86_64-unknown-linux-musl
+                      runner: ubuntu-latest
+                      cross: true
+                    - target: aarch64-unknown-linux-musl
+                      runner: ubuntu-latest
+                      cross: true
+
+                    # Windows build using cross (simpler than native MinGW setup)
+                    - target: x86_64-pc-windows-gnu
+                      runner: ubuntu-latest
+                      cross: true
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install Rust toolchain
+              run: |
+                  rustup toolchain install stable
+                  rustup target add ${{ matrix.target }}
+
+            - name: Install cargo-cross
+              if: matrix.cross
+              uses: taiki-e/install-action@v2
+              with:
+                  tool: cargo-cross
+                  checksum: true
+
+            - name: Setup Rust cache
+              uses: Swatinem/rust-cache@v2
+              with:
+                  shared-key: release-${{ matrix.target }}
+
+            - name: Build with cargo cross
+              if: matrix.cross
+              run: cargo cross build --target ${{ matrix.target }} --package nudge --release
+
+            - name: Build native
+              if: ${{ !matrix.cross }}
+              run: cargo build --target ${{ matrix.target }} --package nudge --release
+
+            - name: Import signing certificate
+              if: runner.os == 'macOS'
+              env:
+                  APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+              run: |
+                  echo -n "$APPLE_CERTIFICATE_BASE64" | base64 --decode -o $RUNNER_TEMP/certificate.p12
+                  security create-keychain -p "$APPLE_CERTIFICATE_PASSWORD" $RUNNER_TEMP/build.keychain
+                  security default-keychain -s $RUNNER_TEMP/build.keychain
+                  security unlock-keychain -p "$APPLE_CERTIFICATE_PASSWORD" $RUNNER_TEMP/build.keychain
+                  security import $RUNNER_TEMP/certificate.p12 -k $RUNNER_TEMP/build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+                  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_CERTIFICATE_PASSWORD" $RUNNER_TEMP/build.keychain
+                  rm $RUNNER_TEMP/certificate.p12
+
+            - name: Sign macOS binary
+              if: runner.os == 'macOS'
+              env:
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              run: |
+                  codesign --sign "$APPLE_TEAM_ID" \
+                           --timestamp \
+                           --options=runtime \
+                           --force \
+                           target/${{ matrix.target }}/release/nudge
+
+            - name: Store notarization credentials
+              if: runner.os == 'macOS'
+              env:
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+                  APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+              run: |
+                  xcrun notarytool store-credentials "notarytool-password" \
+                          --apple-id "$APPLE_ID" \
+                          --team-id "$APPLE_TEAM_ID" \
+                          --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
+            - name: Submit for notarization
+              if: runner.os == 'macOS'
+              run: |
+                  zip $RUNNER_TEMP/nudge-macos.zip target/${{ matrix.target }}/release/nudge
+                  xcrun notarytool submit $RUNNER_TEMP/nudge-macos.zip \
+                          --keychain-profile "notarytool-password" \
+                          --wait
+
+            - name: Cleanup keychain
+              if: runner.os == 'macOS' && always()
+              run: security delete-keychain $RUNNER_TEMP/build.keychain || true
+
+            - name: Package binary
+              id: package
+              shell: bash
+              run: |
+                  TARGET="${{ matrix.target }}"
+                  ARCHIVE_NAME="nudge-${TARGET}"
+                  ARCHIVE_DIR="artifacts/${ARCHIVE_NAME}"
+                  mkdir -p "${ARCHIVE_DIR}"
+
+                  # Copy binary (Windows has .exe extension)
+                  if [[ "$TARGET" == *"windows"* ]]; then
+                    cp "target/${TARGET}/release/nudge.exe" "${ARCHIVE_DIR}/"
+                  else
+                    cp "target/${TARGET}/release/nudge" "${ARCHIVE_DIR}/"
+                  fi
+
+                  # Include README
+                  cp README.md "${ARCHIVE_DIR}/"
+
+                  # Create tarball
+                  (cd artifacts && tar -czf "${ARCHIVE_NAME}.tar.gz" "${ARCHIVE_NAME}")
+                  rm -rf "${ARCHIVE_DIR}"
+
+                  echo "archive=artifacts/${ARCHIVE_NAME}.tar.gz" >> "$GITHUB_OUTPUT"
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: nudge-${{ matrix.target }}
+                  path: ${{ steps.package.outputs.archive }}
+                  if-no-files-found: error
+                  retention-days: 7
+
+    release:
+        name: Release
+        needs: [prepare, build]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        env:
+            GH_TOKEN: ${{ github.token }}
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: artifacts
+                  pattern: nudge-*
+                  merge-multiple: true
+
+            - name: List artifacts
+              run: ls -la artifacts/
+
+            - name: Generate checksums
+              working-directory: artifacts
+              run: |
+                  sha256sum *.tar.gz > checksums.txt
+                  echo "Generated checksums:"
+                  cat checksums.txt
+
+            - name: Create draft GitHub release
+              if: ${{ !inputs.dry_run }}
+              run: |
+                  gh release create ${{ needs.prepare.outputs.tag }} \
+                    --draft \
+                    --generate-notes \
+                    ${{ needs.prepare.outputs.prerelease == 'true' && '--prerelease' || '--latest' }} \
+                    --title "${{ needs.prepare.outputs.tag }}" \
+                    artifacts/*.tar.gz \
+                    artifacts/checksums.txt
+
+            - name: Write release summary
+              if: ${{ !inputs.dry_run }}
+              run: |
+                  TAG="${{ needs.prepare.outputs.tag }}"
+
+                  echo "## Draft Release Created: $TAG" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "A draft release has been created with auto-generated release notes." >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "1. [Review the draft release](https://github.com/${{ github.repository }}/releases)" >> $GITHUB_STEP_SUMMARY
+                  echo "2. Edit release notes if needed" >> $GITHUB_STEP_SUMMARY
+                  echo "3. **Publish when ready**" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Checksums" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  cat artifacts/checksums.txt >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+
+            - name: Write dry run summary
+              if: ${{ inputs.dry_run }}
+              run: |
+                  TAG="${{ needs.prepare.outputs.tag }}"
+
+                  echo "## Dry Run - $TAG" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "> [!NOTE]" >> $GITHUB_STEP_SUMMARY
+                  echo "> No release created. This was a dry run." >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  ls -la artifacts/ >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "### Checksums" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
+                  cat artifacts/checksums.txt >> $GITHUB_STEP_SUMMARY
+                  echo '```' >> $GITHUB_STEP_SUMMARY
