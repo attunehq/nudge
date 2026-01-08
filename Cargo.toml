@@ -3,3 +3,9 @@ resolver = "3"
 members = [
     "packages/*",
 ]
+
+[workspace.lints.clippy]
+redundant_pattern_matching = "allow"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"

@@ -129,7 +129,7 @@ impl Matches {
     /// instances via [`Match::unlabeled`].
     pub fn iter(&self) -> impl Iterator<Item = Match> + '_ {
         let unlabeled = match self {
-            Matches::Unlabeled(spans) => Some(spans.iter().map(|s| Match::unlabeled(s))),
+            Matches::Unlabeled(spans) => Some(spans.iter().map(Match::unlabeled)),
             Matches::Labeled(_) | Matches::None => None,
         };
 

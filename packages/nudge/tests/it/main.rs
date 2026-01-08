@@ -5,8 +5,8 @@
 //! - Rules match based on hook type, tool name, file pattern, and content
 //! - Rules produce correct responses (interrupt vs continue vs passthrough)
 
-mod basic;
 mod bash;
+mod basic;
 mod cli;
 mod edit_tool;
 mod external;
@@ -129,7 +129,8 @@ pub fn bash_hook_with_cwd(command: &str, cwd: &str) -> String {
     .to_string()
 }
 
-/// Run nudge claude hook with the given input JSON and return (exit_code, output).
+/// Run nudge claude hook with the given input JSON and return (exit_code,
+/// output).
 pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
     // Build and get the binary path
     let status = Command::new("cargo")

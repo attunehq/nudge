@@ -32,8 +32,7 @@ pub fn project_dirs() -> Option<ProjectDirs> {
 pub fn load_all() -> Result<Vec<Rule>> {
     load_all_attributed()?
         .into_iter()
-        .map(|(_, rules)| rules)
-        .flatten()
+        .flat_map(|(_, rules)| rules)
         .collect::<Vec<_>>()
         .pipe(Ok)
 }

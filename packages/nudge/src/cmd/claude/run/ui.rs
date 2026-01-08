@@ -5,9 +5,7 @@ use std::io::{Write, stdin, stdout};
 use color_eyre::eyre::{Context, Result};
 use color_print::{cformat, cprintln};
 
-use nudge::claude::hook::{
-    PreToolUseEditInput, PreToolUseWebFetchInput, PreToolUseWriteInput,
-};
+use nudge::claude::hook::{PreToolUseEditInput, PreToolUseWebFetchInput, PreToolUseWriteInput};
 
 use super::stream::{ContentBlock, MessageContent, ResultMessage, ToolResultContent};
 
@@ -39,10 +37,10 @@ impl TerminalUI {
             cprintln!("\n<dim>[{}]</dim>", name);
         }
 
-        if self.verbose {
-            if let Ok(pretty) = serde_json::to_string_pretty(input) {
-                cprintln!("<dim>{}</dim>", pretty);
-            }
+        if self.verbose
+            && let Ok(pretty) = serde_json::to_string_pretty(input)
+        {
+            cprintln!("<dim>{}</dim>", pretty);
         }
     }
 

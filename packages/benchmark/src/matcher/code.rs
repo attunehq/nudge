@@ -25,7 +25,7 @@ pub struct CodeMatcher {
     pub query: Query,
 }
 
-impl<'a> FallibleMatcher<&'a str> for CodeMatcher {
+impl FallibleMatcher<&str> for CodeMatcher {
     #[tracing::instrument]
     fn find(&self, target: &str) -> Result<Matches> {
         let tree = self

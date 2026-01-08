@@ -41,7 +41,8 @@ pub struct SpawnOptions {
 impl ClaudeProcess {
     /// Spawn a new Claude Code process.
     ///
-    /// If `opts.prompt` is provided, it will be sent as the first message via stdin.
+    /// If `opts.prompt` is provided, it will be sent as the first message via
+    /// stdin.
     pub fn spawn(opts: SpawnOptions) -> Result<Self> {
         let mut cmd = Command::new("claude");
 
@@ -123,7 +124,9 @@ impl ClaudeProcess {
         trace!(%json, "Sending message to Claude");
 
         writeln!(self.stdin, "{}", json).wrap_err("Failed to write to Claude stdin")?;
-        self.stdin.flush().wrap_err("Failed to flush Claude stdin")?;
+        self.stdin
+            .flush()
+            .wrap_err("Failed to flush Claude stdin")?;
 
         Ok(())
     }
@@ -154,19 +157,19 @@ impl ClaudeProcess {
 
         trace!(%line, "Received message from Claude");
 
-        let msg: OutputMessage =
-            serde_json::from_str(line).wrap_err_with(|| format!("Failed to parse message: {}", line))?;
+        let msg: OutputMessage = serde_json::from_str(line)
+            .wrap_err_with(|| format!("Failed to parse message: {}", line))?;
 
         // Track session ID
-        if let OutputMessage::System(ref sys) = msg {
-            if let Some(ref session_id) = sys.session_id {
-                self.session_id = Some(session_id.clone());
-            }
+        if let OutputMessage::System(ref sys) = msg
+            && let Some(ref session_id) = sys.session_id
+        {
+            self.session_id = Some(session_id.clone());
         }
-        if let OutputMessage::Result(ref res) = msg {
-            if let Some(ref session_id) = res.session_id {
-                self.session_id = Some(session_id.clone());
-            }
+        if let OutputMessage::Result(ref res) = msg
+            && let Some(ref session_id) = res.session_id
+        {
+            self.session_id = Some(session_id.clone());
         }
 
         Ok(Some(msg))
@@ -180,7 +183,9 @@ impl ClaudeProcess {
     /// Wait for the process to exit and return its exit status.
     #[allow(dead_code)]
     pub fn wait(&mut self) -> Result<std::process::ExitStatus> {
-        self.child.wait().wrap_err("Failed to wait for Claude process")
+        self.child
+            .wait()
+            .wrap_err("Failed to wait for Claude process")
     }
 
     /// Kill the process.

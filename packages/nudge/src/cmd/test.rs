@@ -193,8 +193,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
         "WebFetch" => {
             let url = config
                 .url
-                .as_ref()
-                .map(|u| u.clone())
+                .clone()
                 .unwrap_or_else(|| "https://example.com".to_string());
             json!({
                 "url": url,

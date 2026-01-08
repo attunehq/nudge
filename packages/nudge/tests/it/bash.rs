@@ -7,7 +7,8 @@ use std::process::{Command, Stdio};
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
-/// Create a temporary directory with a .nudge.yaml config containing the given rules.
+/// Create a temporary directory with a .nudge.yaml config containing the given
+/// rules.
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");
@@ -257,7 +258,10 @@ rules:
     let dir = setup_git_repo("feature-branch", config);
 
     // Should NOT match: git push on feature branch (not main)
-    let input = bash_hook("git push origin feature-branch", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "git push origin feature-branch",
+        dir.path().to_str().unwrap(),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(

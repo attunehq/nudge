@@ -33,3 +33,6 @@ itertools = "0.14.0"
 glob-match = "0.2.1"
 walkdir = "2.5.0"
 derive_more = { version = "2.0.1", features = ["full"] }
+
+[lints]
+workspace = true

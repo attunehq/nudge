@@ -94,12 +94,11 @@ pub enum MessageContent {
 }
 
 impl MessageContent {
-    /// Iterate over content blocks, treating string content as a single text block.
+    /// Iterate over content blocks, treating string content as a single text
+    /// block.
     pub fn blocks(&self) -> impl Iterator<Item = ContentBlock> + '_ {
         match self {
-            MessageContent::Text(s) => {
-                vec![ContentBlock::Text { text: s.clone() }].into_iter()
-            }
+            MessageContent::Text(s) => vec![ContentBlock::Text { text: s.clone() }].into_iter(),
             MessageContent::Blocks(blocks) => blocks.clone().into_iter(),
         }
     }

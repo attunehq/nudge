@@ -1,7 +1,8 @@
 //! Integration tests for External matcher.
 //!
 //! These tests verify that external program matching works through the full
-//! hook pipeline, including correct command execution and template interpolation.
+//! hook pipeline, including correct command execution and template
+//! interpolation.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -10,7 +11,8 @@ use std::process::{Command, Stdio};
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
-/// Create a temporary directory with a .nudge.yaml config containing the given rules.
+/// Create a temporary directory with a .nudge.yaml config containing the given
+/// rules.
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");

@@ -313,7 +313,8 @@ pub enum ContentMatcher {
         ///
         /// When provided, the suggestion is interpolated with the match's
         /// capture groups and added to the match context as `suggestion`.
-        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion
+        /// }}`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
@@ -581,7 +582,8 @@ pub enum UrlMatcher {
         ///
         /// When provided, the suggestion is interpolated with the match's
         /// capture groups and added to the match context as `suggestion`.
-        /// This can then be referenced in the rule's message as `{{ $suggestion }}`.
+        /// This can then be referenced in the rule's message as `{{ $suggestion
+        /// }}`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
@@ -736,7 +738,8 @@ impl ProjectStateMatcher {
 /// Run an external command with content piped to stdin.
 ///
 /// Returns `Some(formatted_command)` if the command exits with non-zero status
-/// (indicating a match/violation), or `None` if the command succeeds (no violation).
+/// (indicating a match/violation), or `None` if the command succeeds (no
+/// violation).
 fn run_external_command(command: &[String], content: &str) -> Option<String> {
     let Some((program, args)) = command.split_first() else {
         tracing::warn!("external command is empty");
@@ -758,11 +761,11 @@ fn run_external_command(command: &[String], content: &str) -> Option<String> {
     };
 
     // Write content to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        if let Err(e) = stdin.write_all(content.as_bytes()) {
-            tracing::warn!(?program, error = %e, "failed to write to external command stdin");
-            return None;
-        }
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(e) = stdin.write_all(content.as_bytes())
+    {
+        tracing::warn!(?program, error = %e, "failed to write to external command stdin");
+        return None;
     }
 
     // Wait for the command to complete
@@ -995,7 +998,8 @@ impl Language {
     /// Parse source code into a syntax tree.
     ///
     /// Returns `None` if parsing fails (e.g., malformed code). We intentionally
-    /// don't block on parse errors since code being written is often incomplete.
+    /// don't block on parse errors since code being written is often
+    /// incomplete.
     pub fn parse(self, source: &str) -> Option<tree_sitter::Tree> {
         use std::sync::Mutex;
 

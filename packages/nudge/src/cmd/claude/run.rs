@@ -141,7 +141,8 @@ fn run_loop(process: &mut ClaudeProcess, ui: &TerminalUI) -> Result<()> {
 
 /// Read messages from Claude until we get a result message or EOF.
 ///
-/// Returns `true` if we should prompt for more input, `false` if the conversation ended.
+/// Returns `true` if we should prompt for more input, `false` if the
+/// conversation ended.
 fn read_until_result(process: &mut ClaudeProcess, ui: &TerminalUI) -> Result<bool> {
     loop {
         match process.read_message()? {
@@ -150,10 +151,10 @@ fn read_until_result(process: &mut ClaudeProcess, ui: &TerminalUI) -> Result<boo
                 return Ok(false);
             }
             Some(OutputMessage::System(sys)) => {
-                if sys.subtype == "init" {
-                    if let Some(ref session_id) = sys.session_id {
-                        ui.display_init(session_id);
-                    }
+                if sys.subtype == "init"
+                    && let Some(ref session_id) = sys.session_id
+                {
+                    ui.display_init(session_id);
                 }
             }
             Some(OutputMessage::Assistant(asst)) => {
