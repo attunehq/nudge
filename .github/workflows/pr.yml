@@ -64,7 +64,8 @@ jobs:
             - name: Install Rust
               run: rustup show
             - uses: actions/checkout@v4
-            - uses: Swatinem/rust-cache@v2
-              with:
-                  shared-key: build
-            - run: cargo build --all-targets --verbose
+            - name: Install hurry
+              run: curl -sSfL https://hurry.build/install.sh | bash
+            - run: hurry cargo build --all-targets --verbose
+              env:
+                  HURRY_API_TOKEN: ${{ secrets.HURRY_API_TOKEN }}
