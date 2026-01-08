@@ -78,7 +78,21 @@ The collaborative spirit lives in *why* Nudge exists (to help Claude focus on yo
 
 ## Setup
 
-### 1. Build Nudge
+### 1. Install Nudge
+
+**macOS / Linux:**
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.ps1 | iex
+```
+
+**From source:**
 
 ```bash
 git clone https://github.com/attunehq/nudge
