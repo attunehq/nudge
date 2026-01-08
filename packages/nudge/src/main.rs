@@ -11,7 +11,7 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 
 /// Nudge adds memory to your agents.
 #[derive(Parser)]
-#[command(author, version, about)]
+#[command(author, version = env!("NUDGE_VERSION"), about)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
