@@ -1331,16 +1331,16 @@ mod tests {
 
     #[test]
     fn test_external_matches_with_context_formats_command_with_args() {
-        // `sh -c 'exit 1'` always fails and tests multi-arg formatting
+        // `/bin/sh -c 'exit 1'` always fails and tests multi-arg formatting
         let matcher = ContentMatcher::External {
-            command: vec!["sh".to_string(), "-c".to_string(), "exit 1".to_string()],
+            command: vec!["/bin/sh".to_string(), "-c".to_string(), "exit 1".to_string()],
         };
         let matches = matcher.matches_with_context("content");
         assert_eq!(matches.len(), 1);
         // shell_words::join should quote the argument with spaces
         assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"sh -c 'exit 1'".to_string())
+            Some(&"/bin/sh -c 'exit 1'".to_string())
         );
     }
 

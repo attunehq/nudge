@@ -49,6 +49,8 @@ jobs:
             - name: Install Rust
               run: rustup show
             - uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.head_ref }}
             - uses: Swatinem/rust-cache@v2
               with:
                   shared-key: test
