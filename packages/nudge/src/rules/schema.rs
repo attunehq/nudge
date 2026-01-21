@@ -985,6 +985,20 @@ pub enum Language {
     Rust,
     /// The TypeScript programming language.
     TypeScript,
+    /// The JavaScript programming language.
+    JavaScript,
+    /// The Python programming language.
+    Python,
+    /// The Go programming language.
+    Go,
+    /// The Java programming language.
+    Java,
+    /// The C# programming language.
+    CSharp,
+    /// The Kotlin programming language.
+    Kotlin,
+    /// The Haskell programming language.
+    Haskell,
 }
 
 impl Language {
@@ -993,6 +1007,13 @@ impl Language {
         match self {
             Language::Rust => tree_sitter_rust::LANGUAGE.into(),
             Language::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Language::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+            Language::Python => tree_sitter_python::LANGUAGE.into(),
+            Language::Go => tree_sitter_go::LANGUAGE.into(),
+            Language::Java => tree_sitter_java::LANGUAGE.into(),
+            Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Language::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
+            Language::Haskell => tree_sitter_haskell::LANGUAGE.into(),
         }
     }
 
@@ -1023,9 +1044,72 @@ impl Language {
             Mutex::new(parser)
         });
 
+        static JAVASCRIPT_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_javascript::LANGUAGE.into())
+                .expect("failed to set JavaScript language");
+            Mutex::new(parser)
+        });
+
+        static PYTHON_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_python::LANGUAGE.into())
+                .expect("failed to set Python language");
+            Mutex::new(parser)
+        });
+
+        static GO_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_go::LANGUAGE.into())
+                .expect("failed to set Go language");
+            Mutex::new(parser)
+        });
+
+        static JAVA_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_java::LANGUAGE.into())
+                .expect("failed to set Java language");
+            Mutex::new(parser)
+        });
+
+        static CSHARP_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_c_sharp::LANGUAGE.into())
+                .expect("failed to set C# language");
+            Mutex::new(parser)
+        });
+
+        static KOTLIN_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_kotlin_ng::LANGUAGE.into())
+                .expect("failed to set Kotlin language");
+            Mutex::new(parser)
+        });
+
+        static HASKELL_PARSER: LazyLock<Mutex<Parser>> = LazyLock::new(|| {
+            let mut parser = Parser::new();
+            parser
+                .set_language(&tree_sitter_haskell::LANGUAGE.into())
+                .expect("failed to set Haskell language");
+            Mutex::new(parser)
+        });
+
         let mut parser = match self {
             Language::Rust => RUST_PARSER.lock().ok()?,
             Language::TypeScript => TYPESCRIPT_PARSER.lock().ok()?,
+            Language::JavaScript => JAVASCRIPT_PARSER.lock().ok()?,
+            Language::Python => PYTHON_PARSER.lock().ok()?,
+            Language::Go => GO_PARSER.lock().ok()?,
+            Language::Java => JAVA_PARSER.lock().ok()?,
+            Language::CSharp => CSHARP_PARSER.lock().ok()?,
+            Language::Kotlin => KOTLIN_PARSER.lock().ok()?,
+            Language::Haskell => HASKELL_PARSER.lock().ok()?,
         };
 
         let tree = parser.parse(source, None)?;
