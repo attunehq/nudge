@@ -4,6 +4,13 @@
 //! hook pipeline, including correct handling of AST-based patterns that regex
 //! cannot express.
 
+mod csharp;
+mod go;
+mod haskell;
+mod java;
+mod javascript;
+mod kotlin;
+mod python;
 mod typescript_errors;
 mod typescript_types;
 
