@@ -16,7 +16,7 @@ use xshell::Shell;
 )]
 #[test]
 fn test_inline_imports(content: &str, expected: Expected) {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     let input = write_hook("test.rs", content);
     let (exit_code, output) = run_hook(&sh, &input);
     assert_expected(exit_code, &output, expected);

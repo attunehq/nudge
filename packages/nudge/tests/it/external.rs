@@ -30,7 +30,11 @@ fn get_binary_path() -> PathBuf {
     assert!(status.success(), "cargo build failed");
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("manifest dir has parent")
+        .parent()
+        .expect("parent has parent");
     workspace_root.join("target/debug/nudge")
 }
 

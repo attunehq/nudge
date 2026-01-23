@@ -42,7 +42,11 @@ fn get_binary_path() -> PathBuf {
 
     // Get the target directory - use CARGO_TARGET_DIR or default
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("manifest dir has parent")
+        .parent()
+        .expect("parent has parent");
     workspace_root.join("target/debug/nudge")
 }
 

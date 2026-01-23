@@ -112,7 +112,8 @@ mod tests {
 
     #[test]
     fn test_load_nonexistent_file() {
-        let rules = load_from(Path::new("nonexistent.yaml")).unwrap();
+        let rules =
+            load_from(Path::new("nonexistent.yaml")).expect("load returns empty for nonexistent");
         assert!(rules.is_empty());
     }
 }

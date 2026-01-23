@@ -9,7 +9,7 @@ use xshell::Shell;
 #[test_case("test.txt", "let foo: Type = bar;"; "text file passes")]
 #[test]
 fn test_non_rust_files_pass(file_path: &str, content: &str) {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     let input = write_hook(file_path, content);
     let (exit_code, output) = run_hook(&sh, &input);
     assert_expected(exit_code, &output, Expected::Passthrough);

@@ -151,7 +151,10 @@ fn build_hook(config: &Config) -> Result<Hook> {
 }
 
 fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
-    let prompt = config.prompt.as_ref().unwrap();
+    let prompt = config
+        .prompt
+        .as_ref()
+        .expect("prompt required for UserPromptSubmit hook");
 
     let payload = json!({
         "hook_event_name": "UserPromptSubmit",

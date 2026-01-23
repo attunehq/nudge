@@ -147,9 +147,15 @@ impl FromStr for StatusEntry {
         }
 
         let mut chars = line.chars();
-        let index_char = chars.next().unwrap();
-        let worktree_char = chars.next().unwrap();
-        let space = chars.next().unwrap();
+        let index_char = chars
+            .next()
+            .expect("git status line should have index char");
+        let worktree_char = chars
+            .next()
+            .expect("git status line should have worktree char");
+        let space = chars
+            .next()
+            .expect("git status line should have space separator");
 
         if space != ' ' {
             return Err("expected space after status".into());

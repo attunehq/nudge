@@ -52,11 +52,11 @@ impl TerminalUI {
                 Some(path.to_string())
             }
             "Write" => {
-                let parsed: PreToolUseWriteInput = serde_json::from_value(input.clone()).ok()?;
+                let parsed = serde_json::from_value::<PreToolUseWriteInput>(input.clone()).ok()?;
                 Some(parsed.file_path.display().to_string())
             }
             "Edit" => {
-                let parsed: PreToolUseEditInput = serde_json::from_value(input.clone()).ok()?;
+                let parsed = serde_json::from_value::<PreToolUseEditInput>(input.clone()).ok()?;
                 Some(parsed.file_path.display().to_string())
             }
             "Bash" => {
@@ -78,7 +78,8 @@ impl TerminalUI {
                 Some(format!("/{}/", pattern))
             }
             "WebFetch" => {
-                let parsed: PreToolUseWebFetchInput = serde_json::from_value(input.clone()).ok()?;
+                let parsed =
+                    serde_json::from_value::<PreToolUseWebFetchInput>(input.clone()).ok()?;
                 Some(parsed.url)
             }
             "WebSearch" => {

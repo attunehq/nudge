@@ -157,7 +157,7 @@ impl ClaudeProcess {
 
         trace!(%line, "Received message from Claude");
 
-        let msg: OutputMessage = serde_json::from_str(line)
+        let msg = serde_json::from_str::<OutputMessage>(line)
             .wrap_err_with(|| format!("Failed to parse message: {}", line))?;
 
         // Track session ID

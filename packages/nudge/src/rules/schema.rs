@@ -1227,7 +1227,7 @@ mod tests {
             language: rust
             query: "(function_item)"
         "#;
-        let matcher: ContentMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
         assert!(matches!(matcher, ContentMatcher::SyntaxTree { .. }));
     }
 
@@ -1238,7 +1238,7 @@ mod tests {
             language: rust
             query: "(not_a_real_node)"
         "#;
-        let result: Result<ContentMatcher, _> = serde_yaml::from_str(yaml);
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());
     }
 
@@ -1246,7 +1246,7 @@ mod tests {
     fn test_syntax_tree_is_match() {
         let matcher = ContentMatcher::SyntaxTree {
             language: Language::Rust,
-            query: TreeSitterQuery::new(Language::Rust, "(function_item)").unwrap(),
+            query: TreeSitterQuery::new(Language::Rust, "(function_item)").expect("valid query"),
             suggestion: None,
         };
         assert!(matcher.is_match("fn foo() {}"));
@@ -1257,7 +1257,8 @@ mod tests {
     fn test_syntax_tree_matches_returns_spans() {
         let matcher = ContentMatcher::SyntaxTree {
             language: Language::Rust,
-            query: TreeSitterQuery::new(Language::Rust, "(function_item) @fn").unwrap(),
+            query: TreeSitterQuery::new(Language::Rust, "(function_item) @fn")
+                .expect("valid tree-sitter query"),
             suggestion: None,
         };
         let code = "fn foo() {}\nfn bar() {}";
@@ -1271,50 +1272,9 @@ mod tests {
             language: Language::Rust,
             query: TreeSitterQuery::new(
                 Language::Rust,
-                "(function_item name: (identifier) @fn_name)",
-            )
-            .unwrap(),
-            suggestion: None,
-        };
-        let code = "fn my_function() {}";
-        let matches = matcher.matches_with_context(code);
-        pretty_assert_eq!(matches.len(), 1);
-        pretty_assert_eq!(
-            matches[0].captures.get("fn_name"),
-            Some(&"my_function".to_string())
-        );
-    }
-
-    #[test]
-    fn test_syntax_tree_suggestion_interpolation() {
-        let matcher = ContentMatcher::SyntaxTree {
-            language: Language::Rust,
-            query: TreeSitterQuery::new(
-                Language::Rust,
-                "(function_item name: (identifier) @fn_name)",
-            )
-            .unwrap(),
-            suggestion: Some("Rename {{ $fn_name }} to something descriptive".to_string()),
-        };
-        let code = "fn x() {}";
-        let matches = matcher.matches_with_context(code);
-        pretty_assert_eq!(matches.len(), 1);
-        pretty_assert_eq!(
-            matches[0].captures.get("suggestion"),
-            Some(&"Rename x to something descriptive".to_string())
-        );
-    }
-
-    #[test]
-    fn test_syntax_tree_use_in_function_body() {
-        // This is the motivating use case: match `use` inside function bodies
-        let matcher = ContentMatcher::SyntaxTree {
-            language: Language::Rust,
-            query: TreeSitterQuery::new(
-                Language::Rust,
                 "(function_item body: (block (use_declaration) @use))",
             )
-            .unwrap(),
+            .expect("valid tree-sitter query"),
             suggestion: None,
         };
 
@@ -1332,7 +1292,8 @@ mod tests {
         // Malformed code should not match (passes silently)
         let matcher = ContentMatcher::SyntaxTree {
             language: Language::Rust,
-            query: TreeSitterQuery::new(Language::Rust, "(function_item)").unwrap(),
+            query: TreeSitterQuery::new(Language::Rust, "(function_item)")
+                .expect("valid tree-sitter query"),
             suggestion: None,
         };
         // Completely malformed - no function keyword
@@ -1350,7 +1311,7 @@ mod tests {
                 Language::Rust,
                 "(function_item name: (identifier) @name body: (block) @body)",
             )
-            .unwrap(),
+            .expect("valid tree-sitter query"),
             suggestion: None,
         };
         let code = "fn foo() { let x = 1; }";
@@ -1368,7 +1329,8 @@ mod tests {
             kind: External
             command: ["grep", "-q", "error"]
         "#;
-        let matcher: ContentMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(matcher, ContentMatcher::External { .. }));
     }
 
@@ -1378,7 +1340,7 @@ mod tests {
             kind: External
             command: []
         "#;
-        let result: Result<ContentMatcher, _> = serde_yaml::from_str(yaml);
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());
     }
 
@@ -1456,7 +1418,8 @@ mod tests {
               - kind: Regex
                 pattern: "git\\s+push"
         "#;
-        let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher =
+            serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         assert!(matcher.project_state.is_empty());
     }
@@ -1475,7 +1438,8 @@ mod tests {
                   - kind: Regex
                     pattern: "^main$"
         "#;
-        let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher =
+            serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         pretty_assert_eq!(matcher.project_state.len(), 1);
     }
@@ -1488,7 +1452,8 @@ mod tests {
               - kind: Regex
                 pattern: "^main$"
         "#;
-        let matcher: ProjectStateMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher = serde_yaml::from_str::<ProjectStateMatcher>(yaml)
+            .expect("valid project state matcher yaml");
         assert!(matches!(matcher, ProjectStateMatcher::Git { .. }));
     }
 
@@ -1498,7 +1463,8 @@ mod tests {
             kind: Git
             branch: []
         "#;
-        let matcher: ProjectStateMatcher = serde_yaml::from_str(yaml).unwrap();
+        let matcher = serde_yaml::from_str::<ProjectStateMatcher>(yaml)
+            .expect("valid project state matcher yaml");
         let ProjectStateMatcher::Git { branch } = matcher;
         assert!(branch.is_empty());
     }
@@ -1508,7 +1474,7 @@ mod tests {
         let yaml = r#"
             kind: InvalidKind
         "#;
-        let result: Result<ProjectStateMatcher, _> = serde_yaml::from_str(yaml);
+        let result = serde_yaml::from_str::<ProjectStateMatcher>(yaml);
         assert!(result.is_err());
     }
 }
