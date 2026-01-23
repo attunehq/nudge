@@ -4,7 +4,7 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
-    sync::LazyLock,
+    sync::{LazyLock, Mutex},
 };
 
 use derive_more::Display;
@@ -1023,8 +1023,6 @@ impl Language {
     /// don't block on parse errors since code being written is often
     /// incomplete.
     pub fn parse(self, source: &str) -> Option<tree_sitter::Tree> {
-        use std::sync::Mutex;
-
         // Reuse parsers across calls. Parser creation has non-trivial overhead,
         // and parsers are designed to be reused. We use Mutex because parsing
         // is stateful (the parser tracks incremental parse state).
@@ -1191,6 +1189,8 @@ impl<'de> Deserialize<'de> for TreeSitterQuery {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     use super::*;
 
     #[test]
@@ -1262,7 +1262,7 @@ mod tests {
         };
         let code = "fn foo() {}\nfn bar() {}";
         let spans = matcher.matches(code);
-        assert_eq!(spans.len(), 2);
+        pretty_assert_eq!(spans.len(), 2);
     }
 
     #[test]
@@ -1278,8 +1278,8 @@ mod tests {
         };
         let code = "fn my_function() {}";
         let matches = matcher.matches_with_context(code);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
             matches[0].captures.get("fn_name"),
             Some(&"my_function".to_string())
         );
@@ -1298,8 +1298,8 @@ mod tests {
         };
         let code = "fn x() {}";
         let matches = matcher.matches_with_context(code);
-        assert_eq!(matches.len(), 1);
-        assert_eq!(
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
             matches[0].captures.get("suggestion"),
             Some(&"Rename x to something descriptive".to_string())
         );
@@ -1355,7 +1355,7 @@ mod tests {
         };
         let code = "fn foo() { let x = 1; }";
         let spans = matcher.matches(code);
-        assert_eq!(spans.len(), 1);
+        pretty_assert_eq!(spans.len(), 1);
         // The span should cover from "foo" through the end of the block
         let matched_text = &code[spans[0].start..spans[0].end];
         assert!(matched_text.contains("foo"));
@@ -1407,8 +1407,8 @@ mod tests {
             command: vec!["false".to_string()],
         };
         let matches = matcher.matches_with_context("content");
-        assert_eq!(matches.len(), 1);
-        assert_eq!(
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
             matches[0].captures.get("command"),
             Some(&"false".to_string())
         );
@@ -1426,9 +1426,9 @@ mod tests {
             ],
         };
         let matches = matcher.matches_with_context("content");
-        assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(matches.len(), 1);
         // shell_words::join formats the command
-        assert_eq!(
+        pretty_assert_eq!(
             matches[0].captures.get("command"),
             Some(&"test 1 -eq 0".to_string())
         );
@@ -1457,7 +1457,7 @@ mod tests {
                 pattern: "git\\s+push"
         "#;
         let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(matcher.command.len(), 1);
+        pretty_assert_eq!(matcher.command.len(), 1);
         assert!(matcher.project_state.is_empty());
     }
 
@@ -1476,8 +1476,8 @@ mod tests {
                     pattern: "^main$"
         "#;
         let matcher: PreToolUseBashMatcher = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(matcher.command.len(), 1);
-        assert_eq!(matcher.project_state.len(), 1);
+        pretty_assert_eq!(matcher.command.len(), 1);
+        pretty_assert_eq!(matcher.project_state.len(), 1);
     }
 
     #[test]

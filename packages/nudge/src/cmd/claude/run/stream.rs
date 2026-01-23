@@ -1,5 +1,7 @@
 //! NDJSON message types for Claude Code's stream-json format.
 
+use std::fmt::{Display, Formatter};
+
 use serde::{Deserialize, Serialize};
 
 /// Output message from Claude Code (stdout).
@@ -139,8 +141,8 @@ pub enum ToolResultContent {
     Structured(serde_json::Value),
 }
 
-impl std::fmt::Display for ToolResultContent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for ToolResultContent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ToolResultContent::Text(s) => write!(f, "{}", s),
             ToolResultContent::Structured(v) => {

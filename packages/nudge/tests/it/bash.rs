@@ -1,5 +1,6 @@
 //! Integration tests for Bash tool matching with project_state.
 
+use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -12,7 +13,7 @@ use tempfile::TempDir;
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");
-    std::fs::write(&config_path, rules_yaml).expect("write config");
+    fs::write(&config_path, rules_yaml).expect("write config");
     dir
 }
 
@@ -42,7 +43,7 @@ fn setup_git_repo(branch_name: &str, rules_yaml: &str) -> TempDir {
         .expect("git config name");
 
     // Create initial commit so we have a branch
-    std::fs::write(temp_path.join("README.md"), "# Test").expect("write readme");
+    fs::write(temp_path.join("README.md"), "# Test").expect("write readme");
     Command::new("git")
         .args(["add", "."])
         .current_dir(temp_path)

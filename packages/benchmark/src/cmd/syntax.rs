@@ -1,5 +1,6 @@
 //! Display the syntax tree for a code snippet.
 
+use std::fs;
 use std::path::Path;
 
 use benchmark::{matcher::code::Language, snippet::Snippet};
@@ -28,7 +29,7 @@ pub fn main(config: Config) -> Result<()> {
 fn resolve_input(input: &str) -> String {
     let path = Path::new(input);
     if path.exists() {
-        std::fs::read_to_string(path).unwrap_or_else(|_| input.to_string())
+        fs::read_to_string(path).unwrap_or_else(|_| input.to_string())
     } else {
         input.to_string()
     }

@@ -4,7 +4,9 @@
 //! enabling use in CI pipelines or as a standalone linter.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
+use std::process;
 
 use clap::Args;
 use color_eyre::eyre::{Context, Result};
@@ -106,7 +108,7 @@ pub fn main(config: Config) -> Result<()> {
             }
 
             // Read file content
-            let content = match std::fs::read_to_string(file) {
+            let content = match fs::read_to_string(file) {
                 Ok(c) => c,
                 Err(e) => {
                     tracing::debug!(?file, error = %e, "skipping file (could not read)");
@@ -152,7 +154,7 @@ pub fn main(config: Config) -> Result<()> {
     }
 
     // Convert to sorted Vec for deterministic output
-    let mut issues: Vec<_> = issues_set.into_iter().collect();
+    let mut issues = issues_set.into_iter().collect::<Vec<_>>();
     issues.sort_by(|a, b| {
         a.file
             .cmp(&b.file)
@@ -166,7 +168,7 @@ pub fn main(config: Config) -> Result<()> {
         Ok(())
     } else {
         print_failure(&issues, checked_files, total_rules);
-        std::process::exit(1);
+        process::exit(1);
     }
 }
 
@@ -254,7 +256,7 @@ fn print_success(
 /// Print failure message with issues.
 fn print_failure(issues: &[Issue], checked_files: usize, total_rules: usize) {
     // Group issues by file for cleaner output
-    let mut issues_by_file: HashMap<&Path, Vec<&Issue>> = HashMap::new();
+    let mut issues_by_file = HashMap::<&Path, Vec<&Issue>>::new();
     for issue in issues {
         issues_by_file.entry(&issue.file).or_default().push(issue);
     }
@@ -270,7 +272,7 @@ fn print_failure(issues: &[Issue], checked_files: usize, total_rules: usize) {
     println!();
 
     // Sort files for deterministic output
-    let mut files: Vec<_> = issues_by_file.keys().collect();
+    let mut files = issues_by_file.keys().collect::<Vec<_>>();
     files.sort();
 
     for file in files {

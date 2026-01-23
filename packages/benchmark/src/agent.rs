@@ -1,6 +1,10 @@
 //! Agents that are configured to be evaluated by the benchmark.
 
+use std::fmt::{Display, Formatter};
+use std::fs;
 use std::path::Path;
+use std::process::Command;
+use std::str::FromStr;
 
 use clap::ValueEnum;
 use color_eyre::{
@@ -18,7 +22,7 @@ pub enum Agent {
     ClaudeCode(ModelClaudeCode),
 }
 
-impl std::str::FromStr for Agent {
+impl FromStr for Agent {
     type Err = String;
 
     /// Parse an agent from a string like `claude-code:sonnet` or
@@ -40,8 +44,8 @@ impl std::str::FromStr for Agent {
     }
 }
 
-impl std::fmt::Display for Agent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Agent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Agent::ClaudeCode(model) => write!(f, "Claude Code ({model})"),
         }
@@ -69,7 +73,7 @@ impl Agent {
     #[tracing::instrument]
     pub fn run(&self, project: &Path, prompt: &str) -> Result<()> {
         match self {
-            Agent::ClaudeCode(model) => std::process::Command::new("claude")
+            Agent::ClaudeCode(model) => Command::new("claude")
                 .args(["--permission-mode", "acceptEdits"])
                 .args(["--allowedTools", "Write,Edit,Read,Glob,Grep"])
                 .args(["--tools", "Write,Edit,Read,Glob,Grep"])
@@ -113,8 +117,7 @@ impl Agent {
             Agent::ClaudeCode(_) => {
                 let target = project.join("CLAUDE.md");
                 tracing::debug!(?target, "writing claude guidance");
-                std::fs::write(&target, context)
-                    .with_context(|| format!("write context to {target:?}"))
+                fs::write(&target, context).with_context(|| format!("write context to {target:?}"))
             }
         }
     }
@@ -123,7 +126,7 @@ impl Agent {
     #[tracing::instrument]
     pub fn configure_nudge(&self, project: &Path) -> Result<()> {
         match self {
-            Agent::ClaudeCode(_) => std::process::Command::new("nudge")
+            Agent::ClaudeCode(_) => Command::new("nudge")
                 .arg("claude")
                 .arg("setup")
                 .current_dir(project)
@@ -164,7 +167,7 @@ pub enum ModelClaudeCode {
     Custom(String),
 }
 
-impl std::str::FromStr for ModelClaudeCode {
+impl FromStr for ModelClaudeCode {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -177,8 +180,8 @@ impl std::str::FromStr for ModelClaudeCode {
     }
 }
 
-impl std::fmt::Display for ModelClaudeCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for ModelClaudeCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SonnetLatest => write!(f, "Sonnet"),
             Self::HaikuLatest => write!(f, "Haiku"),
@@ -220,8 +223,8 @@ pub enum Guidance {
     File,
 }
 
-impl std::fmt::Display for Guidance {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Guidance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::None => write!(f, "None"),
             Self::Nudge => write!(f, "Nudge"),

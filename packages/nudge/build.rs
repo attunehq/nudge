@@ -4,7 +4,9 @@
 //! - Uses `git describe --always` to get the base version (tag or commit hash)
 //! - If the working tree is dirty, appends a content hash of the changed files
 
+use std::fs;
 use std::hash::{DefaultHasher, Hasher as _};
+use std::iter;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
@@ -41,7 +43,7 @@ fn content_hash(mut files: Vec<StatusEntry>) -> Result<String, String> {
         let path = Path::new(&repo_root).join(file.path);
         let mut hasher = DefaultHasher::new();
         #[allow(clippy::disallowed_methods)]
-        if let Ok(content) = std::fs::read(&path) {
+        if let Ok(content) = fs::read(&path) {
             hasher.write(path.as_os_str().as_encoded_bytes());
             hasher.write(&content);
             let hash = hasher.finish();
@@ -61,7 +63,7 @@ fn content_hash(mut files: Vec<StatusEntry>) -> Result<String, String> {
 }
 
 fn run(prog: &str, argv: &[&str]) -> Result<String, String> {
-    let invocation = std::iter::once(prog)
+    let invocation = iter::once(prog)
         .chain(argv.iter().copied())
         .collect::<Vec<_>>()
         .join(" ");
@@ -158,7 +160,7 @@ impl FromStr for StatusEntry {
         let worktree = GitFileStatus::parse(worktree_char)
             .ok_or_else(|| format!("invalid worktree status: {worktree_char}"))?;
 
-        let rest: String = chars.collect();
+        let rest = chars.collect::<String>();
         let (path, orig_path) = if matches!(index, GitFileStatus::Renamed | GitFileStatus::Copied) {
             if let Some((old, new)) = rest.split_once(" -> ") {
                 (new.to_string(), Some(old.to_string()))

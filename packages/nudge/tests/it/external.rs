@@ -4,6 +4,7 @@
 //! hook pipeline, including correct command execution and template
 //! interpolation.
 
+use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -16,7 +17,7 @@ use tempfile::TempDir;
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");
-    std::fs::write(&config_path, rules_yaml).expect("write config");
+    fs::write(&config_path, rules_yaml).expect("write config");
     dir
 }
 

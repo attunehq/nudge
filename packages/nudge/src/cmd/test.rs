@@ -1,5 +1,6 @@
 //! Test rules against sample input.
 
+use std::fs;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -175,7 +176,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
     // Get content from --content or --content-file
     let content = match (&config.content, &config.content_file) {
         (Some(c), _) => c.clone(),
-        (_, Some(path)) => std::fs::read_to_string(path)
+        (_, Some(path)) => fs::read_to_string(path)
             .with_context(|| format!("failed to read content from {}", path.display()))?,
         _ => String::new(),
     };

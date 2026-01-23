@@ -1,5 +1,6 @@
 //! Set up Nudge hooks for Claude Code.
 
+use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -46,7 +47,7 @@ pub fn main(config: Config) -> Result<()> {
     let settings_file = dotclaude.join("settings.local.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 
-    let nudge_path = std::env::current_exe()
+    let nudge_path = env::current_exe()
         .context("get current executable path")?
         .to_str()
         .ok_or_eyre("convert current executable path to string")?
