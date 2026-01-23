@@ -183,9 +183,13 @@ mod tests {
     #[test]
     fn test_render_snippet_multiple_spans() {
         let source = "fn main() {\n    use std::io;\n    use std::fs;\n}";
-        let use1_start = source.find("use std::io").unwrap();
+        let use1_start = source
+            .find("use std::io")
+            .expect("source contains use std::io");
         let use1_end = use1_start + "use std::io".len();
-        let use2_start = source.find("use std::fs").unwrap();
+        let use2_start = source
+            .find("use std::fs")
+            .expect("source contains use std::fs");
         let use2_end = use2_start + "use std::fs".len();
 
         let result = super::Source::from(source).annotate([

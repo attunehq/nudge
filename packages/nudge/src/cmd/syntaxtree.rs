@@ -3,6 +3,7 @@
 //! Useful for understanding tree structure when writing tree-sitter queries.
 //! Shows node kinds (what you match in queries) and field names.
 
+use std::fs;
 use std::path::Path;
 
 use clap::Args;
@@ -41,7 +42,7 @@ pub fn main(config: Config) -> Result<()> {
 fn resolve_input(input: &str) -> String {
     let path = Path::new(input);
     if path.exists() {
-        std::fs::read_to_string(path).unwrap_or_else(|_| input.to_string())
+        fs::read_to_string(path).unwrap_or_else(|_| input.to_string())
     } else {
         input.to_string()
     }

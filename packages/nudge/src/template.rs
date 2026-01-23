@@ -50,6 +50,8 @@ pub fn interpolate(template: &str, captures: &Captures) -> String {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     use super::*;
 
     #[test]
@@ -62,7 +64,7 @@ mod tests {
             "Replace {{ $1 }}.unwrap() with {{ $1 }}.expect()",
             &captures,
         );
-        assert_eq!(result, "Replace foo.unwrap() with foo.expect()");
+        pretty_assert_eq!(result, "Replace foo.unwrap() with foo.expect()");
     }
 
     #[test]
@@ -72,14 +74,14 @@ mod tests {
         captures.insert("type".to_string(), "String".to_string());
 
         let result = interpolate("Variable {{ $var }} has type {{ $type }}", &captures);
-        assert_eq!(result, "Variable x has type String");
+        pretty_assert_eq!(result, "Variable x has type String");
     }
 
     #[test]
     fn test_missing_capture_left_asis() {
         let captures = Captures::new();
         let result = interpolate("Missing {{ $1 }} here", &captures);
-        assert_eq!(result, "Missing {{ $1 }} here");
+        pretty_assert_eq!(result, "Missing {{ $1 }} here");
     }
 
     #[test]
@@ -91,7 +93,7 @@ mod tests {
         );
 
         let result = interpolate("Don't use .unwrap(). {{ $suggestion }}", &captures);
-        assert_eq!(result, "Don't use .unwrap(). use .expect() instead");
+        pretty_assert_eq!(result, "Don't use .unwrap(). use .expect() instead");
     }
 
     #[test]
@@ -102,14 +104,14 @@ mod tests {
         captures.insert("var".to_string(), "foo".to_string());
 
         let result = interpolate("let Some({{ $var }}) = {{ $var }} else { ... }", &captures);
-        assert_eq!(result, "let Some(foo) = foo else { ... }");
+        pretty_assert_eq!(result, "let Some(foo) = foo else { ... }");
     }
 
     #[test]
     fn test_empty_template() {
         let captures = Captures::new();
         let result = interpolate("", &captures);
-        assert_eq!(result, "");
+        pretty_assert_eq!(result, "");
     }
 
     #[test]
@@ -118,6 +120,6 @@ mod tests {
         captures.insert("1".to_string(), "foo".to_string());
 
         let result = interpolate("No placeholders here", &captures);
-        assert_eq!(result, "No placeholders here");
+        pretty_assert_eq!(result, "No placeholders here");
     }
 }

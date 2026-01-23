@@ -5,7 +5,7 @@ use xshell::Shell;
 
 #[test]
 fn test_edit_tool_content_matching() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // Edit that introduces an indented use statement
     let input = edit_hook("test.rs", "old code", "    use std::io;\n");
     let (exit_code, output) = run_hook(&sh, &input);
@@ -14,7 +14,7 @@ fn test_edit_tool_content_matching() {
 
 #[test]
 fn test_edit_tool_non_matching() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // Edit that doesn't trigger any rules
     let input = edit_hook("test.rs", "old", "new");
     let (exit_code, output) = run_hook(&sh, &input);

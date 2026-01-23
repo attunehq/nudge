@@ -5,7 +5,7 @@ use xshell::Shell;
 
 #[test]
 fn test_webfetch_docs_rs_triggers_interrupt() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // WebFetch to docs.rs should trigger the rule
     let input = webfetch_hook(
         "https://docs.rs/serde/1.0.0/serde/",
@@ -17,7 +17,7 @@ fn test_webfetch_docs_rs_triggers_interrupt() {
 
 #[test]
 fn test_webfetch_other_url_passes() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // WebFetch to a non-matched URL should pass through
     let input = webfetch_hook("https://example.com/page", "What is this?");
     let (exit_code, output) = run_hook(&sh, &input);
@@ -26,7 +26,7 @@ fn test_webfetch_other_url_passes() {
 
 #[test]
 fn test_webfetch_captures_crate_name() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // WebFetch to docs.rs should capture the crate name in the message
     let input = webfetch_hook("https://docs.rs/tokio/1.0.0/tokio/", "Tell me about tokio");
     let (exit_code, output) = run_hook(&sh, &input);

@@ -1,5 +1,6 @@
 //! Responds to Claude Code hooks.
 
+use std::io;
 use std::iter::repeat;
 
 use clap::Args;
@@ -23,7 +24,7 @@ pub struct Config {}
 
 #[instrument]
 pub fn main(_config: Config) -> Result<()> {
-    let stdin = std::io::stdin();
+    let stdin = io::stdin();
     let hook = serde_json::from_reader::<_, Hook>(stdin).context("read hook event")?;
 
     let rules = rules::load_all().context("load rules")?;

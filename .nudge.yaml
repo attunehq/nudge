@@ -6,10 +6,8 @@
 version: 1
 
 rules:
-  # Catch `use` statements inside function bodies.
-  # Pattern: lines starting with horizontal whitespace followed by `use `.
-  # Note: This regex has false positives (e.g., `use` inside `mod test`).
-  #       For precise AST-based matching, use the SyntaxTree matcher below.
+  # Catch `use` statements inside function/closure bodies.
+  # Uses tree-sitter to distinguish block-level imports from module-level imports.
   - name: no-inline-imports
     description: Move imports to the top of the file
     message: Move this `use` statement to the top of the file with other imports, then retry.
@@ -18,33 +16,42 @@ rules:
         tool: Write
         file: "**/*.rs"
         content:
-          - kind: Regex
-            pattern: "(?m)^[ \\t]+use "
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (block (use_declaration) @use)
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
         new_content:
-          - kind: Regex
-            pattern: "(?m)^[ \\t]+use "
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (block (use_declaration) @use)
 
   # Catch left-hand side type annotations in variable declarations.
-  # Pattern: `let name: Type = ...` or `let mut name: Type = ...`
+  # Uses tree-sitter to match `let name: Type = ...` without false positives
+  # from pattern matching like `let Value::Object(x) = ...`.
   - name: no-lhs-type-annotations
     description: Use type inference or turbofish instead of LHS annotations
-    message: "Remove this type annotation. Use turbofish (`collect::<Vec<_>>()`) or type inference instead, then retry."
+    message: "Use turbofish syntax (e.g., `from_str::<Type>(...)`) or type inference instead of left-hand type annotations, then retry."
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.rs"
         content:
-          - kind: Regex
-            pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (let_declaration type: (_) @type)
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
         new_content:
-          - kind: Regex
-            pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (let_declaration type: (_) @type)
 
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
@@ -66,6 +73,8 @@ rules:
             pattern: "std(::[a-zA-Z_][a-zA-Z0-9_]*){2,}(::|\\(|<)"
 
   # Suggest using `pretty_assertions` for better test output.
+  # Uses tree-sitter to match the exact macro name, avoiding false positives
+  # from `pretty_assert_eq!` which contains `assert_eq` as a substring.
   - name: prefer-pretty-assertions
     description: Use pretty_assertions in tests for better diff output
     message: "Use `pretty_assert_eq!` instead. Add `use pretty_assertions::assert_eq as pretty_assert_eq;` at file top, then retry."
@@ -74,35 +83,54 @@ rules:
         tool: Write
         file: "**/*.rs"
         content:
-          - kind: Regex
-            pattern: "assert_eq!"
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (macro_invocation
+                macro: (identifier) @macro
+                (#eq? @macro "assert_eq"))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
         new_content:
-          - kind: Regex
-            pattern: "assert_eq!"
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (macro_invocation
+                macro: (identifier) @macro
+                (#eq? @macro "assert_eq"))
 
   # Catch .unwrap() calls and suggest .expect() instead.
-  # Demonstrates the suggestion feature with named capture groups.
+  # Uses tree-sitter to match actual method calls, avoiding false positives
+  # from doc comments or string literals containing ".unwrap()".
   - name: no-unwrap
     description: Use .expect() instead of .unwrap() for better error messages
-    message: "{{ $suggestion }}"
+    message: 'Use `.expect("descriptive error message")` instead of `.unwrap()`, then retry.'
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.rs"
         content:
-          - kind: Regex
-            pattern: "(?P<expr>[a-zA-Z_][a-zA-Z0-9_]*)\\.unwrap\\(\\)"
-            suggestion: 'Replace `{{ $expr }}.unwrap()` with `{{ $expr }}.expect("descriptive error message")`'
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (call_expression
+                function: (field_expression
+                  field: (field_identifier) @method
+                  (#eq? @method "unwrap"))
+                arguments: (arguments))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
         new_content:
-          - kind: Regex
-            pattern: "(?P<expr>[a-zA-Z_][a-zA-Z0-9_]*)\\.unwrap\\(\\)"
-            suggestion: 'Replace `{{ $expr }}.unwrap()` with `{{ $expr }}.expect("descriptive error message")`'
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (call_expression
+                function: (field_expression
+                  field: (field_identifier) @method
+                  (#eq? @method "unwrap"))
+                arguments: (arguments))
 
   # Redirect docs.rs fetches to local cargo registry.
   # Demonstrates the WebFetch matcher with URL capture groups.

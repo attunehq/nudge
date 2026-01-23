@@ -12,6 +12,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs::{create_dir_all, read_to_string, write},
     path::{Path, PathBuf},
+    process,
 };
 
 use bon::Builder;
@@ -412,7 +413,7 @@ impl Command {
     #[tracing::instrument]
     pub fn run(&self, project: &Path) -> Result<()> {
         tracing::debug!("running command");
-        std::process::Command::new(&self.binary)
+        process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
             .output()
@@ -443,7 +444,7 @@ impl Command {
     /// error.
     #[tracing::instrument]
     pub fn evaluate(&self, project: &Path) -> Result<Outcome> {
-        let output = std::process::Command::new(&self.binary)
+        let output = process::Command::new(&self.binary)
             .args(&self.args)
             .current_dir(project)
             .tap(|cmd| tracing::debug!(?cmd, "running evaluation command"))

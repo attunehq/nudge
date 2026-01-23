@@ -1,5 +1,6 @@
 //! Test rules against sample input.
 
+use std::fs;
 use std::path::PathBuf;
 
 use clap::Args;
@@ -150,7 +151,10 @@ fn build_hook(config: &Config) -> Result<Hook> {
 }
 
 fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
-    let prompt = config.prompt.as_ref().unwrap();
+    let prompt = config
+        .prompt
+        .as_ref()
+        .expect("prompt required for UserPromptSubmit hook");
 
     let payload = json!({
         "hook_event_name": "UserPromptSubmit",
@@ -175,7 +179,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
     // Get content from --content or --content-file
     let content = match (&config.content, &config.content_file) {
         (Some(c), _) => c.clone(),
-        (_, Some(path)) => std::fs::read_to_string(path)
+        (_, Some(path)) => fs::read_to_string(path)
             .with_context(|| format!("failed to read content from {}", path.display()))?,
         _ => String::new(),
     };

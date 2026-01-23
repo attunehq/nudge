@@ -6,7 +6,7 @@ use xshell::Shell;
 
 #[test]
 fn test_multiple_rules_fire() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     // Content that triggers both inline imports AND lhs type annotations
     let content = "fn main() {\n    use std::io;\n    let foo: Vec<String> = vec![];\n}";
     let input = write_hook("test.rs", content);

@@ -5,7 +5,7 @@ use xshell::Shell;
 
 #[test]
 fn test_interrupt_message_contains_rule_message() {
-    let sh = Shell::new().unwrap();
+    let sh = Shell::new().expect("create shell");
     let input = write_hook("test.rs", "fn main() {\n    use std::io;\n}");
     let (_, output) = run_hook(&sh, &input);
 

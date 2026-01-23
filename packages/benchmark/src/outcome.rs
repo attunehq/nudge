@@ -107,8 +107,8 @@ impl Outcome {
     }
 }
 
-impl std::fmt::Display for Outcome {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Outcome {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Pass { evidence } => {
                 writeln!(f, "{}", cformat!("<green>✓</> Passed"))?;
@@ -275,8 +275,8 @@ pub enum Violation {
     QueryMatched(QueryMatchedViolation),
 }
 
-impl std::fmt::Display for Violation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Violation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CommandFailed(failed) => failed.fmt(f),
             Self::QueryNotMatched(not_matched) => not_matched.fmt(f),
@@ -299,8 +299,8 @@ pub enum Evidence {
     QueryNotMatched(QueryNotMatchedEvidence),
 }
 
-impl std::fmt::Display for Evidence {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Evidence {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CommandSucceeded(succeeded) => succeeded.fmt(f),
             Self::QueryMatched(matched) => matched.fmt(f),

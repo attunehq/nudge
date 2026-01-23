@@ -14,6 +14,7 @@ mod python;
 mod typescript_errors;
 mod typescript_types;
 
+use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -26,7 +27,7 @@ use tempfile::TempDir;
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");
-    std::fs::write(&config_path, rules_yaml).expect("write config");
+    fs::write(&config_path, rules_yaml).expect("write config");
     dir
 }
 
@@ -41,7 +42,11 @@ fn get_binary_path() -> PathBuf {
 
     // Get the target directory - use CARGO_TARGET_DIR or default
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("manifest dir has parent")
+        .parent()
+        .expect("parent has parent");
     workspace_root.join("target/debug/nudge")
 }
 

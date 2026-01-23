@@ -19,6 +19,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Check project files against configured rules.
+    Check(cmd::check::Config),
+
     /// Integration with Claude Code.
     Claude(cmd::claude::Config),
 
@@ -73,6 +76,7 @@ fn main() -> Result<()> {
     // that users or claude code can see an error and then run the command to
     // learn more about debugging nudge.
     match cli.command {
+        Commands::Check(config) => cmd::check::main(config),
         Commands::Claude(config) => cmd::claude::main(config),
         Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),
         Commands::Validate(config) => cmd::validate::main(config),

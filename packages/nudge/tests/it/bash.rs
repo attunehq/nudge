@@ -1,5 +1,6 @@
 //! Integration tests for Bash tool matching with project_state.
 
+use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -12,7 +13,7 @@ use tempfile::TempDir;
 fn setup_config(rules_yaml: &str) -> TempDir {
     let dir = TempDir::new().expect("create temp dir");
     let config_path = dir.path().join(".nudge.yaml");
-    std::fs::write(&config_path, rules_yaml).expect("write config");
+    fs::write(&config_path, rules_yaml).expect("write config");
     dir
 }
 
@@ -42,7 +43,7 @@ fn setup_git_repo(branch_name: &str, rules_yaml: &str) -> TempDir {
         .expect("git config name");
 
     // Create initial commit so we have a branch
-    std::fs::write(temp_path.join("README.md"), "# Test").expect("write readme");
+    fs::write(temp_path.join("README.md"), "# Test").expect("write readme");
     Command::new("git")
         .args(["add", "."])
         .current_dir(temp_path)
@@ -73,7 +74,11 @@ fn get_binary_path() -> PathBuf {
     assert!(status.success(), "cargo build failed");
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let workspace_root = manifest_dir
+        .parent()
+        .expect("manifest dir has parent")
+        .parent()
+        .expect("parent has parent");
     workspace_root.join("target/debug/nudge")
 }
 
@@ -149,7 +154,10 @@ rules:
     let dir = setup_config(config);
 
     // Should match: rm -rf command
-    let input = bash_hook("rm -rf /some/path", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "rm -rf /some/path",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -177,7 +185,10 @@ rules:
     let dir = setup_config(config);
 
     // Should not match: safe rm command
-    let input = bash_hook("rm file.txt", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "rm file.txt",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -186,7 +197,10 @@ rules:
     );
 
     // Should not match: unrelated command
-    let input = bash_hook("ls -la", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "ls -la",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -220,7 +234,10 @@ rules:
     let dir = setup_git_repo("main", config);
 
     // Should match: git push on main branch
-    let input = bash_hook("git push origin main", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "git push origin main",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -260,7 +277,7 @@ rules:
     // Should NOT match: git push on feature branch (not main)
     let input = bash_hook(
         "git push origin feature-branch",
-        dir.path().to_str().unwrap(),
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
     );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
@@ -295,7 +312,10 @@ rules:
     let dir = setup_config(config);
 
     // Should NOT match: not a git repo, so project_state fails (with warning)
-    let input = bash_hook("git push origin main", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "git push origin main",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -323,7 +343,10 @@ rules:
     let dir = setup_config(config);
 
     // Should match: git push without project_state requirement
-    let input = bash_hook("git push origin main", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "git push origin main",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
@@ -357,7 +380,10 @@ rules:
     let dir = setup_git_repo("main", config);
 
     // Should match: git push on main branch
-    let input = bash_hook("git push", dir.path().to_str().unwrap());
+    let input = bash_hook(
+        "git push",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
     let (exit_code, output) = run_hook_in_dir(&dir, &input);
     pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
     assert!(
