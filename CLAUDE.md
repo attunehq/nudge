@@ -37,6 +37,7 @@ cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.loc
 cargo run -p nudge -- claude docs      # Print rule writing documentation
 cargo run -p nudge -- test             # Test a rule against sample input
 cargo run -p nudge -- validate         # Validate rule config files
+cargo run -p nudge -- check            # Check project files against rules (for CI)
 ```
 
 ## Architecture
@@ -49,6 +50,7 @@ nudge claude setup  - Writes hook configuration to .claude/settings.local.json
 nudge claude docs   - Prints documentation for writing rules
 nudge test          - Test a specific rule against sample input
 nudge validate      - Validate and display parsed rule configs
+nudge check         - Check project files against rules (CI/linter mode)
 ```
 
 ### Module Layout
@@ -59,6 +61,7 @@ nudge validate      - Validate and display parsed rule configs
 - `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
+- `src/cmd/check.rs` - Check command: validate project files against rules for CI
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema types and matchers (serde types that double as evaluators)
 - `src/claude/hook.rs` - Hook payload and response types

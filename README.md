@@ -133,6 +133,46 @@ claude --debug
 
 You'll see Nudge's hook being called and its response in the logs.
 
+### CI / Linting Mode
+
+Use `nudge check` to validate your entire project against rules—useful for CI pipelines or local linting:
+
+```bash
+# Check entire project
+nudge check
+
+# Check specific paths or patterns
+nudge check src/
+nudge check "**/*.rs"
+
+# Use in CI (fails build on violations)
+nudge check || exit 1
+```
+
+Example output when violations are found:
+
+```
+✗ Found 3 issues in 2 files
+
+./src/main.rs:42 [no-unwrap]
+  Use `.expect("descriptive error message")` instead of `.unwrap()`, then retry.
+
+./src/lib.rs:15 [no-inline-imports]
+  Move this `use` statement to the top of the file, then retry.
+
+./src/lib.rs:23 [no-inline-imports]
+  Move this `use` statement to the top of the file, then retry.
+
+Checked 25 files against 6 rules
+```
+
+When all checks pass:
+
+```
+✓ Checked 25 files against 6 rules
+  - .nudge.yaml: 6 rules
+```
+
 ### Manual Testing
 
 You can test a specific rule with the `test` subcommand:
