@@ -17,7 +17,8 @@ use nudge::rules::{self, GlobMatcher, Hook, PreToolUseMatcher, Rule};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
-    /// Paths or glob patterns to check. If not specified, checks entire project.
+    /// Paths or glob patterns to check. If not specified, checks entire
+    /// project.
     #[arg()]
     pub paths: Vec<PathBuf>,
 }
