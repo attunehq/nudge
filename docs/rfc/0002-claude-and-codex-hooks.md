@@ -50,7 +50,8 @@ The config shape mirrors Claude's three-level model:
 - Matcher group
 - One or more hook handlers
 
-Command hooks receive one JSON object on stdin. The events Nudge needs first are:
+Command hooks receive one JSON object on stdin. The events Nudge should install
+and evaluate first are:
 
 - `PreToolUse`
 - `UserPromptSubmit`
@@ -58,6 +59,11 @@ Command hooks receive one JSON object on stdin. The events Nudge needs first are
 For `PreToolUse`, Codex currently intercepts Bash, `apply_patch`, and MCP tool
 calls. It does not currently intercept all shell paths under unified exec, and
 it does not intercept WebSearch or other non-shell, non-MCP tools.
+
+Codex also supports `PermissionRequest` for approval prompts. Nudge should
+parse that event into its normalized model in this update, but it should not
+install `PermissionRequest` hooks or evaluate rules against approval prompts
+until Nudge has a permission-specific rule surface.
 
 Codex `PreToolUse` input for Bash and `apply_patch` uses:
 
@@ -130,6 +136,9 @@ Claude supports the Nudge-relevant tool names directly:
 - `WebFetch`
 - `Bash`
 
+Claude also exposes MCP tools in hook events. Nudge should preserve those as
+`Other`, matching the existing behavior for unsupported tool names.
+
 Claude `PreToolUse` denial supports the same hook-specific output Nudge already
 uses:
 
@@ -179,20 +188,26 @@ types and response serialization are coupled to Claude's wire format.
 ## Goals
 
 - Support Claude Code and Codex CLI with one rule language.
-- Keep `PreToolUse` and `UserPromptSubmit` as the first supported events.
+- Keep `PreToolUse` and `UserPromptSubmit` as the first rule-evaluated events.
 - Preserve existing rule files without requiring users to fork rules per agent.
 - Correctly block Codex `PreToolUse` calls by avoiding unsupported response
   fields.
 - Make Codex `apply_patch` useful for existing `Write` and `Edit` file-content
   rules.
 - Model file deletion as a first-class normalized tool event.
+- Parse `PermissionRequest` into a normalized event for both agents, without
+  making it rule-matchable in this update.
 - Keep setup idempotent and avoid clobbering unrelated user settings.
+- Keep setup local to each agent's standard local hook configuration.
 - Update README, command docs, and repository agent instructions together.
 
 ## Non-Goals
 
 - Support every Claude hook event in this update.
 - Support every Codex hook event in this update.
+- Match rules against `PermissionRequest` or make approval decisions from
+  Nudge rules.
+- Add YAML rule matching for file deletion.
 - Add natural-language or model-judged rules.
 - Implement HTTP, MCP-tool, prompt, or agent hook handlers.
 - Claim Codex can enforce WebSearch/WebFetch rules when current Codex hooks do
@@ -216,18 +231,6 @@ nudge codex docs
 
 Keep `nudge claude run` as Claude-only. There is no Codex equivalent in this
 update.
-
-Add a future-friendly top-level setup convenience after the core support lands:
-
-```bash
-nudge setup --agent claude
-nudge setup --agent codex
-nudge setup --agent all
-```
-
-That convenience should call the same setup implementations as the provider
-namespaces. It is optional for this RFC because the important compatibility
-contract is the installed hook command.
 
 ### Internal Modules
 
@@ -262,6 +265,7 @@ Define a normalized event enum:
 ```rust
 pub enum NudgeHook {
     PreToolUse(PreToolUse),
+    PermissionRequest(PermissionRequest),
     UserPromptSubmit(UserPromptSubmit),
     Other,
 }
@@ -275,6 +279,11 @@ pub struct PreToolUse {
     pub tool: ToolUse,
 }
 
+pub struct PermissionRequest {
+    pub context: HookContext,
+    pub tool: ToolUse,
+}
+
 pub enum ToolUse {
     Write(WriteInput),
     Edit(EditInput),
@@ -284,6 +293,12 @@ pub enum ToolUse {
     Other { tool_name: String, input: serde_json::Value },
 }
 ```
+
+`PermissionRequest` exists so the CLI boundary can parse current agent hook
+payloads without treating them as unknown JSON. Rule evaluation must return
+passthrough for `PermissionRequest` in this RFC. Nudge should not approve,
+deny, rewrite, or add context to approval prompts until the rule language has a
+clear permission-specific policy surface.
 
 `HookContext` should include only shared or useful metadata:
 
@@ -312,6 +327,8 @@ Claude maps directly:
 | `PreToolUse` + `tool_name: "Edit"` | `ToolUse::Edit` |
 | `PreToolUse` + `tool_name: "WebFetch"` | `ToolUse::WebFetch` |
 | `PreToolUse` + `tool_name: "Bash"` | `ToolUse::Bash` |
+| `PreToolUse` + MCP tool | `ToolUse::Other` |
+| `PermissionRequest` | `NudgeHook::PermissionRequest`, parsed but unmatchable |
 | `UserPromptSubmit` | `NudgeHook::UserPromptSubmit` |
 
 Codex maps as follows:
@@ -322,7 +339,8 @@ Codex maps as follows:
 | `PreToolUse` + `tool_name: "apply_patch"` add file | `ToolUse::Write` per added file |
 | `PreToolUse` + `tool_name: "apply_patch"` update file | `ToolUse::Edit` per updated file |
 | `PreToolUse` + `tool_name: "apply_patch"` delete file | `ToolUse::Delete` per deleted file |
-| `PreToolUse` + MCP tool | `Other` until rules support MCP-specific matching |
+| `PreToolUse` + MCP tool | `ToolUse::Other` |
+| `PermissionRequest` | `NudgeHook::PermissionRequest`, parsed but unmatchable |
 | `UserPromptSubmit` | `NudgeHook::UserPromptSubmit` |
 
 Codex `apply_patch` can contain multiple file changes. A single raw hook may
@@ -362,10 +380,10 @@ For moved files:
 For deleted files:
 
 - Normalize into `DeleteInput { file_path }`.
-- This should be a first-class `ToolUse::Delete` event even before the YAML rule
-  language grows delete-specific matchers. A deleted file is not an "other" tool
-  use; it is a concrete file operation that future rules and audit output should
-  be able to name precisely.
+- This is a first-class `ToolUse::Delete` event, but it is not matchable from
+  YAML in this update. A deleted file is not an "other" tool use; it is a
+  concrete file operation that future rules and audit output can name
+  precisely.
 
 If patch parsing fails:
 
@@ -396,7 +414,12 @@ The existing behavior remains:
 
 - `PreToolUse` matches produce a blocking denial.
 - `UserPromptSubmit` matches produce context on stdout.
+- `PermissionRequest` always passes through in this update.
 - No matches produce no output and exit 0.
+
+`ToolUse::Delete` is also unmatchable in this update. It should be preserved in
+the normalized model and test coverage, but rule evaluation should not expose a
+YAML matcher for it until Nudge has a concrete deletion policy to express.
 
 ### Response Rendering
 
@@ -443,6 +466,9 @@ This is the key wire-format fix for Codex.
 
 For `UserPromptSubmit`, prefer plain stdout for both agents. It is simple and
 documented by both hook systems as model-visible context.
+
+For `PermissionRequest`, render `Passthrough` only. The hook command should
+exit 0 with no output for that event.
 
 ### Setup
 
@@ -505,11 +531,12 @@ Codex setup should write `.codex/hooks.json`:
 }
 ```
 
-Use `hooks.json` rather than inline `[hooks]` in `.codex/config.toml` because
-Nudge already has safe JSON merge behavior and Codex warns when a single layer
-contains both representations. If `.codex/config.toml` already contains inline
-hooks, setup should warn and skip automatic merge unless we add a TOML-preserving
-editor.
+Use local `.codex/hooks.json` rather than inline `[hooks]` in
+`.codex/config.toml` because Nudge already has safe JSON merge behavior and
+Codex warns when a single layer contains both representations. Do not add a
+committed/shared Codex setup mode in this update. If `.codex/config.toml`
+already contains inline hooks, setup should warn and skip automatic merge
+because TOML-preserving inline hook editing is out of scope.
 
 Codex setup should print these next steps:
 
@@ -535,16 +562,21 @@ current integrations:
 - Claude Code
 - Codex CLI
 
-The rule writing guide should state provider support per tool:
+The rule writing guide should state provider support per surface:
 
-| Rule target | Claude Code | Codex |
+| Surface | Claude Code | Codex |
 | --- | --- | --- |
 | `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing |
 | `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing |
-| `PreToolUse Delete` | no current direct rule target | yes, through `apply_patch` delete-file parsing |
+| `PreToolUse Delete` | normalized only, no YAML matcher yet | normalized only, through `apply_patch` delete-file parsing, no YAML matcher yet |
 | `PreToolUse WebFetch` | yes | no, current Codex hooks do not intercept WebSearch |
 | `PreToolUse Bash` | yes | partial, current Codex hook coverage is documented as incomplete for some unified exec paths |
+| `PermissionRequest` | parsed only, no YAML matcher yet | parsed only, no YAML matcher yet |
 | `UserPromptSubmit` | yes | yes |
+
+Do not document `apply_patch` as a user-facing rule target. It is a significant
+mental model departure from Nudge's rule vocabulary, so the Codex adapter should
+translate it into `Write`, `Edit`, and `Delete` before rules see it.
 
 ### Validation and Warnings
 
@@ -558,6 +590,10 @@ warning: rule "prefer-local-docs" uses PreToolUse WebFetch, which Claude Code
 supports but Codex hooks do not currently intercept.
 ```
 
+`nudge check` only validates repository files today. Keep Codex patch payload
+evaluation out of `check`; hook payload behavior belongs in hook command tests
+and `nudge test`.
+
 ### Tests
 
 Add provider-neutral unit tests:
@@ -565,14 +601,19 @@ Add provider-neutral unit tests:
 - Claude `Write` payload normalizes to `ToolUse::Write`.
 - Claude `Edit` payload normalizes to `ToolUse::Edit`.
 - Claude `Bash` payload normalizes to `ToolUse::Bash`.
+- Claude `PermissionRequest` normalizes to `NudgeHook::PermissionRequest` and
+  passes through.
 - Claude `UserPromptSubmit` normalizes to prompt text.
 - Codex `Bash` payload normalizes to `ToolUse::Bash`.
+- Codex `PermissionRequest` normalizes to `NudgeHook::PermissionRequest` and
+  passes through.
 - Codex `UserPromptSubmit` normalizes to prompt text.
 - Codex `apply_patch` add-file normalizes to `ToolUse::Write`.
 - Codex `apply_patch` update-file normalizes to `ToolUse::Edit`.
 - Codex `apply_patch` delete-file normalizes to `ToolUse::Delete`.
 - Codex multi-file patch aggregates all matches into one denial.
 - Codex unsupported MCP tool passes through.
+- `ToolUse::Delete` does not match any YAML rule in this update.
 
 Add response renderer tests:
 
@@ -580,6 +621,7 @@ Add response renderer tests:
 - Codex denial JSON contains `permissionDecision: "deny"`.
 - Codex denial JSON does not contain `continue`, `stopReason`, or
   `suppressOutput`.
+- PermissionRequest renders no output for both agents.
 - UserPromptSubmit context renders as plain text for both agents.
 
 Add setup tests:
@@ -606,10 +648,11 @@ Add integration tests:
    behavior change except the reduced PreToolUse JSON envelope.
 3. Add `nudge codex hook` and Codex response rendering.
 4. Add Codex `apply_patch` parsing and multi-change aggregation.
-5. Add `nudge codex setup`.
-6. Narrow Claude setup to the supported events and tools.
-7. Update docs and repository instructions.
-8. Run:
+5. Add parsed-but-unmatchable `PermissionRequest` support for both agents.
+6. Add `nudge codex setup`.
+7. Narrow Claude setup to the supported events and tools.
+8. Update docs and repository instructions.
+9. Run:
 
 ```bash
 cargo fmt --all
@@ -622,20 +665,8 @@ cargo run -p nudge -- codex docs
 
 - `nudge claude setup` should stop installing `PostToolUse` and `Stop` because
   Nudge does not currently handle those events.
+- `nudge codex setup` should only write local `.codex/hooks.json`; it should not
+  add a committed/shared setup mode.
 - PreToolUse response JSON should omit common fields that Nudge does not need.
   Claude should still honor the denial, and Codex requires this cleaner shape.
 - Documentation should stop describing Nudge as Claude-only.
-
-## Open Questions
-
-- Should the rule language gain an explicit `tool: ApplyPatch` target, or should
-  Codex `apply_patch` remain an implementation detail behind `Write` and `Edit`?
-  Recommendation: keep it hidden until users need patch-specific rules.
-- Should the rule language gain explicit `tool: Delete` matchers in this update?
-  Recommendation: normalize deletion now, then add YAML matchers when we have a
-  concrete deletion policy to express.
-- Should setup support a committed `.codex/hooks.json` option in addition to
-  local setup? Recommendation: default to project-local `.codex/hooks.json`
-  because Codex requires hook trust review anyway, then revisit after real use.
-- Should `nudge check` understand Codex patch files? Recommendation: no. `check`
-  validates repository files, not hook payloads.
