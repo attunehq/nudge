@@ -45,7 +45,9 @@ impl Source {
             "Rule violations. Fix these errors and immediately retry."
         };
 
-        let snippet = Snippet::source(self.0.as_ref()).annotations(annotations);
+        let snippet = Snippet::source(self.0.as_ref())
+            .annotations(annotations)
+            .fold(true);
         let message = Level::Error.title(title).snippet(snippet);
         Renderer::plain().render(message).to_string()
     }
@@ -198,5 +200,60 @@ mod tests {
         ]);
         assert!(result.contains("use std::io"));
         assert!(result.contains("use std::fs"));
+    }
+
+    #[test]
+    fn test_render_snippet_folds_unrelated_whole_file_content() {
+        let source = (1..=30)
+            .map(|line| {
+                if line == 25 {
+                    "let value = maybe.unwrap();".to_string()
+                } else {
+                    format!("// filler line {line}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let start = source
+            .find("maybe.unwrap()")
+            .expect("source contains match");
+        let end = start + "maybe.unwrap()".len();
+
+        let result = super::Source::from(source).annotate([(start..end, "avoid unwrap")]);
+
+        assert!(result.contains("25 | let value = maybe.unwrap();"));
+        assert!(result.contains("avoid unwrap"));
+        assert!(!result.contains("// filler line 1"));
+        assert!(!result.contains("// filler line 30"));
+    }
+
+    #[test]
+    fn test_render_snippet_folds_between_distant_spans() {
+        let source = (1..=30)
+            .map(|line| match line {
+                5 => "let first = left.unwrap();".to_string(),
+                25 => "let second = right.unwrap();".to_string(),
+                _ => format!("// filler line {line}"),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let first_start = source
+            .find("left.unwrap()")
+            .expect("source contains first match");
+        let first_end = first_start + "left.unwrap()".len();
+        let second_start = source
+            .find("right.unwrap()")
+            .expect("source contains second match");
+        let second_end = second_start + "right.unwrap()".len();
+
+        let result = super::Source::from(source).annotate([
+            (first_start..first_end, "avoid first unwrap"),
+            (second_start..second_end, "avoid second unwrap"),
+        ]);
+
+        assert!(result.contains("5 | let first = left.unwrap();"));
+        assert!(result.contains("25 | let second = right.unwrap();"));
+        assert!(result.contains("..."));
+        assert!(!result.contains("// filler line 15"));
     }
 }
