@@ -4,7 +4,7 @@ use std::{
     io::Write,
     path::Path,
     process::{Command, Stdio},
-    sync::{LazyLock, Mutex},
+    sync::{LazyLock, Mutex, MutexGuard},
 };
 
 use derive_more::Display;
@@ -1099,15 +1099,15 @@ impl Language {
         });
 
         let mut parser = match self {
-            Language::Rust => RUST_PARSER.lock().ok()?,
-            Language::TypeScript => TYPESCRIPT_PARSER.lock().ok()?,
-            Language::JavaScript => JAVASCRIPT_PARSER.lock().ok()?,
-            Language::Python => PYTHON_PARSER.lock().ok()?,
-            Language::Go => GO_PARSER.lock().ok()?,
-            Language::Java => JAVA_PARSER.lock().ok()?,
-            Language::CSharp => CSHARP_PARSER.lock().ok()?,
-            Language::Kotlin => KOTLIN_PARSER.lock().ok()?,
-            Language::Haskell => HASKELL_PARSER.lock().ok()?,
+            Language::Rust => lock_parser(&RUST_PARSER),
+            Language::TypeScript => lock_parser(&TYPESCRIPT_PARSER),
+            Language::JavaScript => lock_parser(&JAVASCRIPT_PARSER),
+            Language::Python => lock_parser(&PYTHON_PARSER),
+            Language::Go => lock_parser(&GO_PARSER),
+            Language::Java => lock_parser(&JAVA_PARSER),
+            Language::CSharp => lock_parser(&CSHARP_PARSER),
+            Language::Kotlin => lock_parser(&KOTLIN_PARSER),
+            Language::Haskell => lock_parser(&HASKELL_PARSER),
         };
 
         let tree = parser.parse(source, None)?;
@@ -1120,6 +1120,10 @@ impl Language {
 
         Some(tree)
     }
+}
+
+fn lock_parser<T>(parser: &Mutex<T>) -> MutexGuard<'_, T> {
+    parser.lock().expect("parser mutex poisoned")
 }
 
 /// A compiled tree-sitter query.
@@ -1189,6 +1193,8 @@ impl<'de> Deserialize<'de> for TreeSitterQuery {
 
 #[cfg(test)]
 mod tests {
+    use std::panic::catch_unwind;
+
     use pretty_assertions::assert_eq as pretty_assert_eq;
 
     use super::*;
@@ -1206,6 +1212,24 @@ mod tests {
         let code = "fn main( { }";
         let tree = Language::Rust.parse(code);
         assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_lock_parser_panics_when_mutex_is_poisoned() {
+        let parser = Mutex::new(());
+        let poison = catch_unwind(|| {
+            let _guard = parser.lock().expect("initial parser lock should succeed");
+            panic!("poison parser mutex");
+        });
+
+        assert!(poison.is_err());
+        assert!(parser.is_poisoned());
+
+        let result = catch_unwind(|| {
+            let _guard = lock_parser(&parser);
+        });
+
+        assert!(result.is_err());
     }
 
     #[test]
