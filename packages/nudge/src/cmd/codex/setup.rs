@@ -1,6 +1,10 @@
 //! Set up Nudge hooks for Codex CLI.
 
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use clap::Args;
 use color_eyre::eyre::{Context, OptionExt, Result, bail};
@@ -104,10 +108,10 @@ pub fn main(config: Config) -> Result<()> {
     Ok(())
 }
 
-fn inline_config_has_hooks(path: &std::path::Path) -> Result<bool> {
+fn inline_config_has_hooks(path: &Path) -> Result<bool> {
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error).context("read .codex/config.toml"),
     };
 
@@ -119,12 +123,16 @@ fn inline_config_has_hooks(path: &std::path::Path) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use tempfile::NamedTempFile;
+
     use super::inline_config_has_hooks;
 
     #[test]
     fn detects_inline_hooks_table() {
-        let temp = tempfile::NamedTempFile::new().expect("temp file");
-        std::fs::write(temp.path(), "[hooks]\n").expect("write file");
+        let temp = NamedTempFile::new().expect("temp file");
+        fs::write(temp.path(), "[hooks]\n").expect("write file");
         assert!(inline_config_has_hooks(temp.path()).expect("detect hooks"));
     }
 }

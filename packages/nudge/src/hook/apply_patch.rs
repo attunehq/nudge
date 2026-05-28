@@ -1,6 +1,9 @@
 //! Parser for Codex `apply_patch` tool input.
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use color_eyre::eyre::{Result, bail};
 
@@ -64,7 +67,7 @@ pub fn parse(command: &str, cwd: &Path) -> Result<Vec<ToolUse>> {
 }
 
 struct ParsedUpdate {
-    move_to: Option<std::path::PathBuf>,
+    move_to: Option<PathBuf>,
     old_string: String,
     hunks: Vec<Hunk>,
 }
@@ -191,6 +194,7 @@ fn is_file_header(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::{Path, PathBuf};
 
     use tempfile::TempDir;
 
@@ -200,12 +204,12 @@ mod tests {
     fn add_file_normalizes_to_write() {
         let parsed = apply_patch::parse(
             "*** Begin Patch\n*** Add File: src/main.rs\n+fn main() {}\n*** End Patch\n",
-            std::path::Path::new("/tmp"),
+            Path::new("/tmp"),
         )
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Write(input)] if input.file_path == std::path::PathBuf::from("src/main.rs") && input.content == "fn main() {}\n")
+            matches!(parsed.as_slice(), [ToolUse::Write(input)] if input.file_path == PathBuf::from("src/main.rs") && input.content == "fn main() {}\n")
         );
     }
 
@@ -221,7 +225,7 @@ mod tests {
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == std::path::PathBuf::from("src.rs") && input.new_string == "fn main() {\n    new();\n}\n")
+            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == PathBuf::from("src.rs") && input.new_string == "fn main() {\n    new();\n}\n")
         );
     }
 
@@ -229,12 +233,12 @@ mod tests {
     fn delete_file_normalizes_to_delete() {
         let parsed = apply_patch::parse(
             "*** Begin Patch\n*** Delete File: old.rs\n*** End Patch\n",
-            std::path::Path::new("/tmp"),
+            Path::new("/tmp"),
         )
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Delete(input)] if input.file_path == std::path::PathBuf::from("old.rs"))
+            matches!(parsed.as_slice(), [ToolUse::Delete(input)] if input.file_path == PathBuf::from("old.rs"))
         );
     }
 }

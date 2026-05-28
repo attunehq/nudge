@@ -1,15 +1,19 @@
 //! Hook setup integration tests.
 
-use std::process::{Command, Stdio};
+use std::{
+    fs,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn run_nudge(args: &[&str]) -> (i32, String, String) {
     let mut cmd_args = vec!["run", "--quiet", "-p", "nudge", "--"];
     cmd_args.extend(args);
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace_root = manifest_dir
         .parent()
         .expect("manifest dir has parent")
@@ -38,7 +42,7 @@ fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
         .expect("build nudge");
     assert!(status.success(), "cargo build failed");
 
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let binary = manifest_dir
         .parent()
         .expect("manifest dir has parent")
@@ -79,13 +83,13 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     ];
     let (exit_code, _, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
-    let first = std::fs::read_to_string(temp.path().join(".claude/settings.local.json"))
-        .expect("read settings");
+    let first =
+        fs::read_to_string(temp.path().join(".claude/settings.local.json")).expect("read settings");
 
     let (exit_code, _, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
-    let second = std::fs::read_to_string(temp.path().join(".claude/settings.local.json"))
-        .expect("read settings");
+    let second =
+        fs::read_to_string(temp.path().join(".claude/settings.local.json")).expect("read settings");
 
     pretty_assert_eq!(first, second);
 
@@ -94,7 +98,7 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     assert!(json["hooks"]["UserPromptSubmit"].is_array());
     assert!(json["hooks"].get("PostToolUse").is_none());
     assert!(json["hooks"].get("Stop").is_none());
-    assert_eq!(
+    pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
         "Write|Edit|WebFetch|Bash"
     );
@@ -104,18 +108,18 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
         .expect("command")
         .to_string();
     let mut with_old_events = json;
-    with_old_events["hooks"]["PostToolUse"] = serde_json::json!([
+    with_old_events["hooks"]["PostToolUse"] = json!([
         {
             "matcher": "*",
             "hooks": [{ "type": "command", "command": command, "timeout": 5 }]
         }
     ]);
-    with_old_events["hooks"]["Stop"] = serde_json::json!([
+    with_old_events["hooks"]["Stop"] = json!([
         {
             "hooks": [{ "type": "command", "command": command, "timeout": 5 }]
         }
     ]);
-    std::fs::write(
+    fs::write(
         temp.path().join(".claude/settings.local.json"),
         serde_json::to_string_pretty(&with_old_events).expect("serialize settings"),
     )
@@ -124,7 +128,7 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     let (exit_code, _, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
     let cleaned = serde_json::from_str::<Value>(
-        &std::fs::read_to_string(temp.path().join(".claude/settings.local.json"))
+        &fs::read_to_string(temp.path().join(".claude/settings.local.json"))
             .expect("read settings"),
     )
     .expect("valid json");
@@ -141,17 +145,16 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
 
     let (exit_code, _, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
-    let first = std::fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
+    let first = fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
 
     let (exit_code, _, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
-    let second =
-        std::fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
+    let second = fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
 
     pretty_assert_eq!(first, second);
 
     let json = serde_json::from_str::<Value>(&second).expect("valid json");
-    assert_eq!(
+    pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
         "Bash|apply_patch"
     );
@@ -162,8 +165,8 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
 fn codex_setup_preserves_existing_unrelated_hooks() {
     let temp = TempDir::new().expect("temp dir");
     let codex_dir = temp.path().join(".codex");
-    std::fs::create_dir_all(&codex_dir).expect("create .codex");
-    std::fs::write(
+    fs::create_dir_all(&codex_dir).expect("create .codex");
+    fs::write(
         codex_dir.join("hooks.json"),
         r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}"#,
     )
@@ -179,10 +182,10 @@ fn codex_setup_preserves_existing_unrelated_hooks() {
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
 
     let json = serde_json::from_str::<Value>(
-        &std::fs::read_to_string(codex_dir.join("hooks.json")).expect("read hooks"),
+        &fs::read_to_string(codex_dir.join("hooks.json")).expect("read hooks"),
     )
     .expect("valid json");
-    assert_eq!(
+    pretty_assert_eq!(
         json["hooks"]["SessionStart"][0]["hooks"][0]["command"],
         "echo hi"
     );
@@ -193,8 +196,8 @@ fn codex_setup_preserves_existing_unrelated_hooks() {
 fn codex_setup_warns_and_skips_inline_toml_hooks() {
     let temp = TempDir::new().expect("temp dir");
     let codex_dir = temp.path().join(".codex");
-    std::fs::create_dir_all(&codex_dir).expect("create .codex");
-    std::fs::write(codex_dir.join("config.toml"), "[hooks]\n").expect("write config");
+    fs::create_dir_all(&codex_dir).expect("create .codex");
+    fs::write(codex_dir.join("config.toml"), "[hooks]\n").expect("write config");
 
     let args = [
         "codex",
@@ -218,8 +221,8 @@ fn codex_setup_warns_and_skips_inline_toml_hooks() {
 #[test]
 fn validate_warns_for_codex_unsupported_webfetch_rules() {
     let temp = TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(temp.path().join(".codex")).expect("create .codex");
-    std::fs::write(
+    fs::create_dir_all(temp.path().join(".codex")).expect("create .codex");
+    fs::write(
         temp.path().join(".nudge.yaml"),
         r#"
 version: 1

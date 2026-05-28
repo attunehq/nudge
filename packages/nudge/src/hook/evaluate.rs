@@ -203,6 +203,8 @@ fn evaluate_all_url_matched(url: &str, matchers: &[UrlMatcher]) -> Vec<Match> {
 mod tests {
     use serde_json::json;
 
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     use crate::{
         agent::{claude, codex},
         hook::{NudgeHook, ToolUse, evaluate::evaluate_hooks, response::HookOutcome},
@@ -246,7 +248,7 @@ rules:
 "#,
         );
 
-        assert_eq!(evaluate_hooks(&hook, &rules), HookOutcome::Passthrough);
+        pretty_assert_eq!(evaluate_hooks(&hook, &rules), HookOutcome::Passthrough);
     }
 
     #[test]
@@ -292,6 +294,6 @@ rules:
 "#,
         );
 
-        assert_eq!(evaluate_hooks(&hook, &rules), HookOutcome::Passthrough);
+        pretty_assert_eq!(evaluate_hooks(&hook, &rules), HookOutcome::Passthrough);
     }
 }

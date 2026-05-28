@@ -83,6 +83,7 @@ struct PreToolUseDenyOutput {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq as pretty_assert_eq;
     use serde_json::Value;
 
     use crate::{
@@ -104,7 +105,7 @@ mod tests {
             panic!("expected stdout");
         };
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
-        assert_eq!(
+        pretty_assert_eq!(
             json["hookSpecificOutput"]["permissionDecision"],
             Value::String("deny".to_string())
         );
@@ -124,7 +125,7 @@ mod tests {
             panic!("expected stdout");
         };
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
-        assert_eq!(
+        pretty_assert_eq!(
             json["hookSpecificOutput"]["permissionDecision"],
             Value::String("deny".to_string())
         );
@@ -136,10 +137,10 @@ mod tests {
     #[test]
     fn permission_request_passthrough_renders_no_output() {
         let rendered = render(AgentKind::Claude, HookOutcome::Passthrough).expect("render");
-        assert_eq!(rendered, RenderedHookOutcome::NoOutput);
+        pretty_assert_eq!(rendered, RenderedHookOutcome::NoOutput);
 
         let rendered = render(AgentKind::Codex, HookOutcome::Passthrough).expect("render");
-        assert_eq!(rendered, RenderedHookOutcome::NoOutput);
+        pretty_assert_eq!(rendered, RenderedHookOutcome::NoOutput);
     }
 
     #[test]
@@ -152,7 +153,7 @@ mod tests {
         )
         .expect("render");
 
-        assert_eq!(
+        pretty_assert_eq!(
             rendered,
             RenderedHookOutcome::Stdout("remember this".to_string())
         );
