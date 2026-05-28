@@ -17,11 +17,11 @@ const DOCS: &str = cstr!("\
 
 <bold>What is Nudge?</bold>
 
-  Nudge is a <cyan>collaborative partner</cyan> for Claude Code. It watches Write, Edit,
-  WebFetch, and Bash operations and reminds you about coding conventions—so you can
-  focus on the user's actual problem instead of tracking dozens of stylistic details.
+  Nudge is a <cyan>collaborative partner</cyan> for agent hooks. It supports Claude Code
+  and Codex CLI, and reminds you about coding conventions when provider hooks expose
+  Write, Edit, WebFetch, Bash, or prompt-submission surfaces.
 
-  <green>Nudge is on your side.</green> When it sends a message, it's not a reprimand—it's
+  <green>Nudge is on your side.</green> When it sends a message, it's not a reprimand. It's
   a colleague tapping you on the shoulder. The messages are direct (sometimes
   blunt) because that's what cuts through when you're focused.
 
@@ -49,7 +49,7 @@ const DOCS: &str = cstr!("\
 
       <yellow>on:</yellow>                           <dim># List of matchers (any match triggers the rule)</dim>
         <yellow>- hook: PreToolUse</yellow>          <dim># PreToolUse or UserPromptSubmit</dim>
-          <yellow>tool: Write</yellow>               <dim># Write, Edit, or WebFetch (PreToolUse only)</dim>
+          <yellow>tool: Write</yellow>               <dim># Write, Edit, WebFetch, or Bash (PreToolUse only)</dim>
           <yellow>file: \"**/*.rs\"</yellow>           <dim># Glob pattern for file path</dim>
           <yellow>content:</yellow>                   <dim># Patterns to match (Write tool)</dim>
             <yellow>- kind: Regex</yellow>
@@ -66,8 +66,9 @@ const DOCS: &str = cstr!("\
 
 <bold>Hook Types</bold>
 
-  <green>PreToolUse</green>        Triggers before Write/Edit/WebFetch/Bash operations. Always
-                    <cyan>interrupts</cyan> (blocks the operation until the issue is fixed).
+  <green>PreToolUse</green>        Triggers before provider-supported Write/Edit/WebFetch/Bash
+                    operations. Always <cyan>interrupts</cyan> (blocks the operation until
+                    the issue is fixed).
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
                     (injects context into the conversation).
@@ -86,6 +87,24 @@ const DOCS: &str = cstr!("\
   <green>Bash</green>       Match shell commands being executed
              Use <cyan>command:</cyan> to specify patterns to match
              Use <cyan>project_state:</cyan> to add conditional filters (e.g., git branch)
+
+  <green>Delete</green>     Normalized internally for file deletion, but not yet matchable
+             in YAML rules.
+
+<bold>Provider Support</bold>
+
+  <white>Surface</white>                      <white>Claude Code</white>     <white>Codex CLI</white>
+  <green>PreToolUse Write</green>             yes             yes, through apply_patch add-file parsing
+  <green>PreToolUse Edit</green>              yes             yes, through apply_patch update parsing
+  <green>PreToolUse Delete</green>            normalized      normalized through apply_patch delete-file parsing
+  <green>PreToolUse WebFetch</green>          yes             no, current Codex hooks do not intercept WebSearch
+  <green>PreToolUse Bash</green>              yes             partial, Codex hook coverage is incomplete for some shell paths
+  <green>PermissionRequest</green>            parsed only     parsed only
+  <green>UserPromptSubmit</green>             yes             yes
+
+  <dim>Delete and PermissionRequest are parsed so Nudge can name them precisely, but</dim>
+  <dim>they do not have YAML matchers yet. Codex apply_patch is an adapter detail:</dim>
+  <dim>write rules in terms of Write, Edit, and future Delete policy instead.</dim>
 
 <bold>Regex Inline Flags</bold>
 
@@ -128,7 +147,7 @@ const DOCS: &str = cstr!("\
 <bold>How Messages Are Displayed</bold>
 
   When a rule matches, Nudge displays a <cyan>code snippet</cyan> with your message shown
-  at each match location—similar to Rust compiler errors:
+  at each match location, similar to Rust compiler errors:
 
     <dim>error: rule violation</dim>
       <dim>|</dim>
@@ -144,7 +163,7 @@ const DOCS: &str = cstr!("\
 
   Nudge messages must be <cyan>direct</cyan> to be effective. Gentle suggestions get ignored.
 
-  <white>Pattern:</white> what's wrong → how to fix → retry
+  <white>Pattern:</white> what's wrong -> how to fix -> retry
 
   <red>Bad</red> <dim>(vague, easy to ignore):</dim>
     <dim>\"Consider reorganizing your imports.\"</dim>
@@ -153,11 +172,11 @@ const DOCS: &str = cstr!("\
     <dim>\"Move this import to the top of the file, then retry.\"</dim>
 
   <white>Guidelines:</white>
-    • <cyan>Be specific:</cyan> \"Move this import to top\" not \"Consider reorganizing\"
-    • <cyan>Be direct:</cyan> \"Stop. Fix this first.\" not \"You might want to...\"
-    • <cyan>Give the fix:</cyan> Don't just say what's wrong—say what to do instead
-    • <cyan>End with \"then retry\":</cyan> Tell Claude to retry after fixing
-    • <cyan>Write for one match:</cyan> The message appears at each match location
+    - <cyan>Be specific:</cyan> \"Move this import to top\" not \"Consider reorganizing\"
+    - <cyan>Be direct:</cyan> \"Stop. Fix this first.\" not \"You might want to...\"
+    - <cyan>Give the fix:</cyan> Don't just say what's wrong. Say what to do instead
+    - <cyan>End with \"then retry\":</cyan> Tell the agent to retry after fixing
+    - <cyan>Write for one match:</cyan> The message appears at each match location
 
 <bold>Syntax Tree Matching (Tree-sitter)</bold>
 
@@ -194,7 +213,7 @@ const DOCS: &str = cstr!("\
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
-  <dim>passes silently. This is intentional—code being written is often incomplete.</dim>
+  <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
 
 <bold>External Program Matching</bold>
 
@@ -342,7 +361,7 @@ const DOCS: &str = cstr!("\
 
   <cyan>Redirect docs.rs to local source (WebFetch)</cyan>
 
-    <dim># When Claude tries to fetch from docs.rs, redirect to local cargo registry.</dim>
+    <dim># When Claude Code tries to fetch from docs.rs, redirect to local cargo registry.</dim>
     <dim># Uses capture groups to extract the crate name from the URL.</dim>
 
     <yellow>- name: prefer-local-docs</yellow>
@@ -400,6 +419,6 @@ const DOCS: &str = cstr!("\
 
 <bold>Rule Writing is Iterative</bold>
 
-  If Claude ignores a rule, the fix is usually to make the message more direct,
+  If an agent ignores a rule, the fix is usually to make the message more direct,
   not to give up on the rule. Treat ignored rules as feedback on clarity.
 ");

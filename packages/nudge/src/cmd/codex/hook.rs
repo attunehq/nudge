@@ -1,11 +1,11 @@
-//! Responds to Claude Code hooks.
+//! Responds to Codex hooks.
 
 use std::io;
 
 use clap::Args;
 use color_eyre::{Result, eyre::Context};
 use nudge::{
-    agent::{AgentKind, claude},
+    agent::{AgentKind, codex},
     hook::{evaluate::evaluate_hooks, response},
     rules,
 };
@@ -18,8 +18,8 @@ pub struct Config {}
 pub fn main(_config: Config) -> Result<()> {
     let stdin = io::stdin();
     let raw = serde_json::from_reader(stdin).context("read hook event")?;
-    let hooks = claude::parse_hook(raw).context("parse Claude hook event")?;
+    let hooks = codex::parse_hook(raw).context("parse Codex hook event")?;
 
     let rules = rules::load_all().context("load rules")?;
-    response::emit(AgentKind::Claude, evaluate_hooks(&hooks, &rules))
+    response::emit(AgentKind::Codex, evaluate_hooks(&hooks, &rules))
 }

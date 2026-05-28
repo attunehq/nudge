@@ -5,13 +5,12 @@ use std::path::PathBuf;
 
 use clap::Args;
 use color_eyre::eyre::{Context, Result, bail, eyre};
-use itertools::Itertools;
 use serde_json::json;
 
 use nudge::{
-    claude::hook::{Hook, PreToolUsePayload},
-    rules::{self, Rule},
-    snippet::{Match, Source},
+    agent::claude,
+    hook::{NudgeHook, evaluate::evaluate_hooks, response::HookOutcome},
+    rules,
 };
 
 #[derive(Args, Clone, Debug)]
@@ -20,7 +19,7 @@ pub struct Config {
     #[arg(long)]
     pub rule: String,
 
-    /// Tool name (for PreToolUse rules): Write, Edit, or WebFetch.
+    /// Tool name (for PreToolUse rules): Write, Edit, WebFetch, or Bash.
     #[arg(long)]
     pub tool: Option<String>,
 
@@ -52,85 +51,35 @@ pub fn main(config: Config) -> Result<()> {
         .find(|r| r.name == config.rule)
         .ok_or_else(|| eyre!("Rule '{}' not found", config.rule))?;
 
-    let hook = build_hook(&config)?;
+    let hooks = build_hooks(&config)?;
 
     println!("Rule: {}", config.rule);
     println!();
 
-    let (matched, source) = evaluate_rule(&rule, &hook);
-
-    if matched.is_empty() {
-        println!("Result: Passthrough");
-        println!("The rule did not match the provided input.");
-    } else {
-        let hook_type = match &hook {
-            Hook::PreToolUse(_) => "Interrupt",
-            Hook::UserPromptSubmit(_) => "Continue",
-            Hook::Other => "Passthrough",
-        };
-        println!("Result: {hook_type}");
-        println!();
-        println!("Matched content:");
-        let annotations = rule.annotate_matches(matched).collect_vec();
-        let snippet = source.annotate(annotations);
-        println!("{snippet}");
+    match evaluate_hooks(&hooks, &[rule]) {
+        HookOutcome::Passthrough => {
+            println!("Result: Passthrough");
+            println!("The rule did not match the provided input.");
+        }
+        HookOutcome::DenyPreToolUse { message } => {
+            println!("Result: Interrupt");
+            println!();
+            println!("Matched content:");
+            println!("{message}");
+        }
+        HookOutcome::AddContext { context } => {
+            println!("Result: Continue");
+            println!();
+            println!("Matched content:");
+            println!("{context}");
+        }
     }
 
     Ok(())
 }
 
-/// Evaluate a single rule against a hook, returning matches and the source.
-fn evaluate_rule(rule: &Rule, hook: &Hook) -> (Vec<Match>, Source) {
-    match hook {
-        Hook::PreToolUse(payload) => match payload {
-            PreToolUsePayload::Write(payload) => {
-                let matches = rule
-                    .hooks_pretooluse_write()
-                    .flat_map(|matcher| payload.evaluate(matcher))
-                    .collect_vec();
-                let source = Source::from(&payload.tool_input.content);
-                (matches, source)
-            }
-            PreToolUsePayload::Edit(payload) => {
-                let matches = rule
-                    .hooks_pretooluse_edit()
-                    .flat_map(|matcher| payload.evaluate(matcher))
-                    .collect_vec();
-                let source = Source::from(&payload.tool_input.new_string);
-                (matches, source)
-            }
-            PreToolUsePayload::WebFetch(payload) => {
-                let matches = rule
-                    .hooks_pretooluse_webfetch()
-                    .flat_map(|matcher| payload.evaluate(matcher))
-                    .collect_vec();
-                let source = Source::from(&payload.tool_input.url);
-                (matches, source)
-            }
-            PreToolUsePayload::Bash(payload) => {
-                let matches = rule
-                    .hooks_pretooluse_bash()
-                    .flat_map(|matcher| payload.evaluate(matcher))
-                    .collect_vec();
-                let source = Source::from(&payload.tool_input.command);
-                (matches, source)
-            }
-            PreToolUsePayload::Other => (Vec::new(), Source::from("")),
-        },
-        Hook::UserPromptSubmit(payload) => {
-            let matches = rule
-                .hooks_userpromptsubmit()
-                .flat_map(|matcher| payload.evaluate(matcher))
-                .collect_vec();
-            let source = Source::from(&payload.prompt);
-            (matches, source)
-        }
-        Hook::Other => (Vec::new(), Source::from("")),
-    }
-}
-
 /// Build a Hook from the CLI arguments.
-fn build_hook(config: &Config) -> Result<Hook> {
+fn build_hooks(config: &Config) -> Result<Vec<NudgeHook>> {
     // Determine what kind of hook to build based on arguments
     if config.prompt.is_some() {
         return build_user_prompt_hook(config);
@@ -150,7 +99,7 @@ fn build_hook(config: &Config) -> Result<Hook> {
     );
 }
 
-fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
+fn build_user_prompt_hook(config: &Config) -> Result<Vec<NudgeHook>> {
     let prompt = config
         .prompt
         .as_ref()
@@ -165,10 +114,10 @@ fn build_user_prompt_hook(config: &Config) -> Result<Hook> {
         "prompt": prompt
     });
 
-    serde_json::from_value(payload).context("failed to build UserPromptSubmit hook")
+    claude::parse_hook(payload).context("failed to build UserPromptSubmit hook")
 }
 
-fn build_tool_use_hook(config: &Config) -> Result<Hook> {
+fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
     let tool = config.tool.as_deref().unwrap_or("Write");
     let file_path = config
         .file
@@ -204,8 +153,12 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
                 "prompt": content
             })
         }
+        "Bash" => json!({
+            "command": content,
+            "description": "Test command"
+        }),
         other => bail!(
-            "Unknown tool '{}'. Supported tools: Write, Edit, WebFetch",
+            "Unknown tool '{}'. Supported tools: Write, Edit, WebFetch, Bash",
             other
         ),
     };
@@ -221,5 +174,5 @@ fn build_tool_use_hook(config: &Config) -> Result<Hook> {
         "tool_input": tool_input
     });
 
-    serde_json::from_value(payload).context("failed to build PreToolUse hook")
+    claude::parse_hook(payload).context("failed to build PreToolUse hook")
 }

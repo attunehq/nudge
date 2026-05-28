@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## The Spirit of Nudge
 
@@ -32,7 +32,7 @@ cargo test -p nudge
 cargo test -p nudge test_name
 
 # Run the CLI
-cargo run -p nudge -- claude hook      # Respond to hook (reads JSON from stdin)
+cargo run -p nudge -- claude hook      # Respond to Claude hook (reads JSON from stdin)
 cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.local.json
 cargo run -p nudge -- claude docs      # Print rule writing documentation
 cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from stdin)
@@ -100,11 +100,11 @@ Nudge has three documentation sources that must stay aligned. When updating one,
 
 | Document | Audience | Purpose | Focus |
 |----------|----------|---------|-------|
-| **CLAUDE.md** | You, developing Nudge | How Nudge works under the hood | Architecture, internals, testing patterns |
+| **AGENTS.md** | You, developing Nudge | How Nudge works under the hood | Architecture, internals, testing patterns |
 | **README.md** | Humans evaluating or contributing | Why Nudge exists and what it believes | Philosophy, motivation, the collaborative framing |
 | **`nudge claude docs` / `nudge codex docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, examples |
 
-**CLAUDE.md** (this file) is for *developing* Nudge - understanding the module layout, how to add features, how tests work.
+**AGENTS.md** (this file) is for *developing* Nudge - understanding the module layout, how to add features, how tests work.
 
 **README.md** is for *understanding* Nudge - the philosophy that Nudge is a collaborative partner, why directness matters, how to write effective rules. This is the front door; it needs to convey the spirit.
 
