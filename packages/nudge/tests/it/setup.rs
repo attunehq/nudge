@@ -2,27 +2,17 @@
 
 use std::{
     fs,
-    path::PathBuf,
     process::{Command, Stdio},
 };
 
+use crate::nudge_binary;
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn run_nudge(args: &[&str]) -> (i32, String, String) {
-    let mut cmd_args = vec!["run", "--quiet", "-p", "nudge", "--"];
-    cmd_args.extend(args);
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .expect("manifest dir has parent")
-        .parent()
-        .expect("parent has parent");
-
-    let output = Command::new("cargo")
-        .args(&cmd_args)
-        .current_dir(workspace_root)
+    let output = Command::new(nudge_binary())
+        .args(args)
         .env("RUST_BACKTRACE", "0")
         .env("NUDGE_LOG", "error")
         .output()
@@ -36,21 +26,7 @@ fn run_nudge(args: &[&str]) -> (i32, String, String) {
 }
 
 fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
-    let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "nudge"])
-        .status()
-        .expect("build nudge");
-    assert!(status.success(), "cargo build failed");
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let binary = manifest_dir
-        .parent()
-        .expect("manifest dir has parent")
-        .parent()
-        .expect("parent has parent")
-        .join("target/debug/nudge");
-
-    let output = Command::new(binary)
+    let output = Command::new(nudge_binary())
         .args(args)
         .current_dir(dir.path())
         .stdin(Stdio::piped())

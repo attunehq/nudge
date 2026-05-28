@@ -21,10 +21,15 @@ mod user_prompt;
 mod webfetch;
 
 use std::io::Write as _;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use xshell::Shell;
+
+pub fn nudge_binary() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_nudge"))
+}
 
 /// Expected outcome from running a hook through nudge.
 #[derive(Debug, Clone, PartialEq)]
@@ -159,16 +164,9 @@ pub fn run_codex_hook(input: &str) -> (i32, String) {
 }
 
 fn run_agent_hook(agent: &str, input: &str) -> (i32, String) {
-    // Build and get the binary path
-    let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "nudge"])
-        .status()
-        .expect("failed to build nudge");
-    assert!(status.success(), "cargo build failed");
-
     // Run the binary directly with stdin
-    let mut child = Command::new("cargo")
-        .args(["run", "--quiet", "-p", "nudge", "--", agent, "hook"])
+    let mut child = Command::new(nudge_binary())
+        .args([agent, "hook"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -238,17 +236,8 @@ pub fn assert_expected(exit_code: i32, output: &str, expected: Expected) {
 
 /// Run a nudge subcommand and return (exit_code, stdout, stderr).
 pub fn run_nudge(args: &[&str]) -> (i32, String, String) {
-    let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "nudge"])
-        .status()
-        .expect("failed to build nudge");
-    assert!(status.success(), "cargo build failed");
-
-    let mut cmd_args = vec!["run", "--quiet", "-p", "nudge", "--"];
-    cmd_args.extend(args);
-
-    let output = Command::new("cargo")
-        .args(&cmd_args)
+    let output = Command::new(nudge_binary())
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

@@ -1,12 +1,15 @@
 //! Codex hook integration tests.
 
+use std::fs;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
-use std::{fs, path::PathBuf};
 
 use tempfile::TempDir;
 
-use crate::{Expected, assert_expected, codex_apply_patch_hook, run_codex_hook, user_prompt_hook};
+use crate::{
+    Expected, assert_expected, codex_apply_patch_hook, nudge_binary, run_codex_hook,
+    user_prompt_hook,
+};
 
 #[test]
 fn codex_apply_patch_write_blocks_inline_imports() {
@@ -105,8 +108,7 @@ rules:
 }
 
 fn run_codex_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
-    let binary = get_binary_path();
-    let mut child = Command::new(&binary)
+    let mut child = Command::new(nudge_binary())
         .args(["codex", "hook"])
         .current_dir(dir.path())
         .stdin(Stdio::piped())
@@ -132,20 +134,4 @@ fn run_codex_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     };
 
     (output.status.code().unwrap_or(-1), combined)
-}
-
-fn get_binary_path() -> PathBuf {
-    let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "nudge"])
-        .status()
-        .expect("build nudge");
-    assert!(status.success(), "cargo build failed");
-
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .parent()
-        .expect("manifest dir has parent")
-        .parent()
-        .expect("parent has parent")
-        .join("target/debug/nudge")
 }
