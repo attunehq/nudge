@@ -25,6 +25,9 @@ enum Commands {
     /// Integration with Claude Code.
     Claude(cmd::claude::Config),
 
+    /// Integration with Codex CLI.
+    Codex(cmd::codex::Config),
+
     /// Display the syntax tree for code (for writing tree-sitter queries).
     Syntaxtree(cmd::syntaxtree::Config),
 
@@ -78,9 +81,10 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Check(config) => cmd::check::main(config),
         Commands::Claude(config) => cmd::claude::main(config),
+        Commands::Codex(config) => cmd::codex::main(config),
         Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),
         Commands::Validate(config) => cmd::validate::main(config),
         Commands::Test(config) => cmd::test::main(config),
     }
-    .suggestion("Run `nudge claude docs` for documentation on writing/debugging Claude Code rules.")
+    .suggestion("Run `nudge claude docs` or `nudge codex docs` for documentation on writing/debugging Nudge rules.")
 }

@@ -1,0 +1,36 @@
+//! Integration with Codex CLI.
+
+use clap::{Args, Subcommand};
+use color_eyre::Result;
+use tracing::instrument;
+
+pub mod docs;
+pub mod hook;
+pub mod setup;
+
+#[derive(Args, Clone, Debug)]
+pub struct Config {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Clone, Debug)]
+enum Commands {
+    /// Responds to Codex hooks.
+    Hook(hook::Config),
+
+    /// Set up Nudge hooks in .codex/hooks.json.
+    Setup(setup::Config),
+
+    /// Show documentation for writing Nudge rules.
+    Docs(docs::Config),
+}
+
+#[instrument]
+pub fn main(config: Config) -> Result<()> {
+    match config.command {
+        Commands::Hook(config) => hook::main(config),
+        Commands::Setup(config) => setup::main(config),
+        Commands::Docs(config) => docs::main(config),
+    }
+}

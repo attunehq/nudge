@@ -55,18 +55,16 @@ pub fn main(config: Config) -> Result<()> {
 
     let nudge_command = format!("{nudge_path} claude hook");
     let nudge_hook = hook::Config::builder()
-        .command(nudge_command)
+        .command(&nudge_command)
         .timeout(5)
         .build();
-    let nudge_matcher_wildcard = hook::Matcher::builder()
-        .matcher("*")
+    let nudge_pretooluse_matcher = hook::Matcher::builder()
+        .matcher("Write|Edit|WebFetch|Bash")
         .hooks([&nudge_hook])
         .build();
     let nudge_matcher = hook::Matcher::builder().hooks([nudge_hook]).build();
     let desired_hooks = [
-        ("PreToolUse", nudge_matcher_wildcard.clone()),
-        ("PostToolUse", nudge_matcher_wildcard),
-        ("Stop", nudge_matcher.clone()),
+        ("PreToolUse", nudge_pretooluse_matcher),
         ("UserPromptSubmit", nudge_matcher),
     ];
     tracing::debug!(?desired_hooks, "generate desired hooks");
@@ -108,6 +106,8 @@ pub fn main(config: Config) -> Result<()> {
             matchers.push(matcher);
         }
     }
+    remove_managed_event_hook(hooks, "PostToolUse", &nudge_command);
+    remove_managed_event_hook(hooks, "Stop", &nudge_command);
 
     let settings_json = serde_json::to_string_pretty(&settings).context("serialize settings")?;
     fs::write(&settings_file, settings_json).context("write settings file")?;
@@ -128,6 +128,36 @@ pub fn main(config: Config) -> Result<()> {
     println!("2. Use claude --debug to see hook execution logs");
 
     Ok(())
+}
+
+fn remove_managed_event_hook(
+    hooks: &mut serde_json::Map<String, Value>,
+    event: &str,
+    command: &str,
+) {
+    let Some(entry) = hooks.get_mut(event) else {
+        return;
+    };
+    let Value::Array(matchers) = entry else {
+        return;
+    };
+
+    matchers.retain(|matcher| !matcher_uses_command(matcher, command));
+    if matchers.is_empty() {
+        hooks.remove(event);
+    }
+}
+
+fn matcher_uses_command(matcher: &Value, command: &str) -> bool {
+    matcher
+        .get("hooks")
+        .and_then(Value::as_array)
+        .is_some_and(|hooks| {
+            hooks.iter().any(|hook| {
+                hook.get("type").and_then(Value::as_str) == Some("command")
+                    && hook.get("command").and_then(Value::as_str) == Some(command)
+            })
+        })
 }
 
 /// Offer to add a Nudge section to CLAUDE.md in the project root.

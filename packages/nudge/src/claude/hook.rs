@@ -279,9 +279,8 @@ pub struct PreToolUseInterruptResponse {
     user_message: String,
 }
 
-/// Claude Code expects a two-level structured response, but that's annoying to
-/// work with for our use case, so we just translate it inside this `Serialize`
-/// implementation.
+/// Claude Code and Codex both accept this two-level structured response for
+/// denying `PreToolUse`. Keep the envelope minimal so it is safe for Codex too.
 impl Serialize for PreToolUseInterruptResponse {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -312,24 +311,6 @@ impl<S: Into<String>> From<S> for UserPromptSubmitResponse {
 #[derive(Debug, Serialize, Clone, Builder)]
 #[serde(rename_all = "camelCase")]
 struct HookResponseEnvelope<T> {
-    /// Whether Claude Code should continue after hook execution.
-    ///
-    /// This should nearly always be `true` so that Claude Code can respond to
-    /// the hook event- for example, don't use this to reject a `PreToolUse`
-    /// hook unless you want Claude Code to immediately abort the operation and
-    /// do nothing else until the user prompts again.
-    #[serde(rename = "continue")]
-    #[builder(default = true)]
-    should_continue: bool,
-
-    /// The message shown to the user when `should_continue` is false.
-    #[builder(into, default = "Nudge blocked operation due to rule violation")]
-    stop_reason: String,
-
-    /// Whether to hide the output of the hook from the user.
-    #[builder(default = false)]
-    suppress_output: bool,
-
     /// Message to display to the user when this response is emitted.
     #[builder(into)]
     system_message: String,

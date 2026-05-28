@@ -8,12 +8,14 @@
 mod bash;
 mod basic;
 mod cli;
+mod codex;
 mod edit_tool;
 mod external;
 mod inline_imports;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;
+mod setup;
 mod syntax_tree;
 mod user_prompt;
 mod webfetch;
@@ -129,9 +131,34 @@ pub fn bash_hook_with_cwd(command: &str, cwd: &str) -> String {
     .to_string()
 }
 
+/// Build a Codex PreToolUse hook JSON payload for the apply_patch tool.
+pub fn codex_apply_patch_hook(cwd: &str, command: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "turn_id": "turn",
+        "cwd": cwd,
+        "tool_name": "apply_patch",
+        "tool_input": {
+            "command": command
+        }
+    })
+    .to_string()
+}
+
 /// Run nudge claude hook with the given input JSON and return (exit_code,
 /// output).
 pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
+    run_agent_hook("claude", input)
+}
+
+/// Run nudge codex hook with the given input JSON and return (exit_code,
+/// output).
+pub fn run_codex_hook(input: &str) -> (i32, String) {
+    run_agent_hook("codex", input)
+}
+
+fn run_agent_hook(agent: &str, input: &str) -> (i32, String) {
     // Build and get the binary path
     let status = Command::new("cargo")
         .args(["build", "--quiet", "-p", "nudge"])
@@ -141,7 +168,7 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
 
     // Run the binary directly with stdin
     let mut child = Command::new("cargo")
-        .args(["run", "--quiet", "-p", "nudge", "--", "claude", "hook"])
+        .args(["run", "--quiet", "-p", "nudge", "--", agent, "hook"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
