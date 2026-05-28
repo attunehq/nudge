@@ -16,7 +16,7 @@ pub fn parse(command: &str, cwd: &Path) -> Result<Vec<ToolUse>> {
         bail!("missing apply_patch begin marker");
     }
 
-    if !lines.iter().any(|line| *line == "*** End Patch") {
+    if !lines.contains(&"*** End Patch") {
         bail!("missing apply_patch end marker");
     }
 
@@ -194,7 +194,7 @@ fn is_file_header(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use tempfile::TempDir;
 
@@ -209,7 +209,7 @@ mod tests {
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Write(input)] if input.file_path == PathBuf::from("src/main.rs") && input.content == "fn main() {}\n")
+            matches!(parsed.as_slice(), [ToolUse::Write(input)] if input.file_path == Path::new("src/main.rs") && input.content == "fn main() {}\n")
         );
     }
 
@@ -225,7 +225,7 @@ mod tests {
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == PathBuf::from("src.rs") && input.new_string == "fn main() {\n    new();\n}\n")
+            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == Path::new("src.rs") && input.new_string == "fn main() {\n    new();\n}\n")
         );
     }
 
@@ -238,7 +238,7 @@ mod tests {
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Delete(input)] if input.file_path == PathBuf::from("old.rs"))
+            matches!(parsed.as_slice(), [ToolUse::Delete(input)] if input.file_path == Path::new("old.rs"))
         );
     }
 }
