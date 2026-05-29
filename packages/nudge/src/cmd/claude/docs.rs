@@ -171,6 +171,10 @@ const DOCS: &str = cstr!("\
   <dim>Write/Edit substitutions are intentionally not exposed because Codex apply_patch</dim>
   <dim>normalization would need a lossless patch rewrite.</dim>
 
+  <dim>CI note: nudge check ignores substitute rules. Check mode scans repository</dim>
+  <dim>files against file-based block rules; substitutions need a live Bash hook</dim>
+  <dim>payload and a provider that can receive updatedInput.</dim>
+
 <bold>How Messages Are Displayed</bold>
 
   When a rule matches, Nudge displays a <cyan>code snippet</cyan> with your message shown

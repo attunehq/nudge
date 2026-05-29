@@ -174,6 +174,8 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
+`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`.
+
 Example output when violations are found:
 
 ```
