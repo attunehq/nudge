@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
 
+use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
 use crate::{
@@ -104,6 +105,70 @@ rules:
     assert!(
         !output.trim_start().starts_with('{'),
         "expected plain text context, got: {output}"
+    );
+}
+
+#[test]
+fn codex_bash_substitution_allows_with_updated_input_and_context() {
+    let temp = TempDir::new().expect("temp dir");
+    fs::write(
+        temp.path().join(".nudge.yaml"),
+        r#"
+version: 1
+rules:
+  - name: yarn-add
+    description: Use yarn add instead of npm install
+    action: substitute
+    on:
+      - hook: PreToolUse
+        tool: Bash
+        command:
+          - kind: Regex
+            pattern: "^npm install(?: (?P<args>.*))?$"
+            replace: "yarn add {{ $args }}"
+"#,
+    )
+    .expect("write config");
+    let input = serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "turn_id": "turn",
+        "cwd": temp.path(),
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "npm install lodash",
+            "description": "Install lodash",
+            "timeout": 120
+        }
+    })
+    .to_string();
+
+    let (exit_code, output) = run_codex_hook_in_dir(&temp, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    let json = serde_json::from_str::<serde_json::Value>(&output).expect("valid json output");
+    assert!(
+        json["hookSpecificOutput"]["permissionDecision"] == "allow",
+        "expected permissionDecision:allow, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"]["updatedInput"]["command"] == "yarn add lodash",
+        "expected rewritten command, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"]["updatedInput"]["description"] == "Install lodash",
+        "expected preserved description, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"]["updatedInput"]["timeout"] == 120,
+        "expected preserved timeout, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .is_some_and(|context| context.contains("npm install lodash")
+                && context.contains("yarn add lodash")),
+        "expected model context describing substitution, got: {output}"
     );
 }
 

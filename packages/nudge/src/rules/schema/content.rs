@@ -29,6 +29,13 @@ pub enum ContentMatcher {
         /// The regex pattern to match.
         pattern: RegexMatcher,
 
+        /// Optional replacement template for substitution rules.
+        ///
+        /// Replacement templates use the same capture interpolation syntax as
+        /// suggestions, such as `{{ $1 }}` and `{{ $name }}`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replace: Option<String>,
+
         /// Optional suggestion template for this matcher.
         ///
         /// When provided, the suggestion is interpolated with the match's
@@ -78,6 +85,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             query: Option<String>,
             command: Option<Vec<String>>,
             suggestion: Option<String>,
+            replace: Option<String>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
@@ -85,6 +93,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
         match raw.kind.as_str() {
             "Regex" => Ok(ContentMatcher::Regex {
                 pattern: deserialize_regex(raw.pattern)?,
+                replace: raw.replace,
                 suggestion: raw.suggestion,
             }),
             "SyntaxTree" => {
@@ -161,6 +170,7 @@ impl ContentMatcher {
             ContentMatcher::Regex {
                 pattern,
                 suggestion,
+                ..
             } => {
                 let mut matches = pattern.matches_with_context(s);
                 apply_suggestion(&mut matches, suggestion);
@@ -187,6 +197,33 @@ impl ContentMatcher {
                 }
             }
         }
+    }
+
+    /// Apply this matcher's replacement template to a string.
+    ///
+    /// Only regex matchers support mechanical substitution. Other matcher
+    /// types can still participate in gating a substitute rule, but they do not
+    /// rewrite content.
+    pub fn replace_all(&self, s: &str) -> String {
+        match self {
+            ContentMatcher::Regex {
+                pattern,
+                replace: Some(template),
+                ..
+            } => pattern.replace_all(s, template),
+            _ => s.to_string(),
+        }
+    }
+
+    /// Whether this matcher can change content for a substitution rule.
+    pub fn has_replacement(&self) -> bool {
+        matches!(
+            self,
+            ContentMatcher::Regex {
+                replace: Some(_),
+                ..
+            }
+        )
     }
 }
 
@@ -317,23 +354,38 @@ impl RegexMatcher {
             .map(|caps| {
                 let full_match = caps.get(0).expect("capture 0 always exists");
                 let span = Span::from(full_match.range());
-                let mut captures = Captures::new();
-
-                for i in 0..caps.len() {
-                    if let Some(cap) = caps.get(i) {
-                        captures.insert(i.to_string(), cap.as_str().to_string());
-                    }
-                }
-
-                for name in self.0.capture_names().flatten() {
-                    if let Some(cap) = caps.name(name) {
-                        captures.insert(name.to_string(), cap.as_str().to_string());
-                    }
-                }
+                let captures = self.captures(&caps);
 
                 Match { span, captures }
             })
             .collect()
+    }
+
+    pub fn replace_all(&self, s: &str, replacement_template: &str) -> String {
+        self.0
+            .replace_all(s, |caps: &regex::Captures<'_>| {
+                let captures = self.captures(caps);
+                template::interpolate(replacement_template, &captures)
+            })
+            .into_owned()
+    }
+
+    fn captures(&self, caps: &regex::Captures<'_>) -> Captures {
+        let mut captures = Captures::new();
+
+        for i in 0..caps.len() {
+            if let Some(cap) = caps.get(i) {
+                captures.insert(i.to_string(), cap.as_str().to_string());
+            }
+        }
+
+        for name in self.0.capture_names().flatten() {
+            if let Some(cap) = caps.name(name) {
+                captures.insert(name.to_string(), cap.as_str().to_string());
+            }
+        }
+
+        captures
     }
 }
 
@@ -381,6 +433,20 @@ mod tests {
         "#;
         let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
         assert!(matches!(matcher, ContentMatcher::SyntaxTree { .. }));
+    }
+
+    #[test]
+    fn regex_replace_interpolates_captures() {
+        let matcher = serde_yaml::from_str::<ContentMatcher>(
+            r#"
+            kind: Regex
+            pattern: "^npm install(?: (?P<args>.*))?$"
+            replace: "yarn add {{ $args }}"
+        "#,
+        )
+        .expect("valid regex matcher yaml");
+
+        pretty_assert_eq!(matcher.replace_all("npm install lodash"), "yarn add lodash");
     }
 
     #[test]

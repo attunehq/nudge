@@ -13,7 +13,7 @@ use color_eyre::eyre::{Context, Result};
 use glob::Pattern;
 use ignore::WalkBuilder;
 
-use nudge::rules::{self, ContentMatcher, GlobMatcher, Hook, PreToolUseMatcher, Rule};
+use nudge::rules::{self, ContentMatcher, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -93,19 +93,27 @@ fn collect_file_rules(rules_by_source: &[(PathBuf, Vec<Rule>)]) -> (Vec<FileRule
 }
 
 fn file_rules_for_rule(rule: &Rule) -> impl Iterator<Item = FileRule<'_>> {
-    rule.on.iter().filter_map(move |hook| match hook {
-        Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => Some(FileRule {
-            pattern: &matcher.file,
-            matchers: ContentMatcherSet::Write(&matcher.content),
-            rule,
-        }),
-        Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => Some(FileRule {
-            pattern: &matcher.file,
-            matchers: ContentMatcherSet::Edit(&matcher.new_content),
-            rule,
-        }),
-        _ => None,
-    })
+    if rule.action != RuleAction::Block {
+        return Vec::new().into_iter();
+    }
+
+    rule.on
+        .iter()
+        .filter_map(move |hook| match hook {
+            Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => Some(FileRule {
+                pattern: &matcher.file,
+                matchers: ContentMatcherSet::Write(&matcher.content),
+                rule,
+            }),
+            Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => Some(FileRule {
+                pattern: &matcher.file,
+                matchers: ContentMatcherSet::Edit(&matcher.new_content),
+                rule,
+            }),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 fn check_files(files: &[PathBuf], file_rules: &[FileRule<'_>]) -> (Vec<Issue>, usize) {
@@ -164,7 +172,7 @@ fn rule_issues(file: &Path, content: &str, file_rule: &FileRule<'_>) -> Vec<Issu
         .flat_map(|matcher| matcher.matches_with_context(content))
         .map(|m| {
             let line = byte_offset_to_line(content, m.span.start);
-            let message = nudge::template::interpolate(&file_rule.rule.message, &m.captures);
+            let message = nudge::template::interpolate(file_rule.rule.message(), &m.captures);
 
             Issue {
                 file: file.to_path_buf(),

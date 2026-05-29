@@ -88,9 +88,11 @@ When Nudge has something to share, it responds in one of three ways:
 - **Passthrough**: Nothing to note. Carry on!
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
+- **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
 
 The response type is determined by the hook type:
-- `PreToolUse` rules always **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
+- `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
+- `PreToolUse` substitute rules **allow with updated input** (Claude Code and Codex CLI Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
 - `Delete` is normalized but not yet matchable from YAML rules

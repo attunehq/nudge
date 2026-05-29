@@ -57,6 +57,13 @@ pub struct PreToolUse {
     /// Shared hook context.
     pub context: HookContext,
 
+    /// Original provider tool input.
+    ///
+    /// Nudge evaluates normalized tool shapes, but provider rewrite responses
+    /// must return the complete tool input object with only the intended fields
+    /// changed.
+    pub tool_input: Value,
+
     /// Normalized tool input.
     pub tool: ToolUse,
 }
