@@ -157,18 +157,16 @@ blocking a tool call.
 
 For `UserPromptSubmit`, plain stdout is added to Claude's context.
 
-## Current Nudge Shape
+## Prior Nudge Shape
 
-Today the public CLI is Claude-shaped:
+Before this RFC, the public CLI was Claude-shaped:
 
 - `nudge claude hook`
 - `nudge claude setup`
 - `nudge claude docs`
-- `nudge claude run`
 
-The Rust model is also Claude-shaped:
+The Rust model was also Claude-shaped:
 
-- `packages/nudge/src/claude/hook.rs`
 - `packages/nudge/src/cmd/claude/hook.rs`
 - `packages/nudge/src/cmd/claude/setup.rs`
 
@@ -229,9 +227,6 @@ nudge codex setup
 nudge codex docs
 ```
 
-Keep `nudge claude run` as Claude-only. There is no Codex equivalent in this
-update.
-
 ### Internal Modules
 
 Replace the Claude-specific hook domain model with an agent-neutral one:
@@ -248,15 +243,16 @@ packages/nudge/src/hook/apply_patch.rs
 
 Suggested responsibilities:
 
-- `agent/claude.rs`: parse Claude hook JSON, emit Claude setup JSON.
+- `agent/claude.rs`: parse Claude hook JSON.
 - `agent/codex.rs`: parse Codex hook JSON, emit Codex setup JSON.
 - `hook.rs`: normalized Nudge event types.
 - `hook/evaluate.rs`: rule evaluation over normalized events.
 - `hook/response.rs`: abstract Nudge outcomes plus provider-specific rendering.
 - `hook/apply_patch.rs`: parse Codex `apply_patch` commands into file changes.
 
-The existing `packages/nudge/src/claude/hook.rs` should be split rather than
-grown. Leaving it as the center would make Codex support feel bolted on.
+Keep provider-specific parsing at the agent boundary. Rule evaluation should
+stay centered on normalized events instead of growing provider-specific hook
+models.
 
 ### Normalized Event Model
 

@@ -1,7 +1,6 @@
 //! Main library for Nudge, used by its CLI.
 
 pub mod agent;
-pub mod claude;
 pub mod git;
 pub mod hook;
 pub mod rules;

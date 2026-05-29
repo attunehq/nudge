@@ -1,6 +1,6 @@
 # Research: CLAUDE.md Pain Points and Example Repositories
 
-This document captures research on real-world CLAUDE.md usage patterns, common failure modes, and example repositories that could inform benchmark scenario development.
+This document captures research on real-world CLAUDE.md usage patterns, common failure modes, and example repositories that could inform Nudge rule development.
 
 ## Problem Validation
 
@@ -106,7 +106,7 @@ Source: [DEV.to - Stop Claude From Forgetting Rules](https://dev.to/siddhantkcod
 
 ---
 
-## Benchmark Scenario Ideas
+## Rule Candidate Ideas
 
 Based on this research, high-value scenarios to test:
 
