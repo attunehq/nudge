@@ -9,11 +9,13 @@ use bon::Builder;
 use clap::Args;
 use color_eyre::{
     Result,
-    eyre::{Context, OptionExt, bail},
+    eyre::{Context, OptionExt},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
+
+use crate::cmd::json_hooks;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -131,26 +133,15 @@ pub fn main(config: Config) -> Result<()> {
     // TODO: we might want to warn the user so that we don't clobber their
     // comments or whatever, or at least back up their existing settings file
     // and leave it behind for them to merge with our changes if desired.
-    let Value::Object(settings) = &mut settings else {
-        bail!("expected settings to be an object, got: {settings:?}");
-    };
-    let hooks = settings.entry("hooks").or_insert_with(|| json!({}));
-    let Value::Object(hooks) = hooks else {
-        bail!("expected hooks to be an object, got: {hooks:?}");
-    };
-    for (event, matcher) in desired_hooks {
-        let entry = hooks.entry(event).or_insert_with(|| json!([]));
-        let Value::Array(matchers) = entry else {
-            bail!("expected matchers to be an array, got: {entry:?}");
-        };
-        let matcher = json!(matcher);
-        tracing::debug!(?event, ?matcher, ?matchers, "merge hooks");
-        if !matchers.contains(&matcher) {
-            matchers.push(matcher);
-        }
+    {
+        let hooks = json_hooks::hooks_object(&mut settings, "settings")?;
+        let desired_hooks = desired_hooks
+            .into_iter()
+            .map(|(event, matcher)| (event, json!(matcher)));
+        json_hooks::merge_hooks(hooks, desired_hooks)?;
+        remove_managed_event_hook(hooks, "PostToolUse", &nudge_command);
+        remove_managed_event_hook(hooks, "Stop", &nudge_command);
     }
-    remove_managed_event_hook(hooks, "PostToolUse", &nudge_command);
-    remove_managed_event_hook(hooks, "Stop", &nudge_command);
 
     let settings_json = serde_json::to_string_pretty(&settings).context("serialize settings")?;
     fs::write(&settings_file, settings_json).context("write settings file")?;

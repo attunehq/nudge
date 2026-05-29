@@ -7,9 +7,11 @@ use std::{
 };
 
 use clap::Args;
-use color_eyre::eyre::{Context, OptionExt, Result, bail};
+use color_eyre::eyre::{Context, OptionExt, Result};
 use serde_json::{Value, json};
 use tracing::instrument;
+
+use crate::cmd::json_hooks;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -73,24 +75,8 @@ pub fn main(config: Config) -> Result<()> {
         json!({})
     };
 
-    let Value::Object(root) = &mut config else {
-        bail!("expected hooks.json to be an object, got: {config:?}");
-    };
-    let hooks = root.entry("hooks").or_insert_with(|| json!({}));
-    let Value::Object(hooks) = hooks else {
-        bail!("expected hooks to be an object, got: {hooks:?}");
-    };
-
-    for (event, matcher) in desired_hooks {
-        let entry = hooks.entry(event).or_insert_with(|| json!([]));
-        let Value::Array(matchers) = entry else {
-            bail!("expected hook matchers to be an array, got: {entry:?}");
-        };
-
-        if !matchers.contains(&matcher) {
-            matchers.push(matcher);
-        }
-    }
+    let hooks = json_hooks::hooks_object(&mut config, "hooks.json")?;
+    json_hooks::merge_hooks(hooks, desired_hooks)?;
 
     let hooks_json = serde_json::to_string_pretty(&config).context("serialize hooks.json")?;
     fs::write(&hooks_file, hooks_json).context("write hooks.json")?;
