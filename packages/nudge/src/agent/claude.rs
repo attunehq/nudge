@@ -23,6 +23,7 @@ pub fn parse_hook(raw: Value) -> Result<Vec<NudgeHook>> {
 
     match event {
         "PreToolUse" => Ok(vec![NudgeHook::PreToolUse(PreToolUse {
+            tool_input: raw.get("tool_input").cloned().unwrap_or(Value::Null),
             tool: tool_use(&raw)?,
             context,
         })]),
@@ -111,6 +112,8 @@ fn path_field(value: &Value, field: &str) -> Result<PathBuf> {
 mod tests {
     use serde_json::json;
 
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     use crate::hook::{NudgeHook, ToolUse};
 
     use super::parse_hook;
@@ -154,13 +157,17 @@ mod tests {
             "hook_event_name": "PreToolUse",
             "cwd": "/tmp",
             "tool_name": "Bash",
-            "tool_input": { "command": "cargo test" }
+            "tool_input": { "command": "cargo test", "timeout": 120 }
         }))
         .expect("parse hook");
 
         assert!(
             matches!(hooks.as_slice(), [NudgeHook::PreToolUse(payload)] if matches!(payload.tool, ToolUse::Bash(_)))
         );
+        let [NudgeHook::PreToolUse(payload)] = hooks.as_slice() else {
+            panic!("expected PreToolUse");
+        };
+        pretty_assert_eq!(payload.tool_input["timeout"], 120);
     }
 
     #[test]

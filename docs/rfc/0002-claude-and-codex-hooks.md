@@ -91,6 +91,24 @@ Codex `PreToolUse` denial should be returned through the hook-specific shape:
 }
 ```
 
+Codex `PreToolUse` substitution should use `permissionDecision: "allow"` with
+`updatedInput`, and should include `hookSpecificOutput.additionalContext` when
+Nudge needs the model to know what was rewritten:
+
+```json
+{
+  "systemMessage": "Nudge substituted `npm install foo` -> `yarn add foo`.",
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "allow",
+    "updatedInput": {
+      "command": "yarn add foo"
+    },
+    "additionalContext": "Nudge rewrote the Bash command from `npm install foo` to `yarn add foo` before execution."
+  }
+}
+```
+
 Important compatibility detail: Codex documents `continue`, `stopReason`, and
 `suppressOutput` as unsupported for `PreToolUse`. Returning those fields on
 `PreToolUse` makes the hook run fail and Codex continues the tool call. Nudge's
@@ -408,7 +426,8 @@ pub fn evaluate_hook(hook: &NudgeHook, rules: &[Rule]) -> Evaluation;
 
 The existing behavior remains:
 
-- `PreToolUse` matches produce a blocking denial.
+- `PreToolUse` block matches produce a blocking denial.
+- `PreToolUse` Bash substitute matches produce an allow response with updated input.
 - `UserPromptSubmit` matches produce context on stdout.
 - `PermissionRequest` always passes through in this update.
 - No matches produce no output and exit 0.
@@ -425,6 +444,11 @@ Define an abstract outcome:
 pub enum HookOutcome {
     Passthrough,
     DenyPreToolUse { message: String },
+    UpdatePreToolUse {
+        system_message: String,
+        additional_context: String,
+        updated_input: Value,
+    },
     AddContext { context: String },
 }
 ```
@@ -459,6 +483,12 @@ Codex `DenyPreToolUse`:
 
 Do not include `continue`, `stopReason`, or `suppressOutput` on `PreToolUse`.
 This is the key wire-format fix for Codex.
+
+For `UpdatePreToolUse`, render `permissionDecision: "allow"` with a full
+`updatedInput` object. Preserve every original tool input field and replace
+only the rewritten field. Put the model-visible explanation in
+`hookSpecificOutput.additionalContext`; use `systemMessage` only as an
+audit/user-visible note.
 
 For `UserPromptSubmit`, prefer plain stdout for both agents. It is simple and
 documented by both hook systems as model-visible context.

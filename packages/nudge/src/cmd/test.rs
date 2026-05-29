@@ -67,6 +67,17 @@ pub fn main(config: Config) -> Result<()> {
             println!("Matched content:");
             println!("{message}");
         }
+        HookOutcome::UpdatePreToolUse {
+            system_message,
+            additional_context,
+            updated_input,
+        } => {
+            println!("Result: Substitute");
+            println!();
+            println!("{system_message}");
+            println!("{additional_context}");
+            println!("{}", serde_json::to_string_pretty(&updated_input)?);
+        }
         HookOutcome::AddContext { context } => {
             println!("Result: Continue");
             println!();

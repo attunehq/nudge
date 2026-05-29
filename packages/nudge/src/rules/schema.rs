@@ -49,7 +49,12 @@ pub struct Rule {
     ///
     /// If multiple hook events match, this message is displayed to the agent
     /// for every matching hook event, still in context of the matching content.
-    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+
+    /// What to do when this rule matches.
+    #[serde(default)]
+    pub action: RuleAction,
 
     /// The criteria under which this rule matches.
     ///
@@ -107,7 +112,7 @@ impl Rule {
         spans.into_iter().map(|span| {
             Annotation::builder()
                 .span(span)
-                .label(&self.message)
+                .label(self.message())
                 .build()
         })
     }
@@ -122,10 +127,29 @@ impl Rule {
         matches: impl IntoIterator<Item = Match>,
     ) -> impl Iterator<Item = Annotation> {
         matches.into_iter().map(|m| {
-            let label = template::interpolate(&self.message, &m.captures);
+            let label = template::interpolate(self.message(), &m.captures);
             Annotation::builder().span(m.span).label(label).build()
         })
     }
+
+    /// Message text for blocking annotations.
+    pub fn message(&self) -> &str {
+        self.message
+            .as_deref()
+            .unwrap_or("Rule matched. Fix this issue and retry.")
+    }
+}
+
+/// Rule action when a match is found.
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleAction {
+    /// Block the operation and show the rule message.
+    #[default]
+    Block,
+
+    /// Rewrite matching Bash commands and let the operation proceed.
+    Substitute,
 }
 
 impl From<&Rule> for Rule {

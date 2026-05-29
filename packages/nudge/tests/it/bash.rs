@@ -191,6 +191,45 @@ rules:
 }
 
 #[test]
+fn test_bash_substitution_allows_with_updated_input() {
+    let config = r#"
+version: 1
+rules:
+  - name: yarn-add
+    description: Use yarn add instead of npm install
+    action: substitute
+    on:
+      - hook: PreToolUse
+        tool: Bash
+        command:
+          - kind: Regex
+            pattern: "^npm install(?: (?P<args>.*))?$"
+            replace: "yarn add {{ $args }}"
+"#;
+
+    let dir = setup_config(config);
+    let input = bash_hook(
+        "npm install lodash",
+        dir.path().to_str().expect("temp dir path is valid utf-8"),
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    let json = serde_json::from_str::<serde_json::Value>(&output).expect("valid json output");
+    pretty_assert_eq!(json["hookSpecificOutput"]["permissionDecision"], "allow");
+    pretty_assert_eq!(
+        json["hookSpecificOutput"]["updatedInput"]["command"],
+        "yarn add lodash"
+    );
+    pretty_assert_eq!(
+        json["hookSpecificOutput"]["updatedInput"]["description"],
+        "Test command"
+    );
+    assert!(json["hookSpecificOutput"]["additionalContext"].is_string());
+    assert!(json["systemMessage"].is_string());
+}
+
+#[test]
 fn test_bash_project_state_git_branch_match() {
     let config = r#"
 version: 1

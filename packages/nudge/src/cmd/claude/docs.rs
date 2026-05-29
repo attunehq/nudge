@@ -45,7 +45,8 @@ const DOCS: &str = cstr!("\
   <yellow>rules:</yellow>
     <yellow>- name: rule-identifier</yellow>
       <yellow>description: \"Human-readable description\"</yellow>  <dim># Optional</dim>
-      <yellow>message: \"Your message shown at each match\"</yellow>
+      <yellow>action: block</yellow>                         <dim># block (default) or substitute</dim>
+      <yellow>message: \"Your message shown at each match\"</yellow> <dim># Required for useful block rules</dim>
 
       <yellow>on:</yellow>                           <dim># List of matchers (any match triggers the rule)</dim>
         <yellow>- hook: PreToolUse</yellow>          <dim># PreToolUse or UserPromptSubmit</dim>
@@ -54,6 +55,7 @@ const DOCS: &str = cstr!("\
           <yellow>content:</yellow>                   <dim># Patterns to match (Write tool)</dim>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"your-regex\"</yellow>
+              <yellow>replace: \"optional\"</yellow>      <dim># Template for substitute action</dim>
               <yellow>suggestion: \"optional\"</yellow>   <dim># Template for suggested fix</dim>
 
         <yellow>- hook: PreToolUse</yellow>          <dim># Same rule can match multiple scenarios</dim>
@@ -67,8 +69,8 @@ const DOCS: &str = cstr!("\
 <bold>Hook Types</bold>
 
   <green>PreToolUse</green>        Triggers before provider-supported Write/Edit/WebFetch/Bash
-                    operations. Always <cyan>interrupts</cyan> (blocks the operation until
-                    the issue is fixed).
+                    operations. Block rules <cyan>interrupt</cyan>; Bash substitute rules
+                    rewrite the command and allow it to proceed.
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
                     (injects context into the conversation).
@@ -143,6 +145,35 @@ const DOCS: &str = cstr!("\
     <green>Replace with foo.expect(\"error message\")</green>
 
   Each match gets its own suggestion with its specific captures.
+
+<bold>Substitution Rules</bold>
+
+  Use <cyan>action: substitute</cyan> for deterministic Bash command rewrites. Substitute rules
+  do not need a message. They match the current Bash command, apply Regex <cyan>replace:</cyan>
+  templates in rule order, return the provider's full updated tool input, and add
+  <cyan>hookSpecificOutput.additionalContext</cyan> so the model sees what changed.
+
+  <white>Basic Syntax:</white>
+    <yellow>- name: use-yarn-add</yellow>
+      <yellow>description: Use yarn add instead of npm install</yellow>
+      <yellow>action: substitute</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Bash</yellow>
+          <yellow>command:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"^npm install(?: (?P<<args>>.*))?$\"</yellow>
+              <yellow>replace: \"yarn add {{ $args }}\"</yellow>
+
+  <dim>For input</dim> <green>npm install lodash</green><dim>, Nudge runs</dim> <green>yarn add lodash</green><dim>.</dim>
+
+  <dim>Substitutions currently apply to Bash commands for Claude Code and Codex CLI.</dim>
+  <dim>Write/Edit substitutions are intentionally not exposed because Codex apply_patch</dim>
+  <dim>normalization would need a lossless patch rewrite.</dim>
+
+  <dim>CI note: nudge check ignores substitute rules. Check mode scans repository</dim>
+  <dim>files against file-based block rules; substitutions need a live Bash hook</dim>
+  <dim>payload and a provider that can receive updatedInput.</dim>
 
 <bold>How Messages Are Displayed</bold>
 
@@ -394,6 +425,21 @@ const DOCS: &str = cstr!("\
               <yellow>branch:</yellow>
                 <yellow>- kind: Regex</yellow>
                   <yellow>pattern: \"^main$\"</yellow>
+
+  <cyan>Substitute npm install with yarn add (Bash)</cyan>
+
+    <dim># Mechanical command rewrites can proceed without a retry loop.</dim>
+
+    <yellow>- name: use-yarn-add</yellow>
+      <yellow>description: Use yarn add instead of npm install</yellow>
+      <yellow>action: substitute</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Bash</yellow>
+          <yellow>command:</yellow>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"^npm install(?: (?P<<args>>.*))?$\"</yellow>
+              <yellow>replace: \"yarn add {{ $args }}\"</yellow>
 
   <cyan>Block dangerous commands (Bash)</cyan>
 

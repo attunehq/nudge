@@ -37,6 +37,7 @@ pub fn parse_hook(raw: Value) -> Result<Vec<NudgeHook>> {
 
 fn pretooluse(raw: Value, context: HookContext) -> Vec<NudgeHook> {
     let tool = tool_use(&raw);
+    let tool_input = raw.get("tool_input").cloned().unwrap_or(Value::Null);
     match tool {
         ToolUse::Other { tool_name, input } if tool_name == "apply_patch" => {
             let command = input
@@ -49,6 +50,7 @@ fn pretooluse(raw: Value, context: HookContext) -> Vec<NudgeHook> {
                     .map(|tool| {
                         NudgeHook::PreToolUse(PreToolUse {
                             context: context.clone(),
+                            tool_input: tool_input.clone(),
                             tool,
                         })
                     })
@@ -59,7 +61,11 @@ fn pretooluse(raw: Value, context: HookContext) -> Vec<NudgeHook> {
                 }
             }
         }
-        tool => vec![NudgeHook::PreToolUse(PreToolUse { context, tool })],
+        tool => vec![NudgeHook::PreToolUse(PreToolUse {
+            context,
+            tool_input,
+            tool,
+        })],
     }
 }
 

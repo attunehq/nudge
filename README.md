@@ -22,6 +22,7 @@ Nudge uses agent hook systems to watch supported operations:
 When something matches a rule you've defined:
 
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
+- **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
 - **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
 - **Passthrough**: No rules matched, everything proceeds normally
 
@@ -70,6 +71,24 @@ error: rule violation
 ```
 
 The pattern: **what's wrong** -> **how to fix** -> **retry**.
+
+For simple mechanical Bash command rewrites, use `action: substitute` with a regex `replace:` template instead of a blocking message:
+
+```yaml
+version: 1
+rules:
+  - name: use-yarn-add
+    action: substitute
+    on:
+      - hook: PreToolUse
+        tool: Bash
+        command:
+          - kind: Regex
+            pattern: "^npm install(?: (?P<args>.*))?$"
+            replace: "yarn add {{ $args }}"
+```
+
+Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
@@ -155,6 +174,8 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
+`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`.
+
 Example output when violations are found:
 
 ```
@@ -216,7 +237,7 @@ echo '{
   }
 }' | nudge codex hook
 
-# Exit 0 with JSON output = Interrupt (rule matched, operation blocked)
+# Exit 0 with JSON output = Interrupt or Substitute (rule matched)
 # Exit 0 with plain text = Continue (UserPromptSubmit context injected)
 # Exit 0 with no output = Passthrough (nothing to note)
 ```
