@@ -13,7 +13,7 @@ use color_eyre::eyre::{Context, Result};
 use glob::Pattern;
 use ignore::WalkBuilder;
 
-use nudge::rules::{self, GlobMatcher, Hook, PreToolUseMatcher, Rule};
+use nudge::rules::{self, ContentMatcher, GlobMatcher, Hook, PreToolUseMatcher, Rule};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -48,113 +48,76 @@ struct FileRule<'a> {
 
 /// Content matchers extracted from a rule hook.
 enum ContentMatcherSet<'a> {
-    Write(&'a [nudge::rules::ContentMatcher]),
-    Edit(&'a [nudge::rules::ContentMatcher]),
+    Write(&'a [ContentMatcher]),
+    Edit(&'a [ContentMatcher]),
+}
+
+impl<'a> ContentMatcherSet<'a> {
+    fn as_slice(&self) -> &'a [ContentMatcher] {
+        match self {
+            ContentMatcherSet::Write(matchers) | ContentMatcherSet::Edit(matchers) => matchers,
+        }
+    }
 }
 
 pub fn main(config: Config) -> Result<()> {
     let rules_by_source = rules::load_all_attributed().context("load rules")?;
-
-    // Collect file rules from all sources
-    let mut file_rules = Vec::new();
-    let mut total_rules = 0;
-
-    for (_source, rules) in &rules_by_source {
-        for rule in rules {
-            total_rules += 1;
-            // Extract Write hooks
-            for hook in &rule.on {
-                match hook {
-                    Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => {
-                        file_rules.push(FileRule {
-                            pattern: &matcher.file,
-                            matchers: ContentMatcherSet::Write(&matcher.content),
-                            rule,
-                        });
-                    }
-                    Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => {
-                        file_rules.push(FileRule {
-                            pattern: &matcher.file,
-                            matchers: ContentMatcherSet::Edit(&matcher.new_content),
-                            rule,
-                        });
-                    }
-                    // Skip WebFetch, Bash, and UserPromptSubmit - they don't apply to file content
-                    _ => {}
-                }
-            }
-        }
-    }
+    let (file_rules, total_rules) = collect_file_rules(&rules_by_source);
 
     if file_rules.is_empty() {
         println!("No file-based rules found.");
         return Ok(());
     }
 
-    // Walk the project and collect files to check
     let files = collect_files(&config.paths)?;
+    let (issues, checked_files) = check_files(&files, &file_rules);
 
-    // Check each file against matching rules
-    // Use a HashSet to deduplicate issues (same rule can have Write and Edit hooks
-    // with identical matchers)
+    if issues.is_empty() {
+        print_success(checked_files, total_rules, &rules_by_source);
+        Ok(())
+    } else {
+        print_failure(&issues, checked_files, total_rules);
+        process::exit(1);
+    }
+}
+
+fn collect_file_rules(rules_by_source: &[(PathBuf, Vec<Rule>)]) -> (Vec<FileRule<'_>>, usize) {
+    let total_rules = rules_by_source.iter().map(|(_, rules)| rules.len()).sum();
+    let file_rules = rules_by_source
+        .iter()
+        .flat_map(|(_, rules)| rules)
+        .flat_map(file_rules_for_rule)
+        .collect();
+
+    (file_rules, total_rules)
+}
+
+fn file_rules_for_rule(rule: &Rule) -> impl Iterator<Item = FileRule<'_>> {
+    rule.on.iter().filter_map(move |hook| match hook {
+        Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => Some(FileRule {
+            pattern: &matcher.file,
+            matchers: ContentMatcherSet::Write(&matcher.content),
+            rule,
+        }),
+        Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => Some(FileRule {
+            pattern: &matcher.file,
+            matchers: ContentMatcherSet::Edit(&matcher.new_content),
+            rule,
+        }),
+        _ => None,
+    })
+}
+
+fn check_files(files: &[PathBuf], file_rules: &[FileRule<'_>]) -> (Vec<Issue>, usize) {
     let mut issues_set = HashSet::new();
     let mut checked_files = 0;
 
-    for file in &files {
-        let mut file_checked = false;
-
-        for file_rule in &file_rules {
-            if !file_rule.pattern.is_match_path(file) {
-                continue;
-            }
-
-            // Read file content
-            let content = match fs::read_to_string(file) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::debug!(?file, error = %e, "skipping file (could not read)");
-                    continue;
-                }
-            };
-
-            file_checked = true;
-
-            // Get the matchers based on hook type
-            let matchers = match &file_rule.matchers {
-                ContentMatcherSet::Write(m) => *m,
-                ContentMatcherSet::Edit(m) => *m,
-            };
-
-            // Check content against matchers
-            // A rule matches if ALL matchers match (AND logic), so we need to check
-            // if all matchers have at least one match
-            let all_matched = matchers.iter().all(|m| m.is_match(&content));
-
-            if all_matched && !matchers.is_empty() {
-                // Collect matches from all matchers for reporting
-                for matcher in matchers {
-                    let matches = matcher.matches_with_context(&content);
-                    for m in matches {
-                        let line = byte_offset_to_line(&content, m.span.start);
-                        let message =
-                            nudge::template::interpolate(&file_rule.rule.message, &m.captures);
-                        issues_set.insert(Issue {
-                            file: file.clone(),
-                            line,
-                            rule_name: file_rule.rule.name.clone(),
-                            message,
-                        });
-                    }
-                }
-            }
-        }
-
-        if file_checked {
-            checked_files += 1;
-        }
+    for file in files {
+        let (issues, file_checked) = check_file(file, file_rules);
+        issues_set.extend(issues);
+        checked_files += usize::from(file_checked);
     }
 
-    // Convert to sorted Vec for deterministic output
     let mut issues = issues_set.into_iter().collect::<Vec<_>>();
     issues.sort_by(|a, b| {
         a.file
@@ -163,14 +126,54 @@ pub fn main(config: Config) -> Result<()> {
             .then(a.rule_name.cmp(&b.rule_name))
     });
 
-    // Output results
-    if issues.is_empty() {
-        print_success(checked_files, total_rules, &rules_by_source);
-        Ok(())
-    } else {
-        print_failure(&issues, checked_files, total_rules);
-        process::exit(1);
+    (issues, checked_files)
+}
+
+fn check_file(file: &Path, file_rules: &[FileRule<'_>]) -> (Vec<Issue>, bool) {
+    let mut file_checked = false;
+    let mut issues = Vec::new();
+
+    for file_rule in file_rules {
+        if !file_rule.pattern.is_match_path(file) {
+            continue;
+        }
+
+        let content = match fs::read_to_string(file) {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::debug!(?file, error = %e, "skipping file (could not read)");
+                continue;
+            }
+        };
+
+        file_checked = true;
+        issues.extend(rule_issues(file, &content, file_rule));
     }
+
+    (issues, file_checked)
+}
+
+fn rule_issues(file: &Path, content: &str, file_rule: &FileRule<'_>) -> Vec<Issue> {
+    let matchers = file_rule.matchers.as_slice();
+    if matchers.is_empty() || !matchers.iter().all(|m| m.is_match(content)) {
+        return Vec::new();
+    }
+
+    matchers
+        .iter()
+        .flat_map(|matcher| matcher.matches_with_context(content))
+        .map(|m| {
+            let line = byte_offset_to_line(content, m.span.start);
+            let message = nudge::template::interpolate(&file_rule.rule.message, &m.captures);
+
+            Issue {
+                file: file.to_path_buf(),
+                line,
+                rule_name: file_rule.rule.name.clone(),
+                message,
+            }
+        })
+        .collect()
 }
 
 /// Collect files to check based on provided paths or entire project.

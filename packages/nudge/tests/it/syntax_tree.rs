@@ -16,9 +16,9 @@ mod typescript_types;
 
 use std::fs;
 use std::io::Write as _;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use crate::nudge_binary;
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
@@ -31,31 +31,10 @@ fn setup_config(rules_yaml: &str) -> TempDir {
     dir
 }
 
-/// Get the path to the built nudge binary.
-fn get_binary_path() -> PathBuf {
-    // Build the binary
-    let status = Command::new("cargo")
-        .args(["build", "--quiet", "-p", "nudge"])
-        .status()
-        .expect("failed to build nudge");
-    assert!(status.success(), "cargo build failed");
-
-    // Get the target directory - use CARGO_TARGET_DIR or default
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .expect("manifest dir has parent")
-        .parent()
-        .expect("parent has parent");
-    workspace_root.join("target/debug/nudge")
-}
-
 /// Run nudge claude hook with the given input JSON in the specified directory.
 fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
-    let binary = get_binary_path();
-
     // Run the binary directly with the temp dir as cwd
-    let mut child = Command::new(&binary)
+    let mut child = Command::new(nudge_binary())
         .args(["claude", "hook"])
         .current_dir(dir.path())
         .stdin(Stdio::piped())

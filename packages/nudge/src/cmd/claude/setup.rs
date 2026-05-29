@@ -5,14 +5,17 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
+use bon::Builder;
 use clap::Args;
 use color_eyre::{
     Result,
-    eyre::{Context, OptionExt, bail},
+    eyre::{Context, OptionExt},
 };
-use nudge::claude::hook;
+use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
+
+use crate::cmd::json_hooks;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -36,6 +39,48 @@ This project uses [Nudge](https://github.com/attunehq/nudge), a collaborative pa
 **Writing new rules:** If the user asks you to add or modify Nudge rules, run `nudge claude docs` to see the rule format, template variables, and guidelines for writing effective messages.
 "#;
 
+/// Configures a hook in Claude Code's settings.
+#[derive(Debug, Serialize, Clone, Builder)]
+#[non_exhaustive]
+struct HookConfig {
+    /// The type of hook to run.
+    ///
+    /// Valid options are `command` or `prompt`, but Nudge always wants
+    /// `command`: `prompt` hooks run inside Claude Code itself and cannot be
+    /// intercepted by Nudge.
+    #[builder(skip = String::from("command"))]
+    r#type: String,
+
+    /// The command to run.
+    #[builder(into)]
+    command: String,
+
+    /// Terminate the command after this many seconds.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timeout: Option<u32>,
+}
+
+impl From<&HookConfig> for HookConfig {
+    fn from(value: &HookConfig) -> Self {
+        value.clone()
+    }
+}
+
+/// Configures hook matching strategy in Claude Code's settings.local.json.
+#[derive(Debug, Serialize, Clone, Builder)]
+#[non_exhaustive]
+struct HookMatcher {
+    /// The matcher to use for tool hooks.
+    #[builder(default = "", into)]
+    #[serde(skip_serializing_if = "String::is_empty")]
+    matcher: String,
+
+    /// The hooks to run when the matcher matches.
+    #[builder(with = |i: impl IntoIterator<Item = impl Into<HookConfig>>| i.into_iter().map(Into::into).collect())]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    hooks: Vec<HookConfig>,
+}
+
 #[instrument]
 pub fn main(config: Config) -> Result<()> {
     fs::create_dir_all(&config.claude_dir).context("create .claude directory")?;
@@ -54,15 +99,15 @@ pub fn main(config: Config) -> Result<()> {
         .to_string();
 
     let nudge_command = format!("{nudge_path} claude hook");
-    let nudge_hook = hook::Config::builder()
+    let nudge_hook = HookConfig::builder()
         .command(&nudge_command)
         .timeout(5)
         .build();
-    let nudge_pretooluse_matcher = hook::Matcher::builder()
+    let nudge_pretooluse_matcher = HookMatcher::builder()
         .matcher("Write|Edit|WebFetch|Bash")
         .hooks([&nudge_hook])
         .build();
-    let nudge_matcher = hook::Matcher::builder().hooks([nudge_hook]).build();
+    let nudge_matcher = HookMatcher::builder().hooks([nudge_hook]).build();
     let desired_hooks = [
         ("PreToolUse", nudge_pretooluse_matcher),
         ("UserPromptSubmit", nudge_matcher),
@@ -88,26 +133,15 @@ pub fn main(config: Config) -> Result<()> {
     // TODO: we might want to warn the user so that we don't clobber their
     // comments or whatever, or at least back up their existing settings file
     // and leave it behind for them to merge with our changes if desired.
-    let Value::Object(settings) = &mut settings else {
-        bail!("expected settings to be an object, got: {settings:?}");
-    };
-    let hooks = settings.entry("hooks").or_insert_with(|| json!({}));
-    let Value::Object(hooks) = hooks else {
-        bail!("expected hooks to be an object, got: {hooks:?}");
-    };
-    for (event, matcher) in desired_hooks {
-        let entry = hooks.entry(event).or_insert_with(|| json!([]));
-        let Value::Array(matchers) = entry else {
-            bail!("expected matchers to be an array, got: {entry:?}");
-        };
-        let matcher = json!(matcher);
-        tracing::debug!(?event, ?matcher, ?matchers, "merge hooks");
-        if !matchers.contains(&matcher) {
-            matchers.push(matcher);
-        }
+    {
+        let hooks = json_hooks::hooks_object(&mut settings, "settings")?;
+        let desired_hooks = desired_hooks
+            .into_iter()
+            .map(|(event, matcher)| (event, json!(matcher)));
+        json_hooks::merge_hooks(hooks, desired_hooks)?;
+        remove_managed_event_hook(hooks, "PostToolUse", &nudge_command);
+        remove_managed_event_hook(hooks, "Stop", &nudge_command);
     }
-    remove_managed_event_hook(hooks, "PostToolUse", &nudge_command);
-    remove_managed_event_hook(hooks, "Stop", &nudge_command);
 
     let settings_json = serde_json::to_string_pretty(&settings).context("serialize settings")?;
     fs::write(&settings_file, settings_json).context("write settings file")?;
