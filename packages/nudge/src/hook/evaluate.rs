@@ -1,5 +1,6 @@
 //! Rule evaluation for normalized hook events.
 
+use color_eyre::eyre::Result;
 use indoc::formatdoc;
 use itertools::Itertools;
 use serde_json::Value;
@@ -12,11 +13,52 @@ use crate::{
         state::{FileChangeContext, InteractionState, now_seconds},
     },
     rules::{
-        ContentMatcher, PreToolUseBashMatcher, PreToolUseEditMatcher, PreToolUseWebFetchMatcher,
-        PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher, UserPromptSubmitMatcher,
+        ContentMatcher, LoadedConfig, PreToolUseBashMatcher, PreToolUseEditMatcher,
+        PreToolUseWebFetchMatcher, PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher,
+        UserPromptSubmitMatcher,
     },
     snippet::{Annotation, Match, Source},
 };
+
+/// Evaluate a normalized hook batch against the full loaded config.
+pub fn evaluate_config_hooks(hooks: &[NudgeHook], config: &LoadedConfig) -> Result<HookOutcome> {
+    let mut state = InteractionState::default();
+    evaluate_config_hooks_with_state(hooks, config, &mut state)
+}
+
+/// Evaluate a normalized hook batch against the full loaded config and local
+/// interaction state.
+pub fn evaluate_config_hooks_with_state(
+    hooks: &[NudgeHook],
+    config: &LoadedConfig,
+    state: &mut InteractionState,
+) -> Result<HookOutcome> {
+    let rule_outcome = evaluate_hooks_with_state(hooks, &config.rules, state);
+    let workflow_outcome = crate::workflow::evaluate_hooks(hooks, &config.workflows)?;
+
+    Ok(combine_outcomes(rule_outcome, workflow_outcome))
+}
+
+fn combine_outcomes(rule_outcome: HookOutcome, workflow_outcome: HookOutcome) -> HookOutcome {
+    match (rule_outcome, workflow_outcome) {
+        (HookOutcome::Passthrough, workflow_outcome) => workflow_outcome,
+        (rule_outcome, HookOutcome::Passthrough) => rule_outcome,
+        (
+            HookOutcome::AddContext {
+                context: rule_context,
+            },
+            HookOutcome::AddContext {
+                context: workflow_context,
+            },
+        ) => HookOutcome::AddContext {
+            context: format!("{rule_context}\n\n{workflow_context}"),
+        },
+        (HookOutcome::AddContext { .. }, workflow_outcome @ HookOutcome::ContinueStop { .. }) => {
+            workflow_outcome
+        }
+        (rule_outcome, _) => rule_outcome,
+    }
+}
 
 /// Evaluate a normalized hook batch against loaded rules.
 ///
@@ -60,7 +102,7 @@ fn evaluate_hooks_at(
                 user_prompt_matches.extend(matches);
                 user_prompt_updates.extend(updates);
             }
-            NudgeHook::PermissionRequest(_) | NudgeHook::Other => {}
+            NudgeHook::PermissionRequest(_) | NudgeHook::Stop(_) | NudgeHook::Other => {}
         }
     }
 

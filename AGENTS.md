@@ -48,10 +48,10 @@ cargo run -p nudge -- check            # Check project files against rules (for 
 ### CLI Structure
 
 ```
-nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
+nudge claude hook   - Receives hook JSON on stdin, evaluates rules/workflows, outputs response
 nudge claude setup  - Writes hook configuration to .claude/settings.local.json
 nudge claude docs   - Prints documentation for writing rules
-nudge codex hook    - Receives hook JSON on stdin, evaluates rules, outputs response
+nudge codex hook    - Receives hook JSON on stdin, evaluates rules/workflows, outputs response
 nudge codex setup   - Writes hook configuration to .codex/hooks.json
 nudge codex docs    - Prints documentation for writing rules
 nudge test          - Test a specific rule against sample input
@@ -68,16 +68,17 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/hook/response.rs` - Provider-specific response rendering
 - `src/hook/apply_patch.rs` - Codex apply_patch normalization
 - `src/hook/state.rs` - Local opt-in interaction state for context-aware prompt reminders
-- `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
+- `src/workflow.rs` - Opt-in workflow completion gates backed by per-session state
+- `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates config, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
 - `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
-- `src/cmd/codex/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
+- `src/cmd/codex/hook.rs` - Hook command: deserializes input, evaluates config, emits response
 - `src/cmd/codex/setup.rs` - Setup command: configures hooks in hooks.json
 - `src/cmd/codex/docs.rs` - Docs command: prints rule writing guide
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
-- `src/rules.rs` - Rule loading from config files
+- `src/rules.rs` - Rule/workflow loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
 - `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
 - `src/rules/schema/prompt.rs` - UserPromptSubmit intent, cooldown, and file-change gate schema helpers
@@ -85,17 +86,20 @@ nudge check         - Check project files against rules (CI/linter mode)
 
 ### How Nudge Communicates
 
-When Nudge has something to share, it responds in one of three ways:
+When Nudge has something to share, it responds in these ways:
 
 - **Passthrough**: Nothing to note. Carry on!
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
 - **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
+- **Workflow gate**: For active workflows, Nudge blocks Stop with a continuation prompt until the agent confirms done criteria
 
 The response type is determined by the hook type:
 - `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
 - `PreToolUse` substitute rules **allow with updated input** (Claude Code and Codex CLI Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
+- `UserPromptSubmit` workflow matches record the original prompt and done criteria in Nudge state
+- `Stop` workflows return `decision: "block"` until the final assistant message contains the workflow confirmation line
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
 - `Delete` is normalized but not yet matchable from YAML rules
 

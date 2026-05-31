@@ -54,8 +54,9 @@ pub struct Config {
 }
 
 pub fn main(config: Config) -> Result<()> {
-    let rules = rules::load_all()?;
-    let rule = rules
+    let loaded_config = rules::load_all()?;
+    let rule = loaded_config
+        .rules
         .into_iter()
         .find(|r| r.name == config.rule)
         .ok_or_else(|| eyre!("Rule '{}' not found", config.rule))?;
@@ -102,6 +103,11 @@ pub fn main(config: Config) -> Result<()> {
             println!();
             println!("Matched content:");
             println!("{context}");
+        }
+        HookOutcome::ContinueStop { reason } => {
+            println!("Result: Continue Stop");
+            println!();
+            println!("{reason}");
         }
     }
 

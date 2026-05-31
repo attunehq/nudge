@@ -24,6 +24,7 @@ When something matches a rule you've defined:
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
 - **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent, including semantic prompt reminders after relevant local file changes
+- **Workflow gate** (Stop workflows): Nudge records the prompt and done criteria, then keeps the agent going until it confirms completion
 - **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
@@ -90,6 +91,8 @@ rules:
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
 
+## Context-Aware Prompt Reminders
+
 For context that should appear only after a project-specific workflow, use a stateful `UserPromptSubmit` matcher. This example reminds the agent how to test local Hurry changes after source files were touched, while avoiding unrelated "run the tests" prompts:
 
 ```yaml
@@ -113,6 +116,36 @@ rules:
 ```
 
 `intent.examples` are matched locally with deterministic token normalization. Nudge does not call an LLM or make network requests. `after_file_change` is opt-in: Nudge stores only matching file paths, timestamps, and reminder frequency state in a local JSON file. It does not store prompt text. Set `NUDGE_STATE_DIR` to override the storage directory, or delete the state file from Nudge's local data directory to clear it.
+
+## Workflow Completion Gates
+
+Rules catch local mistakes. Workflows help Nudge ask "are we actually done?" at the end of a turn.
+
+Workflows are opt-in. Add a top-level `workflows:` list to `.nudge.yaml`. When a user prompt matches a workflow's `prompt` patterns, Nudge records that prompt and the configured `done` criteria for the session. On the `Stop` hook, Nudge blocks stopping with a continuation prompt until the assistant includes the exact confirmation line.
+
+```yaml
+version: 1
+workflows:
+  - name: issue-resolution
+    description: Finish issue work before stopping
+    prompt:
+      - kind: Regex
+        pattern: "(?i)issue #[0-9]+|pull request|\\bPR\\b"
+    done:
+      - "Add or update end-to-end tests for the requested behavior."
+      - "Implement the permanent fix."
+      - "Run the relevant tests and report exact proof."
+```
+
+For this workflow, Nudge asks the agent to include this line only after every criterion is complete:
+
+```text
+NUDGE_WORKFLOW_COMPLETE: issue-resolution
+```
+
+If the agent tries to stop without that line, Nudge returns a `decision: "block"` Stop response with the original prompt, the done criteria, and instructions to finish or verify the work. Once the confirmation appears, Nudge clears the session workflow state and lets the turn end.
+
+Workflow state is stored outside the repo in Nudge's per-user data directory. Set `NUDGE_STATE_DIR` when you want to isolate state for tests or automation.
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
@@ -198,7 +231,7 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
-`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`.
+`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`. It also ignores workflows because workflows depend on live UserPromptSubmit and Stop hook state.
 
 Example output when violations are found:
 
@@ -267,6 +300,7 @@ echo '{
 
 # Exit 0 with JSON output = Interrupt or Substitute (rule matched)
 # Exit 0 with plain text = Continue (UserPromptSubmit context injected)
+# Exit 0 with {"decision":"block"} = Stop workflow continuation
 # Exit 0 with no output = Passthrough (nothing to note)
 ```
 
