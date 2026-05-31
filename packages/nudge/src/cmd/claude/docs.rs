@@ -246,6 +246,36 @@ const DOCS: &str = cstr!("\
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
 
+<bold>Rust Stuttering Type Names</bold>
+
+  Use <cyan>kind: StutteringTypeName</cyan> to catch Rust types that repeat module
+  context or generic suffixes. It parses Rust with tree-sitter, understands inline
+  modules and file-derived modules like <cyan>src/storage.rs</cyan>, and reports the
+  type identifier span.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: StutteringTypeName</yellow>
+        <yellow>language: rust</yellow>
+        <yellow>redundant_suffixes: [\"Manager\", \"Service\", \"Handler\"]</yellow>
+        <yellow>module_aliases:</yellow>
+          <yellow>db: [\"Database\"]</yellow>
+        <yellow>allow:</yellow>
+          <yellow>- \"storage::StorageEngine\"</yellow>
+        <yellow>suggestion: \"Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}.\"</yellow>
+
+  <white>Captures:</white>
+    <green>{{ $type }}</green>         Type name that matched, e.g. <cyan>CasStorage</cyan>
+    <green>{{ $kind }}</green>         Rust item kind: struct, enum, trait, type, or union
+    <green>{{ $module }}</green>       Module path, e.g. <cyan>storage</cyan> or <cyan>auth::jwt</cyan>
+    <green>{{ $term }}</green>         Redundant term, e.g. <cyan>Storage</cyan> or <cyan>Manager</cyan>
+    <green>{{ $replacement }}</green>  Best mechanical rename, or \"a concrete name\"
+    <green>{{ $reason }}</green>       Human-readable explanation for the match
+
+  <white>False Positive Controls:</white>
+    <green>allow</green> accepts exact type names or module-qualified names. Use it for
+    intentional domain phrases where the repetition is useful.
+
 <bold>External Program Matching</bold>
 
   Use <cyan>kind: External</cyan> to delegate matching to an external program (linter, formatter,
@@ -370,6 +400,28 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Block stuttering Rust type names</cyan>
+
+    <dim># Flags names like storage::CasStorage, cache::KeyCache, auth::JwtManager,</dim>
+    <dim># and db::Database while allowing intentional names.</dim>
+
+    <yellow>- name: rust-stuttering-types</yellow>
+      <yellow>description: Avoid repeating module context in Rust type names</yellow>
+      <yellow>message: \"{{ $suggestion }}\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: StutteringTypeName</yellow>
+              <yellow>language: rust</yellow>
+              <yellow>redundant_suffixes: [\"Manager\", \"Service\", \"Handler\"]</yellow>
+              <yellow>module_aliases:</yellow>
+                <yellow>db: [\"Database\"]</yellow>
+              <yellow>allow:</yellow>
+                <yellow>- \"storage::StorageEngine\"</yellow>
+              <yellow>suggestion: \"Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}.\"</yellow>
 
   <cyan>Enforce markdown table formatting (External)</cyan>
 

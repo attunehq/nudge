@@ -18,6 +18,7 @@ pub use url::UrlMatcher;
 mod content;
 mod path;
 mod project_state;
+mod stuttering;
 mod syntax;
 mod url;
 
