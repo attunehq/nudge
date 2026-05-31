@@ -6,6 +6,7 @@ pub mod hook;
 pub mod rules;
 pub mod snippet;
 pub mod template;
+pub mod workflow;
 
 /// Convenience macro for `filter_map`ing a pattern that contains a single item.
 /// Returns `Some(item)` if the item matches the pattern, `None` otherwise.

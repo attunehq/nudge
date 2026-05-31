@@ -16,10 +16,14 @@ mod message_content;
 mod multiple_rules;
 mod non_rust_files;
 mod rust_check_then_unwrap;
+mod rust_functional_mutation;
+mod rust_indexed_iteration;
 mod setup;
+mod stuttering_types;
 mod syntax_tree;
 mod user_prompt;
 mod webfetch;
+mod workflow;
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -92,6 +96,21 @@ pub fn user_prompt_hook(prompt: &str) -> String {
         "permission_mode": "default",
         "cwd": "/tmp",
         "prompt": prompt
+    })
+    .to_string()
+}
+
+/// Build a Stop hook JSON payload.
+pub fn stop_hook(last_assistant_message: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "Stop",
+        "session_id": "test",
+        "turn_id": "turn",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": "/tmp",
+        "stop_hook_active": false,
+        "last_assistant_message": last_assistant_message
     })
     .to_string()
 }

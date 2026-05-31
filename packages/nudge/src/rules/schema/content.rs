@@ -1,5 +1,7 @@
 use std::{
+    collections::BTreeMap,
     io::Write,
+    path::Path,
     process::{Command, Stdio},
     sync::LazyLock,
 };
@@ -14,7 +16,15 @@ use crate::{
     template::{self, Captures},
 };
 
-use super::{Language, TreeSitterQuery, rust, syntax::union_of_captures};
+use super::{
+    Language, TreeSitterQuery, rust,
+    rust_functional_mutation::{
+        RustFunctionalMutationPattern, default_rust_functional_mutation_patterns,
+        rust_functional_mutation_matches,
+    },
+    rust_indexed_iteration, stuttering,
+    syntax::union_of_captures,
+};
 
 /// The method used to match hook content.
 ///
@@ -86,6 +96,56 @@ pub enum ContentMatcher {
         /// The command to run, as a list of arguments.
         command: Vec<String>,
     },
+
+    /// Match Rust type names that repeat module context or generic suffixes.
+    StutteringTypeName {
+        /// The language grammar to use for parsing. Currently only `rust` is
+        /// supported.
+        language: Language,
+
+        /// Suffixes that do not add useful type information.
+        #[serde(default = "stuttering::default_redundant_suffixes")]
+        redundant_suffixes: Vec<String>,
+
+        /// Extra terms that should count as module context.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        module_aliases: BTreeMap<String, Vec<String>>,
+
+        /// Type names or module-qualified type names to suppress.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allow: Vec<String>,
+
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+
+    /// Match Rust range-based iteration that indexes into the same collection.
+    ///
+    /// This catches patterns like `for i in 0..items.len() { items[i] }` and
+    /// `(0..items.len()).map(|i| items[i])` while ignoring unrelated indexing
+    /// such as `args[0]` and macro token trees.
+    RustIndexedIteration {
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+
+    /// Match simple Rust mutation patterns that have clear iterator
+    /// equivalents.
+    ///
+    /// This matcher is intentionally conservative. It only reports adjacent
+    /// `let mut` plus `for` loops with exact loop-body shapes that map cleanly
+    /// to `map`/`filter_map`/`collect`, `find`/`find_map`, or `fold`.
+    RustFunctionalMutation {
+        /// Which mutation patterns to detect. Defaults to all supported
+        /// patterns.
+        patterns: Vec<RustFunctionalMutationPattern>,
+
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for ContentMatcher {
@@ -100,8 +160,13 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             language: Option<Language>,
             query: Option<String>,
             command: Option<Vec<String>>,
+            patterns: Option<Vec<RustFunctionalMutationPattern>>,
             suggestion: Option<String>,
             replace: Option<String>,
+            redundant_suffixes: Option<Vec<String>>,
+            module_aliases: Option<BTreeMap<String, Vec<String>>>,
+            allow: Option<Vec<String>>,
+            allowed: Option<Vec<String>>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
@@ -140,9 +205,55 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 }
                 Ok(ContentMatcher::External { command })
             }
+            "StutteringTypeName" => {
+                let language = raw
+                    .language
+                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
+                if language != Language::Rust {
+                    return Err(serde::de::Error::custom(
+                        "StutteringTypeName currently supports only language: rust",
+                    ));
+                }
+
+                let mut allow = raw.allow.unwrap_or_default();
+                allow.extend(raw.allowed.unwrap_or_default());
+
+                Ok(ContentMatcher::StutteringTypeName {
+                    language,
+                    redundant_suffixes: raw
+                        .redundant_suffixes
+                        .unwrap_or_else(stuttering::default_redundant_suffixes),
+                    module_aliases: raw.module_aliases.unwrap_or_default(),
+                    allow,
+                    suggestion: raw.suggestion,
+                })
+            }
+            "RustIndexedIteration" => Ok(ContentMatcher::RustIndexedIteration {
+                suggestion: raw.suggestion,
+            }),
+            "RustFunctionalMutation" => {
+                let patterns = raw
+                    .patterns
+                    .unwrap_or_else(default_rust_functional_mutation_patterns);
+                if patterns.is_empty() {
+                    return Err(serde::de::Error::custom("patterns cannot be empty"));
+                }
+                Ok(ContentMatcher::RustFunctionalMutation {
+                    patterns,
+                    suggestion: raw.suggestion,
+                })
+            }
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree", "RustCheckThenUnwrap", "External"],
+                &[
+                    "Regex",
+                    "SyntaxTree",
+                    "RustCheckThenUnwrap",
+                    "External",
+                    "StutteringTypeName",
+                    "RustIndexedIteration",
+                    "RustFunctionalMutation",
+                ],
             )),
         }
     }
@@ -164,6 +275,21 @@ impl ContentMatcher {
                 .next()
                 .is_some(),
             ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::StutteringTypeName { .. } => self
+                .matches_with_path_context(None, s)
+                .into_iter()
+                .next()
+                .is_some(),
+            ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
+                .into_iter()
+                .next()
+                .is_some(),
+            ContentMatcher::RustFunctionalMutation { patterns, .. } => {
+                rust_functional_mutation_matches(patterns, s)
+                    .into_iter()
+                    .next()
+                    .is_some()
+            }
         }
     }
 
@@ -187,6 +313,21 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+            ContentMatcher::StutteringTypeName { .. } => self
+                .matches_with_path_context(None, s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
+            ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
+            ContentMatcher::RustFunctionalMutation { patterns, .. } => {
+                rust_functional_mutation_matches(patterns, s)
+                    .into_iter()
+                    .map(|m| m.span)
+                    .collect()
             }
         }
     }
@@ -228,6 +369,45 @@ impl ContentMatcher {
                     Vec::new()
                 }
             }
+            ContentMatcher::StutteringTypeName { .. } => self.matches_with_path_context(None, s),
+            ContentMatcher::RustIndexedIteration { suggestion } => {
+                let mut matches = rust_indexed_iteration::matches(s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
+            }
+            ContentMatcher::RustFunctionalMutation {
+                patterns,
+                suggestion,
+            } => {
+                let mut matches = rust_functional_mutation_matches(patterns, s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
+            }
+        }
+    }
+
+    /// Get matches with capture groups using optional file path context.
+    pub fn matches_with_path_context(&self, path: Option<&Path>, s: &str) -> Vec<Match> {
+        match self {
+            ContentMatcher::StutteringTypeName {
+                language,
+                redundant_suffixes,
+                module_aliases,
+                allow,
+                suggestion,
+            } => {
+                let mut matches = stuttering::rust_type_name_matches(
+                    *language,
+                    path,
+                    s,
+                    redundant_suffixes,
+                    module_aliases,
+                    allow,
+                );
+                apply_suggestion(&mut matches, suggestion);
+                matches
+            }
+            _ => self.matches_with_context(s),
         }
     }
 
@@ -537,6 +717,39 @@ fn parse(value: Option<String>) -> Result<String, String> {
     }
 
     #[test]
+    fn test_content_matcher_stuttering_type_name_deserialize() {
+        let yaml = r#"
+            kind: StutteringTypeName
+            language: rust
+            redundant_suffixes: ["Manager", "Service"]
+            module_aliases:
+              db: ["Database"]
+            allow:
+              - "storage::StorageEngine"
+            suggestion: "Rename {{ $type }}"
+        "#;
+        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
+
+        assert!(matches!(
+            matcher,
+            ContentMatcher::StutteringTypeName {
+                language: Language::Rust,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_content_matcher_stuttering_type_name_rejects_non_rust() {
+        let yaml = r#"
+            kind: StutteringTypeName
+            language: typescript
+        "#;
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_syntax_tree_is_match() {
         let matcher = ContentMatcher::SyntaxTree {
             language: Language::Rust,
@@ -622,6 +835,20 @@ fn parse(value: Option<String>) -> Result<String, String> {
     }
 
     #[test]
+    fn test_rust_indexed_iteration_deserialize() {
+        let yaml = r#"
+            kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate()"
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid rust matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::RustIndexedIteration { .. }
+        ));
+    }
+
+    #[test]
     fn test_external_deserialize_empty_command() {
         let yaml = r#"
             kind: External
@@ -685,5 +912,29 @@ fn parse(value: Option<String>) -> Result<String, String> {
         };
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));
+    }
+
+    #[test]
+    fn test_rust_functional_mutation_deserialize() {
+        let yaml = r#"
+            kind: RustFunctionalMutation
+            patterns: [vec_push, find]
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid Rust matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::RustFunctionalMutation { .. }
+        ));
+    }
+
+    #[test]
+    fn test_rust_functional_mutation_deserialize_rejects_empty_patterns() {
+        let yaml = r#"
+            kind: RustFunctionalMutation
+            patterns: []
+        "#;
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        assert!(result.is_err());
     }
 }

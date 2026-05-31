@@ -53,6 +53,26 @@ rules:
             query: |
               (let_declaration type: (_) @type)
 
+  # Catch simple mutation-heavy Rust loops that have clear iterator
+  # equivalents. The matcher intentionally skips complex loop bodies,
+  # preallocated Vecs, unsafe contexts, and control-flow-heavy expressions.
+  - name: prefer-functional-mutation
+    description: Prefer iterator adapters over simple mutable Rust loops
+    message: "{{ $suggestion }} Then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustFunctionalMutation
+            patterns: [vec_push, find, fold]
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustFunctionalMutation
+            patterns: [vec_push, find, fold]
+
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
   - name: no-qualified-paths
