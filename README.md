@@ -37,6 +37,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
+| Functional iteration | Prefer iterator adapters over simple mutable Rust loops     |
 
 Other Attune codebases of course have other rules.
 
@@ -89,6 +90,23 @@ rules:
 ```
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
+
+Rust projects can also use the built-in `RustFunctionalMutation` matcher for
+low-noise loop rewrites such as `Vec::new()` plus `push`, `None` plus `break`,
+and accumulator reassignment that maps cleanly to `collect`, `find`, or `fold`:
+
+```yaml
+rules:
+  - name: prefer-functional-mutation
+    message: "{{ $suggestion }} Then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustFunctionalMutation
+            patterns: [vec_push, find, fold]
+```
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 

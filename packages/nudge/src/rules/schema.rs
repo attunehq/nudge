@@ -18,6 +18,7 @@ pub use url::UrlMatcher;
 mod content;
 mod path;
 mod project_state;
+mod rust_functional_mutation;
 mod syntax;
 mod url;
 

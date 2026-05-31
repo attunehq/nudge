@@ -14,7 +14,14 @@ use crate::{
     template::{self, Captures},
 };
 
-use super::{Language, TreeSitterQuery, syntax::union_of_captures};
+use super::{
+    Language, TreeSitterQuery,
+    rust_functional_mutation::{
+        RustFunctionalMutationPattern, default_rust_functional_mutation_patterns,
+        rust_functional_mutation_matches,
+    },
+    syntax::union_of_captures,
+};
 
 /// The method used to match hook content.
 ///
@@ -70,6 +77,22 @@ pub enum ContentMatcher {
         /// The command to run, as a list of arguments.
         command: Vec<String>,
     },
+
+    /// Match simple Rust mutation patterns that have clear iterator
+    /// equivalents.
+    ///
+    /// This matcher is intentionally conservative. It only reports adjacent
+    /// `let mut` plus `for` loops with exact loop-body shapes that map cleanly
+    /// to `map`/`filter_map`/`collect`, `find`/`find_map`, or `fold`.
+    RustFunctionalMutation {
+        /// Which mutation patterns to detect. Defaults to all supported
+        /// patterns.
+        patterns: Vec<RustFunctionalMutationPattern>,
+
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for ContentMatcher {
@@ -84,6 +107,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             language: Option<Language>,
             query: Option<String>,
             command: Option<Vec<String>>,
+            patterns: Option<Vec<RustFunctionalMutationPattern>>,
             suggestion: Option<String>,
             replace: Option<String>,
         }
@@ -121,9 +145,21 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 }
                 Ok(ContentMatcher::External { command })
             }
+            "RustFunctionalMutation" => {
+                let patterns = raw
+                    .patterns
+                    .unwrap_or_else(default_rust_functional_mutation_patterns);
+                if patterns.is_empty() {
+                    return Err(serde::de::Error::custom("patterns cannot be empty"));
+                }
+                Ok(ContentMatcher::RustFunctionalMutation {
+                    patterns,
+                    suggestion: raw.suggestion,
+                })
+            }
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree", "External"],
+                &["Regex", "SyntaxTree", "External", "RustFunctionalMutation"],
             )),
         }
     }
@@ -141,6 +177,12 @@ impl ContentMatcher {
                 .next()
                 .is_some(),
             ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::RustFunctionalMutation { patterns, .. } => {
+                rust_functional_mutation_matches(patterns, s)
+                    .into_iter()
+                    .next()
+                    .is_some()
+            }
         }
     }
 
@@ -160,6 +202,12 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+            ContentMatcher::RustFunctionalMutation { patterns, .. } => {
+                rust_functional_mutation_matches(patterns, s)
+                    .into_iter()
+                    .map(|m| m.span)
+                    .collect()
             }
         }
     }
@@ -195,6 +243,14 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+            ContentMatcher::RustFunctionalMutation {
+                patterns,
+                suggestion,
+            } => {
+                let mut matches = rust_functional_mutation_matches(patterns, s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
             }
         }
     }
@@ -609,5 +665,29 @@ mod tests {
         };
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));
+    }
+
+    #[test]
+    fn test_rust_functional_mutation_deserialize() {
+        let yaml = r#"
+            kind: RustFunctionalMutation
+            patterns: [vec_push, find]
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid Rust matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::RustFunctionalMutation { .. }
+        ));
+    }
+
+    #[test]
+    fn test_rust_functional_mutation_deserialize_rejects_empty_patterns() {
+        let yaml = r#"
+            kind: RustFunctionalMutation
+            patterns: []
+        "#;
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        assert!(result.is_err());
     }
 }
