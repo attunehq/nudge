@@ -55,39 +55,37 @@ fn visit_node(
     allow: &[String],
     matches: &mut Vec<Match>,
 ) {
-    if node.kind() == "mod_item" {
-        if let Some(body) = node.child_by_field_name("body") {
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .and_then(|node| node_text(node, source))
-            {
-                module_stack.push(name);
-                visit_children(
-                    body,
-                    source,
-                    module_stack,
-                    redundant_suffixes,
-                    module_aliases,
-                    allow,
-                    matches,
-                );
-                module_stack.pop();
-                return;
-            }
-        }
+    if node.kind() == "mod_item"
+        && let Some(body) = node.child_by_field_name("body")
+        && let Some(name) = node
+            .child_by_field_name("name")
+            .and_then(|node| node_text(node, source))
+    {
+        module_stack.push(name);
+        visit_children(
+            body,
+            source,
+            module_stack,
+            redundant_suffixes,
+            module_aliases,
+            allow,
+            matches,
+        );
+        module_stack.pop();
+        return;
     }
 
-    if is_type_item(node.kind()) {
-        if let Some(type_match) = type_item_match(
+    if is_type_item(node.kind())
+        && let Some(type_match) = type_item_match(
             node,
             source,
             module_stack,
             redundant_suffixes,
             module_aliases,
             allow,
-        ) {
-            matches.push(type_match);
-        }
+        )
+    {
+        matches.push(type_match);
     }
 
     visit_children(
@@ -423,7 +421,7 @@ fn configured_term(value: &str) -> String {
 
 fn to_pascal_case(value: &str) -> String {
     value
-        .split(|c: char| c == '_' || c == '-' || c == ' ')
+        .split(['_', '-', ' '])
         .filter(|part| !part.is_empty())
         .map(|part| {
             let mut chars = part.chars();
