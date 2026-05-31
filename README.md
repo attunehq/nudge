@@ -36,6 +36,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
+| Check then unwrap    | Prefer `let-else` or `match` over guard clauses plus unwrap |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 
 Other Attune codebases of course have other rules.
@@ -89,6 +90,21 @@ rules:
 ```
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
+
+For Rust guard clauses that check `Option` or `Result` state and then unwrap the same value, use the semantic `RustCheckThenUnwrap` matcher:
+
+```yaml
+version: 1
+rules:
+  - name: prefer-let-else-over-check-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
+```
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
@@ -190,14 +206,14 @@ x Found 3 issues in 2 files
 ./src/lib.rs:23 [no-inline-imports]
   Move this `use` statement to the top of the file, then retry.
 
-Checked 25 files against 6 rules
+Checked 25 files against 7 rules
 ```
 
 When all checks pass:
 
 ```
-Checked 25 files against 6 rules
-  - .nudge.yaml: 6 rules
+Checked 25 files against 7 rules
+  - .nudge.yaml: 7 rules
 ```
 
 ### Manual Testing

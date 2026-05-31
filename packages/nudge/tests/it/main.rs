@@ -15,6 +15,7 @@ mod inline_imports;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;
+mod rust_check_then_unwrap;
 mod setup;
 mod syntax_tree;
 mod user_prompt;
