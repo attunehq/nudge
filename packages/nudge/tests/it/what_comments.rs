@@ -7,7 +7,7 @@ use std::fs;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
 
-use crate::{edit_hook, nudge_binary, write_hook};
+use crate::{codex_apply_patch_hook, edit_hook, nudge_binary, write_hook};
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
@@ -52,8 +52,16 @@ rules:
 }
 
 fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
+    run_agent_hook_in_dir("claude", dir, input)
+}
+
+fn run_codex_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
+    run_agent_hook_in_dir("codex", dir, input)
+}
+
+fn run_agent_hook_in_dir(agent: &str, dir: &TempDir, input: &str) -> (i32, String) {
     let mut child = Command::new(nudge_binary())
-        .args(["claude", "hook"])
+        .args([agent, "hook"])
         .current_dir(dir.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -133,6 +141,16 @@ fn detects_obvious_what_comments_on_write() {
         let (exit_code, output) = run_hook_in_dir(&dir, &input);
         assert_denied(exit_code, &output, comment);
     }
+}
+
+#[test]
+fn detects_obvious_what_comments_on_codex_write() {
+    let dir = setup_config(write_rule());
+    let patch = "*** Begin Patch\n*** Add File: src/lib.rs\n+// Set retries to 3\n+let retries = 3;\n*** End Patch\n";
+    let input = codex_apply_patch_hook(dir.path().to_str().expect("utf-8 path"), patch);
+
+    let (exit_code, output) = run_codex_hook_in_dir(&dir, &input);
+    assert_denied(exit_code, &output, "Set retries to 3");
 }
 
 #[test]

@@ -276,6 +276,7 @@ fn state_file_path() -> Result<Option<PathBuf>> {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq as pretty_assert_eq;
     use serde_json::json;
     use tempfile::TempDir;
 
@@ -332,6 +333,6 @@ rules:
                 now,
             )
             .expect("recorded change");
-        assert_eq!(change.path, "packages/hurry/src/main.rs");
+        pretty_assert_eq!(change.path, "packages/hurry/src/main.rs");
     }
 }

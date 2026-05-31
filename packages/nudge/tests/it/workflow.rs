@@ -45,6 +45,36 @@ fn workflow_blocks_stop_until_the_agent_confirms_completion() {
 }
 
 #[test]
+fn workflow_blocks_claude_stop_until_the_agent_confirms_completion() {
+    let temp = TempDir::new().expect("temp dir");
+    write_workflow_config(&temp);
+
+    let prompt = user_prompt_hook("Fix issue #8 and prove it with tests.");
+    let (exit_code, output) = run_claude_hook_in_dir(&temp, &prompt);
+
+    pretty_assert_eq!(exit_code, 0, "prompt hook failed: {output}");
+    assert!(
+        output.contains("Nudge workflow `issue-resolution` is active"),
+        "expected workflow activation context, got: {output}"
+    );
+
+    let stop = stop_hook("Implemented the change.");
+    let (exit_code, output) = run_claude_hook_in_dir(&temp, &stop);
+
+    pretty_assert_eq!(exit_code, 0, "stop hook failed: {output}");
+    let json = serde_json::from_str::<Value>(&output).expect("valid stop json");
+    pretty_assert_eq!(json["decision"], "block");
+    assert!(
+        json["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("Fix issue #8")
+                && reason.contains("Add end-to-end tests")
+                && reason.contains("NUDGE_WORKFLOW_COMPLETE: issue-resolution")),
+        "expected continuation reason to include prompt, criteria, and token, got: {output}"
+    );
+}
+
+#[test]
 fn workflow_allows_stop_after_the_agent_confirms_completion() {
     let temp = TempDir::new().expect("temp dir");
     write_workflow_config(&temp);
@@ -93,11 +123,19 @@ workflows:
 }
 
 fn run_codex_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
+    run_agent_hook_in_dir("codex", dir, input)
+}
+
+fn run_claude_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
+    run_agent_hook_in_dir("claude", dir, input)
+}
+
+fn run_agent_hook_in_dir(agent: &str, dir: &TempDir, input: &str) -> (i32, String) {
     let state_dir = dir.path().join(".nudge-state");
     fs::create_dir_all(&state_dir).expect("create state dir");
 
     let mut child = Command::new(nudge_binary())
-        .args(["codex", "hook"])
+        .args([agent, "hook"])
         .current_dir(dir.path())
         .env("NUDGE_STATE_DIR", &state_dir)
         .stdin(Stdio::piped())

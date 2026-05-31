@@ -330,10 +330,16 @@ const DOCS: &str = cstr!("\
   <white>When to Use Each:</white>
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
+    <green>StutteringTypeName</green>
+                 Rust type names that repeat module context or generic suffixes
     <green>RustIndexedIteration</green>
                  Rust-specific `0..items.len()` iteration that indexes `items[i]`
+    <green>RustFunctionalMutation</green>
+                 Simple Rust `let mut` plus `for` loops that can become iterator chains
     <green>RustCheckThenUnwrap</green>
                   Rust Option/Result guard clauses followed by same-value unwrap
+    <green>WhatComment</green>
+                 Adjacent comments that restate what the next code already says
 
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>

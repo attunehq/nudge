@@ -1,7 +1,7 @@
 //! Test rules against sample input.
 
 use std::path::PathBuf;
-use std::{env, fs};
+use std::{env, fs, slice};
 
 use clap::Args;
 use color_eyre::eyre::{Context, Result, bail, eyre};
@@ -72,7 +72,7 @@ pub fn main(config: Config) -> Result<()> {
         let now = now_seconds();
         let mut state = InteractionState::default();
         let file_hooks = build_changed_file_hooks(&config)?;
-        state.record_file_changes(&file_hooks, std::slice::from_ref(&rule), now);
+        state.record_file_changes(&file_hooks, slice::from_ref(&rule), now);
         evaluate_hooks_with_state(&hooks, &[rule], &mut state)
     };
 

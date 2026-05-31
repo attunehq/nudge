@@ -1,5 +1,7 @@
 //! Rule evaluation for normalized hook events.
 
+use std::path::{Path, PathBuf};
+
 use color_eyre::eyre::Result;
 use indoc::formatdoc;
 use itertools::Itertools;
@@ -149,7 +151,7 @@ fn evaluate_hooks_at(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct UserPromptStateUpdate {
-    cwd: std::path::PathBuf,
+    cwd: PathBuf,
     rule_name: String,
     change_id: Option<u64>,
     change_timestamp: Option<u64>,
@@ -488,13 +490,13 @@ fn source_for_tool(tool: &ToolUse) -> Source {
 /// Evaluate all content matchers and return matches only if every matcher
 /// matched.
 fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
-    evaluate_all_file_matched(std::path::Path::new(""), content, matchers)
+    evaluate_all_file_matched(Path::new(""), content, matchers)
 }
 
 /// Evaluate all content matchers with file path context and return matches only
 /// if every matcher matched.
 fn evaluate_all_file_matched(
-    path: &std::path::Path,
+    path: &Path,
     content: &str,
     matchers: &[ContentMatcher],
 ) -> Vec<Match> {

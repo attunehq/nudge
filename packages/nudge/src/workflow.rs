@@ -4,6 +4,7 @@ use std::{
     collections::{HashSet, hash_map::DefaultHasher},
     env, fs,
     hash::{Hash, Hasher},
+    io::ErrorKind,
     path::PathBuf,
 };
 
@@ -13,7 +14,7 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    hook::{NudgeHook, Stop, UserPromptSubmit, response::HookOutcome},
+    hook::{HookContext, NudgeHook, Stop, UserPromptSubmit, response::HookOutcome},
     rules::{self, Workflow},
 };
 
@@ -192,11 +193,11 @@ fn criteria_list(done: &[String]) -> String {
         .join("\n")
 }
 
-fn read_state(context: &crate::hook::HookContext) -> Result<Option<WorkflowState>> {
+fn read_state(context: &HookContext) -> Result<Option<WorkflowState>> {
     let path = state_path(context)?;
     let content = match fs::read_to_string(&path) {
         Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error).with_context(|| format!("read workflow state: {path:?}")),
     };
 
@@ -205,7 +206,7 @@ fn read_state(context: &crate::hook::HookContext) -> Result<Option<WorkflowState
         .map(Some)
 }
 
-fn write_state(context: &crate::hook::HookContext, state: &WorkflowState) -> Result<()> {
+fn write_state(context: &HookContext, state: &WorkflowState) -> Result<()> {
     let path = state_path(context)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -215,16 +216,16 @@ fn write_state(context: &crate::hook::HookContext, state: &WorkflowState) -> Res
     fs::write(&path, content).with_context(|| format!("write workflow state: {path:?}"))
 }
 
-fn clear_state(context: &crate::hook::HookContext) -> Result<()> {
+fn clear_state(context: &HookContext) -> Result<()> {
     let path = state_path(context)?;
     match fs::remove_file(&path) {
         Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error).with_context(|| format!("remove workflow state: {path:?}")),
     }
 }
 
-fn state_path(context: &crate::hook::HookContext) -> Result<PathBuf> {
+fn state_path(context: &HookContext) -> Result<PathBuf> {
     Ok(state_dir().join(format!("{}.json", state_key(context))))
 }
 

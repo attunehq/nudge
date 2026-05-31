@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     collections::{BTreeMap, BTreeSet},
     path::{Component, Path},
 };
@@ -303,7 +304,7 @@ fn replacement_for(name: &str, module_terms: &[Term], redundant_terms: &[Term]) 
         .chain(redundant_terms)
         .map(|term| term.text.as_str())
         .collect::<Vec<_>>();
-    terms.sort_by_key(|term| std::cmp::Reverse(term.len()));
+    terms.sort_by_key(|term| Reverse(term.len()));
     terms.dedup();
 
     loop {
@@ -383,7 +384,7 @@ fn module_terms(
         }
     }
 
-    terms.sort_by_key(|term| std::cmp::Reverse(term.text.len()));
+    terms.sort_by_key(|term| Reverse(term.text.len()));
     terms
 }
 
@@ -400,7 +401,7 @@ fn redundant_terms(suffixes: &[String]) -> Vec<Term> {
         );
     }
 
-    terms.sort_by_key(|term| std::cmp::Reverse(term.text.len()));
+    terms.sort_by_key(|term| Reverse(term.text.len()));
     terms
 }
 
@@ -515,6 +516,8 @@ fn is_rust_identifier(module: &str) -> bool {
 mod tests {
     use super::*;
 
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     fn matches(path: Option<&Path>, source: &str) -> Vec<Match> {
         rust_type_name_matches(
             Language::Rust,
@@ -533,20 +536,20 @@ mod tests {
             "pub struct CasStorage;\n",
         );
 
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].captures["type"], "CasStorage");
-        assert_eq!(matches[0].captures["module"], "storage");
-        assert_eq!(matches[0].captures["replacement"], "Cas");
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(matches[0].captures["type"], "CasStorage");
+        pretty_assert_eq!(matches[0].captures["module"], "storage");
+        pretty_assert_eq!(matches[0].captures["replacement"], "Cas");
     }
 
     #[test]
     fn detects_inline_module_alias_exact() {
         let matches = matches(None, "mod db { pub struct Database; }");
 
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].captures["type"], "Database");
-        assert_eq!(matches[0].captures["term"], "Database");
-        assert_eq!(matches[0].captures["replacement"], "a concrete name");
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(matches[0].captures["type"], "Database");
+        pretty_assert_eq!(matches[0].captures["term"], "Database");
+        pretty_assert_eq!(matches[0].captures["replacement"], "a concrete name");
     }
 
     #[test]
@@ -565,13 +568,13 @@ mod tests {
 
     #[test]
     fn file_module_stack_uses_path_after_src() {
-        assert_eq!(
+        pretty_assert_eq!(
             file_module_stack(Some(Path::new(
                 "packages/nudge/src/rules/schema/content.rs"
             ))),
             vec!["rules", "schema", "content"]
         );
-        assert_eq!(
+        pretty_assert_eq!(
             file_module_stack(Some(Path::new("src/storage/mod.rs"))),
             vec!["storage"]
         );
