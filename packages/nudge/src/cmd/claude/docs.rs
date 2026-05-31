@@ -391,6 +391,34 @@ const DOCS: &str = cstr!("\
     - Skips macro invocations, including <cyan>assert_eq!(items[i], expected[i])</cyan>
     - Skips non-zero ranges such as <cyan>1..items.len()</cyan>
 
+<bold>Rust Functional Mutation Matching</bold>
+
+  Use <cyan>kind: RustFunctionalMutation</cyan> for simple Rust loops where immutable iterator
+  style is clearer than building state with <cyan>let mut</cyan>. It catches only adjacent
+  <green>let mut</green> plus <green>for</green> patterns with exact, low-noise shapes.
+
+  <white>Detected patterns:</white>
+    <green>vec_push</green>  <yellow>let mut values = Vec::new(); for item in items { values.push(...) }</yellow>
+    <green>find</green>      <yellow>let mut found = None; ... found = Some(item); break;</yellow>
+    <green>fold</green>      <yellow>let mut total = init; for item in items { total = combine(total, item); }</yellow>
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: RustFunctionalMutation</yellow>
+        <yellow>patterns: [vec_push, find, fold]</yellow> <dim># Optional; defaults to all</dim>
+
+  <white>Captures:</white>
+    <green>{{ $suggestion }}</green>  Generated guidance for the matched pattern
+    <green>{{ $kind }}</green>        One of vec_push, vec_filter_map, find, find_map, fold
+    <green>{{ $binding }}</green>     Mutable binding name
+    <green>{{ $item }}</green>        Loop item binding
+    <green>{{ $iterator }}</green>    For-loop input expression
+
+  <white>False-positive controls:</white>
+    The matcher skips unsafe contexts, complex loop bodies, loops with extra side effects,
+    preallocated vectors such as <green>Vec::with_capacity(...)</green>, and control-flow-heavy
+    expressions such as <green>?</green>, <green>return</green>, <green>break</green>, or <green>await</green>.
+
 <bold>External Program Matching</bold>
 
   Use <cyan>kind: External</cyan> to delegate matching to an external program (linter, formatter,
@@ -419,6 +447,7 @@ const DOCS: &str = cstr!("\
     <green>External</green>     Leverage existing linters (markdownlint, prettier --check, etc.)
     <green>Regex</green>        Simple patterns you can express in regex
     <green>SyntaxTree</green>   Structural patterns in supported languages
+    <green>RustFunctionalMutation</green>  Rust iterator-style loop rewrites
 
   <dim>Note: External commands add latency. Use sparingly for checks that are</dim>
   <dim>difficult or impossible to express with Regex or SyntaxTree matchers.</dim>
@@ -590,6 +619,28 @@ const DOCS: &str = cstr!("\
           <yellow>content:</yellow>
             <yellow>- kind: External</yellow>
               <yellow>command: [\"npx\", \"markdownlint\", \"--stdin\", \"-c\", \"{\\\"MD060\\\":{\\\"style\\\":\\\"aligned\\\"}}\"]</yellow>
+
+  <cyan>Prefer iterator style for simple Rust mutation loops</cyan>
+
+    <dim># Detects Vec push collection, Option search with break, and fold-like</dim>
+    <dim># accumulator reassignment. The matcher intentionally skips complex loops.</dim>
+
+    <yellow>- name: prefer-functional-mutation</yellow>
+      <yellow>description: Prefer iterator adapters over simple mutable loops</yellow>
+      <yellow>message: \"{{ $suggestion }} Then retry.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: RustFunctionalMutation</yellow>
+              <yellow>patterns: [vec_push, find, fold]</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Edit</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>new_content:</yellow>
+            <yellow>- kind: RustFunctionalMutation</yellow>
+              <yellow>patterns: [vec_push, find, fold]</yellow>
 
   <cyan>Redirect docs.rs to local source (WebFetch)</cyan>
 
