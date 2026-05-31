@@ -15,6 +15,7 @@ mod inline_imports;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;
+mod rust_indexed_iteration;
 mod setup;
 mod stuttering_types;
 mod syntax_tree;

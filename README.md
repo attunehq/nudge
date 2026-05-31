@@ -39,6 +39,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Stuttering types     | Avoid type names that repeat their Rust module context      |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
+| Indexed iteration    | Use `.iter().enumerate()` instead of `0..items.len()` loops |
 
 Other Attune codebases of course have other rules.
 
@@ -169,6 +170,11 @@ If the agent tries to stop without that line, Nudge returns a `decision: "block"
 Workflow state is stored outside the repo in Nudge's per-user data directory. Set `NUDGE_STATE_DIR` when you want to isolate state for tests or automation.
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
+
+Rust rules that need scope-aware loop analysis can use `kind: RustIndexedIteration`
+to catch `for i in 0..items.len() { items[i] }` and
+`(0..items.len()).map(|i| items[i])` while skipping unrelated indexing such as
+`args[0]`, macro arguments, and assertion macros.
 
 ### Rule Writing Is Iterative
 

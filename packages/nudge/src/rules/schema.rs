@@ -20,6 +20,7 @@ mod content;
 mod path;
 mod project_state;
 mod prompt;
+mod rust_indexed_iteration;
 mod stuttering;
 mod syntax;
 mod url;
