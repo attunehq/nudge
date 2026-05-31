@@ -46,6 +46,24 @@ rules:
           - kind: Regex
             pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
 
+  # Catch guard clauses that check Option/Result state and then unwrap the same value.
+  # Patterns include `value.is_none()`, `!value.is_some()`, `result.is_err()`,
+  # and `!result.is_ok()` followed by a same-receiver `.unwrap()`.
+  - name: prefer-let-else-over-check-unwrap
+    description: Prefer let-else or match-style control flow over check-then-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustCheckThenUnwrap
+
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
   - name: no-qualified-paths
@@ -82,3 +100,22 @@ rules:
         new_content:
           - kind: Regex
             pattern: "assert_eq!"
+
+  # Catch range-based iteration that indexes into the same collection.
+  # Skips unrelated indexing like args[0], macro arguments, and assertions.
+  - name: prefer-enumerate
+    description: Prefer enumerate over 0..items.len() indexing
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry."
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry."

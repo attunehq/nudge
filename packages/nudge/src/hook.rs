@@ -9,6 +9,7 @@ use crate::agent::AgentKind;
 pub mod apply_patch;
 pub mod evaluate;
 pub mod response;
+pub mod state;
 
 /// A Nudge hook event after provider-specific payloads have been normalized.
 #[derive(Debug, Clone, PartialEq)]
@@ -21,6 +22,9 @@ pub enum NudgeHook {
 
     /// The user submitted a prompt.
     UserPromptSubmit(UserPromptSubmit),
+
+    /// The agent is trying to stop.
+    Stop(Stop),
 
     /// A hook event Nudge does not currently handle.
     Other,
@@ -86,6 +90,19 @@ pub struct UserPromptSubmit {
 
     /// User prompt text.
     pub prompt: String,
+}
+
+/// Normalized `Stop` event.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stop {
+    /// Shared hook context.
+    pub context: HookContext,
+
+    /// Whether this stop hook is already a continuation attempt.
+    pub stop_hook_active: bool,
+
+    /// Latest assistant message text, when the provider supplies it.
+    pub last_assistant_message: Option<String>,
 }
 
 /// Normalized tool use.

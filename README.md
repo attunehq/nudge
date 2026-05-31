@@ -23,7 +23,8 @@ When something matches a rule you've defined:
 
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
-- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
+- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent, including semantic prompt reminders after relevant local file changes
+- **Workflow gate** (Stop workflows): Nudge records the prompt and done criteria, then keeps the agent going until it confirms completion
 - **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
@@ -35,8 +36,12 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | No inline imports    | Move `use` statements to the top of the file                |
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
 | Qualified paths      | Import and use shorter names instead of long paths          |
+| Stuttering types     | Avoid type names that repeat their Rust module context      |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
+| Check then unwrap    | Prefer `let-else` or `match` over guard clauses plus unwrap |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
+| Indexed iteration    | Use `.iter().enumerate()` instead of `0..items.len()` loops |
+| Functional iteration | Prefer iterator adapters over simple mutable Rust loops     |
 | Why comments         | Remove comments that restate obvious code                   |
 
 Other Attune codebases of course have other rules.
@@ -91,6 +96,63 @@ rules:
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
 
+## Rust Semantic Rules
+
+For Rust modules, use `kind: StutteringTypeName` when a type should not repeat
+context that the module path already supplies. The matcher understands inline
+modules and file-derived modules such as `src/storage.rs`, flags configured
+suffixes like `Manager`, `Service`, and `Handler`, and supports an `allow` list
+for intentional repetitions:
+
+```yaml
+content:
+  - kind: StutteringTypeName
+    language: rust
+    redundant_suffixes: ["Manager", "Service", "Handler"]
+    module_aliases:
+      db: ["Database"]
+    allow:
+      - "storage::StorageEngine"
+    suggestion: "Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}."
+```
+
+Rust rules that need scope-aware loop analysis can use `kind: RustIndexedIteration`
+to catch `for i in 0..items.len() { items[i] }` and
+`(0..items.len()).map(|i| items[i])` while skipping unrelated indexing such as
+`args[0]`, macro arguments, and assertion macros.
+
+Rust projects can also use the built-in `RustFunctionalMutation` matcher for
+low-noise loop rewrites such as `Vec::new()` plus `push`, `None` plus `break`,
+and accumulator reassignment that maps cleanly to `collect`, `find`, or `fold`:
+
+```yaml
+rules:
+  - name: prefer-functional-mutation
+    message: "{{ $suggestion }} Then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustFunctionalMutation
+            patterns: [vec_push, find, fold]
+```
+
+For Rust guard clauses that check `Option` or `Result` state and then unwrap the same value, use the semantic `RustCheckThenUnwrap` matcher:
+
+```yaml
+version: 1
+rules:
+  - name: prefer-let-else-over-check-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
+```
+
 For comments that explain what the next line already says, use `kind: WhatComment`. It is a deterministic heuristic for short adjacent line comments, with built-in passes for comments that explain reasoning, safety, concurrency, performance, compatibility, and similar constraints:
 
 ```yaml
@@ -106,6 +168,62 @@ rules:
           - kind: WhatComment
             language: rust
 ```
+
+## Context-Aware Prompt Reminders
+
+For context that should appear only after a project-specific workflow, use a stateful `UserPromptSubmit` matcher. This example reminds the agent how to test local Hurry changes after source files were touched, while avoiding unrelated "run the tests" prompts:
+
+```yaml
+version: 1
+rules:
+  - name: hurry-local-test-reminder
+    description: Use dev entrypoints when testing Hurry changes
+    message: "Use `hurry-dev` after `make install-dev`."
+    on:
+      - hook: UserPromptSubmit
+        intent:
+          examples:
+            - "let's test this"
+            - "try running it"
+            - "does this work"
+        after_file_change:
+          - file: "packages/hurry/src/**"
+            within: "1h"
+        once_per_change: true
+        cooldown: "1h"
+```
+
+`intent.examples` are matched locally with deterministic token normalization. Nudge does not call an LLM or make network requests. `after_file_change` is opt-in: Nudge stores only matching file paths, timestamps, and reminder frequency state in a local JSON file. It does not store prompt text. Set `NUDGE_STATE_DIR` to override the storage directory, or delete the state file from Nudge's local data directory to clear it.
+
+## Workflow Completion Gates
+
+Rules catch local mistakes. Workflows help Nudge ask "are we actually done?" at the end of a turn.
+
+Workflows are opt-in. Add a top-level `workflows:` list to `.nudge.yaml`. When a user prompt matches a workflow's `prompt` patterns, Nudge records that prompt and the configured `done` criteria for the session. On the `Stop` hook, Nudge blocks stopping with a continuation prompt until the assistant includes the exact confirmation line.
+
+```yaml
+version: 1
+workflows:
+  - name: issue-resolution
+    description: Finish issue work before stopping
+    prompt:
+      - kind: Regex
+        pattern: "(?i)issue #[0-9]+|pull request|\\bPR\\b"
+    done:
+      - "Add or update end-to-end tests for the requested behavior."
+      - "Implement the permanent fix."
+      - "Run the relevant tests and report exact proof."
+```
+
+For this workflow, Nudge asks the agent to include this line only after every criterion is complete:
+
+```text
+NUDGE_WORKFLOW_COMPLETE: issue-resolution
+```
+
+If the agent tries to stop without that line, Nudge returns a `decision: "block"` Stop response with the original prompt, the done criteria, and instructions to finish or verify the work. Once the confirmation appears, Nudge clears the session workflow state and lets the turn end.
+
+Workflow state is stored outside the repo in Nudge's per-user data directory. Set `NUDGE_STATE_DIR` when you want to isolate state for tests or automation.
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
@@ -191,7 +309,7 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
-`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`.
+`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`. It also ignores workflows because workflows depend on live UserPromptSubmit and Stop hook state.
 
 Example output when violations are found:
 
@@ -207,14 +325,14 @@ x Found 3 issues in 2 files
 ./src/lib.rs:23 [no-inline-imports]
   Move this `use` statement to the top of the file, then retry.
 
-Checked 25 files against 6 rules
+Checked 25 files against 7 rules
 ```
 
 When all checks pass:
 
 ```
-Checked 25 files against 6 rules
-  - .nudge.yaml: 6 rules
+Checked 25 files against 7 rules
+  - .nudge.yaml: 7 rules
 ```
 
 ### Manual Testing
@@ -224,6 +342,10 @@ You can test a specific rule with the `test` subcommand:
 ```bash
 nudge test --rule no-inline-imports --tool Write --file test.rs \
   --content $'fn main() {\n    use std::io;\n}'
+
+nudge test --rule hurry-local-test-reminder \
+  --changed-file packages/hurry/src/daemon.rs \
+  --prompt "try executing it"
 ```
 
 Or pipe raw hook JSON to nudge directly:
@@ -256,6 +378,7 @@ echo '{
 
 # Exit 0 with JSON output = Interrupt or Substitute (rule matched)
 # Exit 0 with plain text = Continue (UserPromptSubmit context injected)
+# Exit 0 with {"decision":"block"} = Stop workflow continuation
 # Exit 0 with no output = Passthrough (nothing to note)
 ```
 
