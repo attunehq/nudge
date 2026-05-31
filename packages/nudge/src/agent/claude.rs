@@ -9,7 +9,7 @@ use crate::{
     agent::AgentKind,
     hook::{
         BashInput, DeleteInput, EditInput, HookContext, NudgeHook, PermissionRequest, PreToolUse,
-        ToolUse, UserPromptSubmit, WebFetchInput, WriteInput,
+        Stop, ToolUse, UserPromptSubmit, WebFetchInput, WriteInput,
     },
 };
 
@@ -33,6 +33,14 @@ pub fn parse_hook(raw: Value) -> Result<Vec<NudgeHook>> {
         })]),
         "UserPromptSubmit" => Ok(vec![NudgeHook::UserPromptSubmit(UserPromptSubmit {
             prompt: string_field(&raw, "prompt")?.to_string(),
+            context,
+        })]),
+        "Stop" => Ok(vec![NudgeHook::Stop(Stop {
+            stop_hook_active: raw
+                .get("stop_hook_active")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            last_assistant_message: optional_string(&raw, "last_assistant_message"),
             context,
         })]),
         _ => Ok(vec![NudgeHook::Other]),
@@ -181,6 +189,21 @@ mod tests {
 
         assert!(
             matches!(hooks.as_slice(), [NudgeHook::UserPromptSubmit(payload)] if payload.prompt == "hello")
+        );
+    }
+
+    #[test]
+    fn stop_normalizes_to_stop_state() {
+        let hooks = parse_hook(json!({
+            "hook_event_name": "Stop",
+            "cwd": "/tmp",
+            "stop_hook_active": true,
+            "last_assistant_message": "done"
+        }))
+        .expect("parse hook");
+
+        assert!(
+            matches!(hooks.as_slice(), [NudgeHook::Stop(payload)] if payload.stop_hook_active && payload.last_assistant_message.as_deref() == Some("done"))
         );
     }
 

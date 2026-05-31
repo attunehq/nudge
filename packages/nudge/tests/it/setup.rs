@@ -45,7 +45,7 @@ fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
 }
 
 #[test]
-fn claude_setup_is_idempotent_and_installs_only_handled_events() {
+fn claude_setup_is_idempotent_and_installs_handled_events() {
     let temp = TempDir::new().expect("temp dir");
     let claude_dir = temp.path().join(".claude");
     let claude_dir = claude_dir.to_str().expect("utf-8 path");
@@ -72,8 +72,8 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     let json = serde_json::from_str::<Value>(&second).expect("valid json");
     assert!(json["hooks"]["PreToolUse"].is_array());
     assert!(json["hooks"]["UserPromptSubmit"].is_array());
+    assert!(json["hooks"]["Stop"].is_array());
     assert!(json["hooks"].get("PostToolUse").is_none());
-    assert!(json["hooks"].get("Stop").is_none());
     pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
         "Write|Edit|WebFetch|Bash"
@@ -87,11 +87,6 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     with_old_events["hooks"]["PostToolUse"] = json!([
         {
             "matcher": "*",
-            "hooks": [{ "type": "command", "command": command, "timeout": 5 }]
-        }
-    ]);
-    with_old_events["hooks"]["Stop"] = json!([
-        {
             "hooks": [{ "type": "command", "command": command, "timeout": 5 }]
         }
     ]);
@@ -109,7 +104,7 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     )
     .expect("valid json");
     assert!(cleaned["hooks"].get("PostToolUse").is_none());
-    assert!(cleaned["hooks"].get("Stop").is_none());
+    assert!(cleaned["hooks"]["Stop"].is_array());
 }
 
 #[test]
@@ -135,6 +130,7 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "Bash|apply_patch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
+    assert!(json["hooks"]["Stop"][0]["hooks"].is_array());
 }
 
 #[test]

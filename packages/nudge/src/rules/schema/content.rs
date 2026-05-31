@@ -1,5 +1,7 @@
 use std::{
+    collections::BTreeMap,
     io::Write,
+    path::Path,
     process::{Command, Stdio},
     sync::LazyLock,
 };
@@ -14,7 +16,9 @@ use crate::{
     template::{self, Captures},
 };
 
-use super::{Language, TreeSitterQuery, rust_indexed_iteration, syntax::union_of_captures};
+use super::{
+    Language, TreeSitterQuery, rust_indexed_iteration, stuttering, syntax::union_of_captures,
+};
 
 /// The method used to match hook content.
 ///
@@ -71,6 +75,29 @@ pub enum ContentMatcher {
         command: Vec<String>,
     },
 
+    /// Match Rust type names that repeat module context or generic suffixes.
+    StutteringTypeName {
+        /// The language grammar to use for parsing. Currently only `rust` is
+        /// supported.
+        language: Language,
+
+        /// Suffixes that do not add useful type information.
+        #[serde(default = "stuttering::default_redundant_suffixes")]
+        redundant_suffixes: Vec<String>,
+
+        /// Extra terms that should count as module context.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        module_aliases: BTreeMap<String, Vec<String>>,
+
+        /// Type names or module-qualified type names to suppress.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allow: Vec<String>,
+
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+
     /// Match Rust range-based iteration that indexes into the same collection.
     ///
     /// This catches patterns like `for i in 0..items.len() { items[i] }` and
@@ -97,6 +124,10 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             command: Option<Vec<String>>,
             suggestion: Option<String>,
             replace: Option<String>,
+            redundant_suffixes: Option<Vec<String>>,
+            module_aliases: Option<BTreeMap<String, Vec<String>>>,
+            allow: Option<Vec<String>>,
+            allowed: Option<Vec<String>>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
@@ -132,12 +163,41 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 }
                 Ok(ContentMatcher::External { command })
             }
+            "StutteringTypeName" => {
+                let language = raw
+                    .language
+                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
+                if language != Language::Rust {
+                    return Err(serde::de::Error::custom(
+                        "StutteringTypeName currently supports only language: rust",
+                    ));
+                }
+
+                let mut allow = raw.allow.unwrap_or_default();
+                allow.extend(raw.allowed.unwrap_or_default());
+
+                Ok(ContentMatcher::StutteringTypeName {
+                    language,
+                    redundant_suffixes: raw
+                        .redundant_suffixes
+                        .unwrap_or_else(stuttering::default_redundant_suffixes),
+                    module_aliases: raw.module_aliases.unwrap_or_default(),
+                    allow,
+                    suggestion: raw.suggestion,
+                })
+            }
             "RustIndexedIteration" => Ok(ContentMatcher::RustIndexedIteration {
                 suggestion: raw.suggestion,
             }),
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree", "External", "RustIndexedIteration"],
+                &[
+                    "Regex",
+                    "SyntaxTree",
+                    "External",
+                    "StutteringTypeName",
+                    "RustIndexedIteration",
+                ],
             )),
         }
     }
@@ -155,6 +215,11 @@ impl ContentMatcher {
                 .next()
                 .is_some(),
             ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::StutteringTypeName { .. } => self
+                .matches_with_path_context(None, s)
+                .into_iter()
+                .next()
+                .is_some(),
             ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
                 .into_iter()
                 .next()
@@ -179,6 +244,11 @@ impl ContentMatcher {
                     Vec::new()
                 }
             }
+            ContentMatcher::StutteringTypeName { .. } => self
+                .matches_with_path_context(None, s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
             ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
                 .into_iter()
                 .map(|m| m.span)
@@ -218,11 +288,37 @@ impl ContentMatcher {
                     Vec::new()
                 }
             }
+            ContentMatcher::StutteringTypeName { .. } => self.matches_with_path_context(None, s),
             ContentMatcher::RustIndexedIteration { suggestion } => {
                 let mut matches = rust_indexed_iteration::matches(s);
                 apply_suggestion(&mut matches, suggestion);
                 matches
             }
+        }
+    }
+
+    /// Get matches with capture groups using optional file path context.
+    pub fn matches_with_path_context(&self, path: Option<&Path>, s: &str) -> Vec<Match> {
+        match self {
+            ContentMatcher::StutteringTypeName {
+                language,
+                redundant_suffixes,
+                module_aliases,
+                allow,
+                suggestion,
+            } => {
+                let mut matches = stuttering::rust_type_name_matches(
+                    *language,
+                    path,
+                    s,
+                    redundant_suffixes,
+                    module_aliases,
+                    allow,
+                );
+                apply_suggestion(&mut matches, suggestion);
+                matches
+            }
+            _ => self.matches_with_context(s),
         }
     }
 
@@ -482,6 +578,39 @@ mod tests {
             kind: SyntaxTree
             language: rust
             query: "(not_a_real_node)"
+        "#;
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_content_matcher_stuttering_type_name_deserialize() {
+        let yaml = r#"
+            kind: StutteringTypeName
+            language: rust
+            redundant_suffixes: ["Manager", "Service"]
+            module_aliases:
+              db: ["Database"]
+            allow:
+              - "storage::StorageEngine"
+            suggestion: "Rename {{ $type }}"
+        "#;
+        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
+
+        assert!(matches!(
+            matcher,
+            ContentMatcher::StutteringTypeName {
+                language: Language::Rust,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_content_matcher_stuttering_type_name_rejects_non_rust() {
+        let yaml = r#"
+            kind: StutteringTypeName
+            language: typescript
         "#;
         let result = serde_yaml::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());

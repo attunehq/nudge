@@ -13,7 +13,7 @@ pub fn main(_config: Config) -> Result<()> {
 }
 
 const DOCS: &str = cstr!("\
-<bold><blue>Nudge Rule Writing Guide</blue></bold>
+<bold><blue>Nudge Config Writing Guide</blue></bold>
 
 <bold>What is Nudge?</bold>
 
@@ -25,9 +25,9 @@ const DOCS: &str = cstr!("\
   a colleague tapping you on the shoulder. The messages are direct (sometimes
   blunt) because that's what cuts through when you're focused.
 
-<bold>Rule File Locations</bold>
+<bold>Config File Locations</bold>
 
-  Rules are loaded from these locations (all additive):
+  Rules and workflows are loaded from these locations (all additive):
 
     <cyan>$CONFIG_DIR/rules.yaml</cyan>        <dim>User-level rules</dim>
     <cyan>.nudge.yaml</cyan>                   <dim>Project root</dim>
@@ -66,6 +66,51 @@ const DOCS: &str = cstr!("\
               <yellow>pattern: \"your-regex\"</yellow>
               <yellow>suggestion: \"optional\"</yellow>
 
+        <yellow>- hook: UserPromptSubmit</yellow>    <dim># Inject context after matching user prompts</dim>
+          <yellow>prompt:</yellow>                   <dim># Optional regex patterns</dim>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"your-regex\"</yellow>
+          <yellow>intent:</yellow>                   <dim># Optional local semantic matcher</dim>
+            <yellow>examples: [\"try running it\", \"does this work\"]</yellow>
+            <yellow>threshold: 0.60</yellow>
+          <yellow>after_file_change:</yellow>        <dim># Optional local state gate</dim>
+            <yellow>- file: \"src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>     <dim># Optional frequency control</dim>
+          <yellow>cooldown: \"1h\"</yellow>
+
+<bold>Workflow Format</bold>
+
+  Workflows are opt-in completion gates. They activate on matching user prompts,
+  record the original prompt and done criteria for the session, and use Stop hooks
+  to keep the agent working until it confirms completion.
+
+  <yellow>version: 1</yellow>
+
+  <yellow>workflows:</yellow>
+    <yellow>- name: issue-resolution</yellow>
+      <yellow>description: Finish issue work before stopping</yellow> <dim># Optional</dim>
+      <yellow>prompt:</yellow>                       <dim># All patterns must match to activate</dim>
+        <yellow>- kind: Regex</yellow>
+          <yellow>pattern: \"(?i)issue #[0-9]+|pull request|\\\\bPR\\\\b\"</yellow>
+      <yellow>done:</yellow>
+        <yellow>- \"Add or update end-to-end tests.\"</yellow>
+        <yellow>- \"Implement the permanent fix.\"</yellow>
+        <yellow>- \"Run relevant tests and report exact proof.\"</yellow>
+
+  When active, Nudge tells the agent to include this exact line only after every
+  criterion is complete:
+
+    <green>NUDGE_WORKFLOW_COMPLETE: issue-resolution</green>
+
+  If Stop fires before that line appears, Nudge returns <cyan>decision: \"block\"</cyan>
+  with the original prompt, done criteria, and continuation instructions. Once the
+  confirmation line appears, Nudge clears the session workflow state and lets Stop
+  pass through.
+
+  Workflow state is stored in Nudge's per-user data directory. Set
+  <cyan>NUDGE_STATE_DIR</cyan> to isolate state for tests or automation.
+
 <bold>Hook Types</bold>
 
   <green>PreToolUse</green>        Triggers before provider-supported Write/Edit/WebFetch/Bash
@@ -73,7 +118,13 @@ const DOCS: &str = cstr!("\
                     rewrite the command and allow it to proceed.
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
-                    (injects context into the conversation).
+                    (injects context into the conversation). Supports regex
+                    prompt matching, local example-based intent matching, and
+                    opt-in local file-change gates.
+
+  <green>Stop</green>              Triggers when the agent tries to finish. Workflow gates can
+                    return <cyan>decision: \"block\"</cyan> to continue the turn until done
+                    criteria are confirmed.
 
 <bold>Tool Types (PreToolUse only)</bold>
 
@@ -103,6 +154,7 @@ const DOCS: &str = cstr!("\
   <green>PreToolUse Bash</green>              yes             partial, Codex hook coverage is incomplete for some shell paths
   <green>PermissionRequest</green>            parsed only     parsed only
   <green>UserPromptSubmit</green>             yes             yes
+  <green>Stop workflows</green>               yes             yes
 
   <dim>Delete and PermissionRequest are parsed so Nudge can name them precisely, but</dim>
   <dim>they do not have YAML matchers yet. Codex apply_patch is an adapter detail:</dim>
@@ -174,6 +226,42 @@ const DOCS: &str = cstr!("\
   <dim>CI note: nudge check ignores substitute rules. Check mode scans repository</dim>
   <dim>files against file-based block rules; substitutions need a live Bash hook</dim>
   <dim>payload and a provider that can receive updatedInput.</dim>
+
+<bold>Prompt Intent and Local Interaction State</bold>
+
+  UserPromptSubmit rules can combine regex prompt matching with <cyan>intent:</cyan>,
+  <cyan>after_file_change:</cyan>, <cyan>once_per_change:</cyan>, and <cyan>cooldown:</cyan>.
+  This is useful for project workflow reminders that should fire after relevant
+  edits, such as \"try running it\" after changing a local daemon.
+
+  <white>Basic Syntax:</white>
+    <yellow>- name: hurry-local-test-reminder</yellow>
+      <yellow>description: Use dev entrypoints when testing Hurry changes</yellow>
+      <yellow>message: \"Use `hurry-dev` after `make install-dev`.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: UserPromptSubmit</yellow>
+          <yellow>intent:</yellow>
+            <yellow>examples:</yellow>
+              <yellow>- \"let's test this\"</yellow>
+              <yellow>- \"try running it\"</yellow>
+              <yellow>- \"does this work\"</yellow>
+          <yellow>after_file_change:</yellow>
+            <yellow>- file: \"packages/hurry/src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>
+          <yellow>cooldown: \"1h\"</yellow>
+
+  <white>How It Works:</white>
+    1. <cyan>intent.examples</cyan> are matched with deterministic local token normalization.
+    2. <cyan>after_file_change</cyan> records only matching file paths and timestamps.
+    3. <cyan>once_per_change</cyan> suppresses repeats until another matching file changes.
+    4. <cyan>cooldown</cyan> suppresses reminders until it elapses; a newer
+       matching file change is allowed when <cyan>once_per_change</cyan> is true.
+
+  <white>Privacy:</white>
+    Nudge does not store prompt text and does not call an LLM or make network
+    requests. Stateful prompt rules are opt-in. State is a local JSON file in
+    Nudge's local data directory; set <cyan>NUDGE_STATE_DIR</cyan> to override it.
 
 <bold>How Messages Are Displayed</bold>
 
@@ -247,6 +335,36 @@ const DOCS: &str = cstr!("\
 
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
+
+<bold>Rust Stuttering Type Names</bold>
+
+  Use <cyan>kind: StutteringTypeName</cyan> to catch Rust types that repeat module
+  context or generic suffixes. It parses Rust with tree-sitter, understands inline
+  modules and file-derived modules like <cyan>src/storage.rs</cyan>, and reports the
+  type identifier span.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: StutteringTypeName</yellow>
+        <yellow>language: rust</yellow>
+        <yellow>redundant_suffixes: [\"Manager\", \"Service\", \"Handler\"]</yellow>
+        <yellow>module_aliases:</yellow>
+          <yellow>db: [\"Database\"]</yellow>
+        <yellow>allow:</yellow>
+          <yellow>- \"storage::StorageEngine\"</yellow>
+        <yellow>suggestion: \"Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}.\"</yellow>
+
+  <white>Captures:</white>
+    <green>{{ $type }}</green>         Type name that matched, e.g. <cyan>CasStorage</cyan>
+    <green>{{ $kind }}</green>         Rust item kind: struct, enum, trait, type, or union
+    <green>{{ $module }}</green>       Module path, e.g. <cyan>storage</cyan> or <cyan>auth::jwt</cyan>
+    <green>{{ $term }}</green>         Redundant term, e.g. <cyan>Storage</cyan> or <cyan>Manager</cyan>
+    <green>{{ $replacement }}</green>  Best mechanical rename, or \"a concrete name\"
+    <green>{{ $reason }}</green>       Human-readable explanation for the match
+
+  <white>False Positive Controls:</white>
+    <green>allow</green> accepts exact type names or module-qualified names. Use it for
+    intentional domain phrases where the repetition is useful.
 
 <bold>Rust Indexed Iteration Matching</bold>
 
@@ -363,6 +481,24 @@ const DOCS: &str = cstr!("\
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"(?i)start.*(server|dev)|run.*local\"</yellow>
 
+  <cyan>Inject workflow context after relevant edits (UserPromptSubmit)</cyan>
+
+    <yellow>- name: hurry-local-test-reminder</yellow>
+      <yellow>description: Use dev entrypoints when testing Hurry changes</yellow>
+      <yellow>message: \"Use `hurry-dev` after `make install-dev`.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: UserPromptSubmit</yellow>
+          <yellow>intent:</yellow>
+            <yellow>examples:</yellow>
+              <yellow>- \"let's test this\"</yellow>
+              <yellow>- \"try running it\"</yellow>
+              <yellow>- \"does this work\"</yellow>
+          <yellow>after_file_change:</yellow>
+            <yellow>- file: \"packages/hurry/src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>
+          <yellow>cooldown: \"1h\"</yellow>
+
   <cyan>Suggest .expect() instead of .unwrap() (with suggestions)</cyan>
 
     <yellow>- name: no-unwrap</yellow>
@@ -397,6 +533,28 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Block stuttering Rust type names</cyan>
+
+    <dim># Flags names like storage::CasStorage, cache::KeyCache, auth::JwtManager,</dim>
+    <dim># and db::Database while allowing intentional names.</dim>
+
+    <yellow>- name: rust-stuttering-types</yellow>
+      <yellow>description: Avoid repeating module context in Rust type names</yellow>
+      <yellow>message: \"{{ $suggestion }}\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: StutteringTypeName</yellow>
+              <yellow>language: rust</yellow>
+              <yellow>redundant_suffixes: [\"Manager\", \"Service\", \"Handler\"]</yellow>
+              <yellow>module_aliases:</yellow>
+                <yellow>db: [\"Database\"]</yellow>
+              <yellow>allow:</yellow>
+                <yellow>- \"storage::StorageEngine\"</yellow>
+              <yellow>suggestion: \"Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}.\"</yellow>
 
   <cyan>Prefer enumerate over range indexing (RustIndexedIteration)</cyan>
 
@@ -505,6 +663,9 @@ const DOCS: &str = cstr!("\
 
   Test a specific rule <dim>(run with `--help` for options)</dim>
   <cyan>nudge test</cyan>
+
+  Simulate a prior file change for stateful UserPromptSubmit rules
+  <cyan>nudge test --rule hurry-local-test-reminder --changed-file packages/hurry/src/daemon.rs --prompt \"try executing it\"</cyan>
 
 <bold>Rule Writing is Iterative</bold>
 
