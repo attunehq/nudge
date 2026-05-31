@@ -250,7 +250,6 @@ rules:
                 pattern: "^main$"
 "#;
 
-    // Create git repo on main branch
     let dir = setup_git_repo("main", config);
 
     // Should match: git push on main branch
@@ -291,7 +290,6 @@ rules:
                 pattern: "^main$"
 "#;
 
-    // Create git repo on feature branch
     let dir = setup_git_repo("feature-branch", config);
 
     // Should NOT match: git push on feature branch (not main)
@@ -396,7 +394,6 @@ rules:
                 pattern: "^(main|master)$"
 "#;
 
-    // Create git repo on main branch
     let dir = setup_git_repo("main", config);
 
     // Should match: git push on main branch

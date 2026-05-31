@@ -14,7 +14,7 @@ use crate::{
     template::{self, Captures},
 };
 
-use super::{Language, TreeSitterQuery, syntax::union_of_captures};
+use super::{Language, TreeSitterQuery, syntax::union_of_captures, what_comment};
 
 /// The method used to match hook content.
 ///
@@ -70,6 +70,16 @@ pub enum ContentMatcher {
         /// The command to run, as a list of arguments.
         command: Vec<String>,
     },
+
+    /// Match comments that restate obvious code instead of explaining why.
+    WhatComment {
+        /// The language grammar/comment style to use.
+        language: Language,
+
+        /// Optional suggestion template, same as Regex.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for ContentMatcher {
@@ -121,9 +131,18 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 }
                 Ok(ContentMatcher::External { command })
             }
+            "WhatComment" => {
+                let language = raw
+                    .language
+                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
+                Ok(ContentMatcher::WhatComment {
+                    language,
+                    suggestion: raw.suggestion,
+                })
+            }
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree", "External"],
+                &["Regex", "SyntaxTree", "External", "WhatComment"],
             )),
         }
     }
@@ -141,6 +160,10 @@ impl ContentMatcher {
                 .next()
                 .is_some(),
             ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::WhatComment { language, .. } => what_comment::matches(*language, s)
+                .into_iter()
+                .next()
+                .is_some(),
         }
     }
 
@@ -161,6 +184,10 @@ impl ContentMatcher {
                     Vec::new()
                 }
             }
+            ContentMatcher::WhatComment { language, .. } => what_comment::matches(*language, s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
         }
     }
 
@@ -195,6 +222,14 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+            ContentMatcher::WhatComment {
+                language,
+                suggestion,
+            } => {
+                let mut matches = what_comment::matches(*language, s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
             }
         }
     }
@@ -609,5 +644,38 @@ mod tests {
         };
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));
+    }
+
+    #[test]
+    fn test_what_comment_deserialize() {
+        let yaml = r#"
+            kind: WhatComment
+            language: rust
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid what-comment matcher yaml");
+        assert!(matches!(matcher, ContentMatcher::WhatComment { .. }));
+    }
+
+    #[test]
+    fn test_what_comment_captures_comment_and_code() {
+        let matcher = ContentMatcher::WhatComment {
+            language: Language::Rust,
+            suggestion: None,
+        };
+        let matches = matcher.matches_with_context(
+            "// Rename the temp file to the target path\n\
+             tokio::fs::rename(temp_path, target).await?;\n",
+        );
+
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
+            matches[0].captures.get("comment"),
+            Some(&"Rename the temp file to the target path".to_string())
+        );
+        pretty_assert_eq!(
+            matches[0].captures.get("code"),
+            Some(&"tokio::fs::rename(temp_path, target).await?;".to_string())
+        );
     }
 }

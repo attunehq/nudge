@@ -20,6 +20,7 @@ mod path;
 mod project_state;
 mod syntax;
 mod url;
+mod what_comment;
 
 /// A rule configuration file.
 #[derive(Debug, Clone, Deserialize)]

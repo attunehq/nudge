@@ -78,7 +78,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
-- `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
+- `src/rules/schema/` - Focused matcher implementations for content, comments, glob paths, project state, tree-sitter syntax, and URLs
 - `src/snippet.rs` - Code snippet rendering for rule violations (uses `annotate-snippets`)
 
 ### How Nudge Communicates

@@ -19,6 +19,7 @@ mod setup;
 mod syntax_tree;
 mod user_prompt;
 mod webfetch;
+mod what_comments;
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -173,7 +174,6 @@ fn run_agent_hook(agent: &str, input: &str) -> (i32, String) {
         .spawn()
         .expect("failed to spawn nudge");
 
-    // Write input to stdin
     {
         let stdin = child.stdin.as_mut().expect("failed to get stdin");
         stdin

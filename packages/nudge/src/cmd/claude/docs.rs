@@ -246,6 +246,33 @@ const DOCS: &str = cstr!("\
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
 
+<bold>What Comment Matching</bold>
+
+  Use <cyan>kind: WhatComment</cyan> to catch short adjacent line comments that restate
+  obvious code instead of explaining why the code exists.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: WhatComment</yellow>
+        <yellow>language: rust</yellow>              <dim># Required</dim>
+        <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
+
+  <white>How It Works:</white>
+    - Looks only at one- or two-line comments immediately followed by code
+    - Compares meaningful comment words with tokens/concepts from the next statement
+    - Flags obvious cases like \"Set x to 5\", \"Call process\", or \"Loop through items\"
+    - Passes doc comments, TODO/FIXME labels, and comments with why/safety/performance signals
+
+  <white>Captures:</white>
+    <green>{{ $comment }}</green>        Comment text without the marker
+    <green>{{ $code }}</green>           The adjacent code window being compared
+    <green>{{ $matched_tokens }}</green> Tokens that made the comment look redundant
+
+  <white>When to Use:</white>
+    <green>WhatComment</green>  Enforce \"comments explain why, not what\" without an LLM or network call
+    <green>SyntaxTree</green>   Precise structural rules for one language
+    <green>Regex</green>        Exact text patterns that are cheap and obvious
+
 <bold>External Program Matching</bold>
 
   Use <cyan>kind: External</cyan> to delegate matching to an external program (linter, formatter,
@@ -370,6 +397,22 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Block comments that explain what instead of why</cyan>
+
+    <dim># Flags comments like `// Set x to 5` before `let x = 5;`, while</dim>
+    <dim># preserving comments that explain safety, concurrency, performance, etc.</dim>
+
+    <yellow>- name: no-what-comments</yellow>
+      <yellow>description: Comments should explain why, not restate obvious code</yellow>
+      <yellow>message: \"Remove this comment or explain why the code exists, then retry.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: WhatComment</yellow>
+              <yellow>language: rust</yellow>
 
   <cyan>Enforce markdown table formatting (External)</cyan>
 

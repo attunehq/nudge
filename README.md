@@ -37,6 +37,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
+| Why comments         | Remove comments that restate obvious code                   |
 
 Other Attune codebases of course have other rules.
 
@@ -89,6 +90,22 @@ rules:
 ```
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
+
+For comments that explain what the next line already says, use `kind: WhatComment`. It is a deterministic heuristic for short adjacent line comments, with built-in passes for comments that explain reasoning, safety, concurrency, performance, compatibility, and similar constraints:
+
+```yaml
+version: 1
+rules:
+  - name: no-what-comments
+    message: "Remove this comment or explain why the code exists, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: WhatComment
+            language: rust
+```
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
