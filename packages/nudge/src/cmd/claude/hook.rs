@@ -6,7 +6,11 @@ use clap::Args;
 use color_eyre::{Result, eyre::Context};
 use nudge::{
     agent::{AgentKind, claude},
-    hook::{evaluate::evaluate_hooks, response},
+    hook::{
+        evaluate::{evaluate_hooks, evaluate_hooks_with_state},
+        response,
+        state::{InteractionState, rules_need_interaction_state},
+    },
     rules,
 };
 use tracing::instrument;
@@ -21,5 +25,14 @@ pub fn main(_config: Config) -> Result<()> {
     let hooks = claude::parse_hook(raw).context("parse Claude hook event")?;
 
     let rules = rules::load_all().context("load rules")?;
-    response::emit(AgentKind::Claude, evaluate_hooks(&hooks, &rules))
+    let outcome = if rules_need_interaction_state(&rules) {
+        let mut state = InteractionState::load().context("load interaction state")?;
+        let outcome = evaluate_hooks_with_state(&hooks, &rules, &mut state);
+        state.save().context("save interaction state")?;
+        outcome
+    } else {
+        evaluate_hooks(&hooks, &rules)
+    };
+
+    response::emit(AgentKind::Claude, outcome)
 }

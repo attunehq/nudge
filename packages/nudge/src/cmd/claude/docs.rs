@@ -66,6 +66,19 @@ const DOCS: &str = cstr!("\
               <yellow>pattern: \"your-regex\"</yellow>
               <yellow>suggestion: \"optional\"</yellow>
 
+        <yellow>- hook: UserPromptSubmit</yellow>    <dim># Inject context after matching user prompts</dim>
+          <yellow>prompt:</yellow>                   <dim># Optional regex patterns</dim>
+            <yellow>- kind: Regex</yellow>
+              <yellow>pattern: \"your-regex\"</yellow>
+          <yellow>intent:</yellow>                   <dim># Optional local semantic matcher</dim>
+            <yellow>examples: [\"try running it\", \"does this work\"]</yellow>
+            <yellow>threshold: 0.60</yellow>
+          <yellow>after_file_change:</yellow>        <dim># Optional local state gate</dim>
+            <yellow>- file: \"src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>     <dim># Optional frequency control</dim>
+          <yellow>cooldown: \"1h\"</yellow>
+
 <bold>Hook Types</bold>
 
   <green>PreToolUse</green>        Triggers before provider-supported Write/Edit/WebFetch/Bash
@@ -73,7 +86,9 @@ const DOCS: &str = cstr!("\
                     rewrite the command and allow it to proceed.
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
-                    (injects context into the conversation).
+                    (injects context into the conversation). Supports regex
+                    prompt matching, local example-based intent matching, and
+                    opt-in local file-change gates.
 
 <bold>Tool Types (PreToolUse only)</bold>
 
@@ -174,6 +189,42 @@ const DOCS: &str = cstr!("\
   <dim>CI note: nudge check ignores substitute rules. Check mode scans repository</dim>
   <dim>files against file-based block rules; substitutions need a live Bash hook</dim>
   <dim>payload and a provider that can receive updatedInput.</dim>
+
+<bold>Prompt Intent and Local Interaction State</bold>
+
+  UserPromptSubmit rules can combine regex prompt matching with <cyan>intent:</cyan>,
+  <cyan>after_file_change:</cyan>, <cyan>once_per_change:</cyan>, and <cyan>cooldown:</cyan>.
+  This is useful for project workflow reminders that should fire after relevant
+  edits, such as \"try running it\" after changing a local daemon.
+
+  <white>Basic Syntax:</white>
+    <yellow>- name: hurry-local-test-reminder</yellow>
+      <yellow>description: Use dev entrypoints when testing Hurry changes</yellow>
+      <yellow>message: \"Use `hurry-dev` after `make install-dev`.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: UserPromptSubmit</yellow>
+          <yellow>intent:</yellow>
+            <yellow>examples:</yellow>
+              <yellow>- \"let's test this\"</yellow>
+              <yellow>- \"try running it\"</yellow>
+              <yellow>- \"does this work\"</yellow>
+          <yellow>after_file_change:</yellow>
+            <yellow>- file: \"packages/hurry/src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>
+          <yellow>cooldown: \"1h\"</yellow>
+
+  <white>How It Works:</white>
+    1. <cyan>intent.examples</cyan> are matched with deterministic local token normalization.
+    2. <cyan>after_file_change</cyan> records only matching file paths and timestamps.
+    3. <cyan>once_per_change</cyan> suppresses repeats until another matching file changes.
+    4. <cyan>cooldown</cyan> suppresses reminders until it elapses; a newer
+       matching file change is allowed when <cyan>once_per_change</cyan> is true.
+
+  <white>Privacy:</white>
+    Nudge does not store prompt text and does not call an LLM or make network
+    requests. Stateful prompt rules are opt-in. State is a local JSON file in
+    Nudge's local data directory; set <cyan>NUDGE_STATE_DIR</cyan> to override it.
 
 <bold>How Messages Are Displayed</bold>
 
@@ -336,6 +387,24 @@ const DOCS: &str = cstr!("\
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"(?i)start.*(server|dev)|run.*local\"</yellow>
 
+  <cyan>Inject workflow context after relevant edits (UserPromptSubmit)</cyan>
+
+    <yellow>- name: hurry-local-test-reminder</yellow>
+      <yellow>description: Use dev entrypoints when testing Hurry changes</yellow>
+      <yellow>message: \"Use `hurry-dev` after `make install-dev`.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: UserPromptSubmit</yellow>
+          <yellow>intent:</yellow>
+            <yellow>examples:</yellow>
+              <yellow>- \"let's test this\"</yellow>
+              <yellow>- \"try running it\"</yellow>
+              <yellow>- \"does this work\"</yellow>
+          <yellow>after_file_change:</yellow>
+            <yellow>- file: \"packages/hurry/src/**\"</yellow>
+              <yellow>within: \"1h\"</yellow>
+          <yellow>once_per_change: true</yellow>
+          <yellow>cooldown: \"1h\"</yellow>
+
   <cyan>Suggest .expect() instead of .unwrap() (with suggestions)</cyan>
 
     <yellow>- name: no-unwrap</yellow>
@@ -462,6 +531,9 @@ const DOCS: &str = cstr!("\
 
   Test a specific rule <dim>(run with `--help` for options)</dim>
   <cyan>nudge test</cyan>
+
+  Simulate a prior file change for stateful UserPromptSubmit rules
+  <cyan>nudge test --rule hurry-local-test-reminder --changed-file packages/hurry/src/daemon.rs --prompt \"try executing it\"</cyan>
 
 <bold>Rule Writing is Iterative</bold>
 

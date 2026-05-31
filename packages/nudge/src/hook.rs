@@ -9,6 +9,7 @@ use crate::agent::AgentKind;
 pub mod apply_patch;
 pub mod evaluate;
 pub mod response;
+pub mod state;
 
 /// A Nudge hook event after provider-specific payloads have been normalized.
 #[derive(Debug, Clone, PartialEq)]
