@@ -26,6 +26,7 @@ mod rust_indexed_iteration;
 mod stuttering;
 mod syntax;
 mod url;
+mod what_comment;
 
 /// A rule configuration file.
 #[derive(Debug, Clone, Deserialize)]

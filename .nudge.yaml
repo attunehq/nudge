@@ -169,6 +169,24 @@ rules:
                   (#eq? @method "unwrap"))
                 arguments: (arguments))
 
+  # Catch comments that explain what obvious code does instead of why it exists.
+  - name: no-what-comments
+    description: Comments should explain why, not restate obvious code
+    message: "Remove this comment or explain why the code exists, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: WhatComment
+            language: rust
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: WhatComment
+            language: rust
+
   # Redirect docs.rs fetches to local cargo registry.
   # Demonstrates the WebFetch matcher with URL capture groups.
   - name: prefer-local-docs

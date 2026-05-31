@@ -214,7 +214,6 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         for path in paths {
             let path_str = path.to_string_lossy();
 
-            // Check if it's a glob pattern
             if path_str.contains('*') || path_str.contains('?') || path_str.contains('[') {
                 let pattern = Pattern::new(&path_str)
                     .with_context(|| format!("invalid glob pattern: {path_str}"))?;

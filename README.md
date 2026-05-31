@@ -42,6 +42,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 | Indexed iteration    | Use `.iter().enumerate()` instead of `0..items.len()` loops |
 | Functional iteration | Prefer iterator adapters over simple mutable Rust loops     |
+| Why comments         | Remove comments that restate obvious code                   |
 
 Other Attune codebases of course have other rules.
 
@@ -150,6 +151,22 @@ rules:
         file: "**/*.rs"
         content:
           - kind: RustCheckThenUnwrap
+```
+
+For comments that explain what the next line already says, use `kind: WhatComment`. It is a deterministic heuristic for short adjacent line comments, with built-in passes for comments that explain reasoning, safety, concurrency, performance, compatibility, and similar constraints:
+
+```yaml
+version: 1
+rules:
+  - name: no-what-comments
+    message: "Remove this comment or explain why the code exists, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: WhatComment
+            language: rust
 ```
 
 ## Context-Aware Prompt Reminders
