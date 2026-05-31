@@ -28,7 +28,48 @@ pub struct RuleConfig {
     pub version: MustBe!(1),
 
     /// The rules defined in this file.
+    #[serde(default)]
     pub rules: Vec<Rule>,
+
+    /// Workflow completion gates defined in this file.
+    #[serde(default)]
+    pub workflows: Vec<Workflow>,
+}
+
+/// A workflow completion gate.
+///
+/// Workflows are opt-in stop-time checks. A workflow activates when a matching
+/// user prompt is submitted, stores the original prompt for the session, and
+/// asks the agent to confirm all configured done criteria before `Stop` can
+/// pass through.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Workflow {
+    /// Unique identifier for this workflow.
+    pub name: String,
+
+    /// Human-readable description of this workflow.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Prompt patterns that activate this workflow.
+    #[serde(default)]
+    pub prompt: Vec<ContentMatcher>,
+
+    /// Completion criteria the agent must verify before stopping.
+    #[serde(default)]
+    pub done: Vec<String>,
+}
+
+impl Workflow {
+    /// Returns whether this workflow should activate for a user prompt.
+    pub fn matches_prompt(&self, prompt: &str) -> bool {
+        self.prompt.iter().all(|matcher| matcher.is_match(prompt))
+    }
+
+    /// The exact line the agent must include to confirm completion.
+    pub fn confirmation_token(&self) -> String {
+        format!("NUDGE_WORKFLOW_COMPLETE: {}", self.name)
+    }
 }
 
 /// A single rule definition.
