@@ -14,7 +14,7 @@ use crate::{
     template::{self, Captures},
 };
 
-use super::{Language, TreeSitterQuery, syntax::union_of_captures};
+use super::{Language, TreeSitterQuery, rust_indexed_iteration, syntax::union_of_captures};
 
 /// The method used to match hook content.
 ///
@@ -70,6 +70,17 @@ pub enum ContentMatcher {
         /// The command to run, as a list of arguments.
         command: Vec<String>,
     },
+
+    /// Match Rust range-based iteration that indexes into the same collection.
+    ///
+    /// This catches patterns like `for i in 0..items.len() { items[i] }` and
+    /// `(0..items.len()).map(|i| items[i])` while ignoring unrelated indexing
+    /// such as `args[0]` and macro token trees.
+    RustIndexedIteration {
+        /// Optional suggestion template, same as Regex and SyntaxTree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
 }
 
 impl<'de> Deserialize<'de> for ContentMatcher {
@@ -121,9 +132,12 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 }
                 Ok(ContentMatcher::External { command })
             }
+            "RustIndexedIteration" => Ok(ContentMatcher::RustIndexedIteration {
+                suggestion: raw.suggestion,
+            }),
             other => Err(serde::de::Error::unknown_variant(
                 other,
-                &["Regex", "SyntaxTree", "External"],
+                &["Regex", "SyntaxTree", "External", "RustIndexedIteration"],
             )),
         }
     }
@@ -141,6 +155,10 @@ impl ContentMatcher {
                 .next()
                 .is_some(),
             ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
+                .into_iter()
+                .next()
+                .is_some(),
         }
     }
 
@@ -161,6 +179,10 @@ impl ContentMatcher {
                     Vec::new()
                 }
             }
+            ContentMatcher::RustIndexedIteration { .. } => rust_indexed_iteration::matches(s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
         }
     }
 
@@ -195,6 +217,11 @@ impl ContentMatcher {
                 } else {
                     Vec::new()
                 }
+            }
+            ContentMatcher::RustIndexedIteration { suggestion } => {
+                let mut matches = rust_indexed_iteration::matches(s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
             }
         }
     }
@@ -543,6 +570,20 @@ mod tests {
         let matcher =
             serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(matcher, ContentMatcher::External { .. }));
+    }
+
+    #[test]
+    fn test_rust_indexed_iteration_deserialize() {
+        let yaml = r#"
+            kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate()"
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid rust matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::RustIndexedIteration { .. }
+        ));
     }
 
     #[test]

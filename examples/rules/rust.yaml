@@ -82,3 +82,22 @@ rules:
         new_content:
           - kind: Regex
             pattern: "assert_eq!"
+
+  # Catch range-based iteration that indexes into the same collection.
+  # Skips unrelated indexing like args[0], macro arguments, and assertions.
+  - name: prefer-enumerate
+    description: Prefer enumerate over 0..items.len() indexing
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry."
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustIndexedIteration
+            suggestion: "Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry."

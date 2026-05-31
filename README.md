@@ -37,6 +37,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
+| Indexed iteration    | Use `.iter().enumerate()` instead of `0..items.len()` loops |
 
 Other Attune codebases of course have other rules.
 
@@ -91,6 +92,11 @@ rules:
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
 
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
+
+Rust rules that need scope-aware loop analysis can use `kind: RustIndexedIteration`
+to catch `for i in 0..items.len() { items[i] }` and
+`(0..items.len()).map(|i| items[i])` while skipping unrelated indexing such as
+`args[0]`, macro arguments, and assertion macros.
 
 ### Rule Writing Is Iterative
 

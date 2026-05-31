@@ -18,6 +18,7 @@ pub use url::UrlMatcher;
 mod content;
 mod path;
 mod project_state;
+mod rust_indexed_iteration;
 mod syntax;
 mod url;
 

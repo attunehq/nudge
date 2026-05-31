@@ -242,9 +242,36 @@ const DOCS: &str = cstr!("\
   <white>When to Use Each:</white>
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
+    <green>RustIndexedIteration</green>
+                 Rust-specific `0..items.len()` iteration that indexes `items[i]`
 
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
+
+<bold>Rust Indexed Iteration Matching</bold>
+
+  Use <cyan>kind: RustIndexedIteration</cyan> to catch Rust iteration that ranges over
+  <cyan>0..collection.len()</cyan> and then indexes the same collection with the loop
+  or closure index. It is purpose-built for the common enumerate rewrite:
+
+    <dim>for i in 0..items.len() { let item = &items[i]; }</dim>
+    <dim>(0..items.len()).map(|i| items[i].clone())</dim>
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: RustIndexedIteration</yellow>
+        <yellow>suggestion: \"Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry.\"</yellow>
+
+  <white>Captures:</white>
+    <green>{{ $collection }}</green>  The collection used in both `.len()` and indexing
+    <green>{{ $index }}</green>       The loop or closure index variable
+    <green>{{ $indexed }}</green>     The matched index expression, such as `items[i]`
+
+  <white>False-positive controls:</white>
+    - Matches only zero-based ranges over the same collection: <cyan>0..items.len()</cyan>
+    - Skips unrelated literal indexing such as <cyan>args[0]</cyan> and <cyan>matches[1]</cyan>
+    - Skips macro invocations, including <cyan>assert_eq!(items[i], expected[i])</cyan>
+    - Skips non-zero ranges such as <cyan>1..items.len()</cyan>
 
 <bold>External Program Matching</bold>
 
@@ -370,6 +397,22 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Prefer enumerate over range indexing (RustIndexedIteration)</cyan>
+
+    <dim># This matches `for i in 0..items.len() { items[i] }` and</dim>
+    <dim># `(0..items.len()).map(|i| items[i])`, while skipping macro arguments.</dim>
+
+    <yellow>- name: prefer-enumerate</yellow>
+      <yellow>description: Prefer enumerate over 0..items.len() indexing</yellow>
+      <yellow>message: \"{{ $suggestion }}\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: RustIndexedIteration</yellow>
+              <yellow>suggestion: \"Use {{ $collection }}.iter().enumerate() instead of indexing {{ $collection }} with {{ $index }}, then retry.\"</yellow>
 
   <cyan>Enforce markdown table formatting (External)</cyan>
 
