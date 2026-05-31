@@ -23,7 +23,7 @@ When something matches a rule you've defined:
 
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
-- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
+- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent, including semantic prompt reminders after relevant local file changes
 - **Workflow gate** (Stop workflows): Nudge records the prompt and done criteria, then keeps the agent going until it confirms completion
 - **Passthrough**: No rules matched, everything proceeds normally
 
@@ -90,6 +90,32 @@ rules:
 ```
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
+
+## Context-Aware Prompt Reminders
+
+For context that should appear only after a project-specific workflow, use a stateful `UserPromptSubmit` matcher. This example reminds the agent how to test local Hurry changes after source files were touched, while avoiding unrelated "run the tests" prompts:
+
+```yaml
+version: 1
+rules:
+  - name: hurry-local-test-reminder
+    description: Use dev entrypoints when testing Hurry changes
+    message: "Use `hurry-dev` after `make install-dev`."
+    on:
+      - hook: UserPromptSubmit
+        intent:
+          examples:
+            - "let's test this"
+            - "try running it"
+            - "does this work"
+        after_file_change:
+          - file: "packages/hurry/src/**"
+            within: "1h"
+        once_per_change: true
+        cooldown: "1h"
+```
+
+`intent.examples` are matched locally with deterministic token normalization. Nudge does not call an LLM or make network requests. `after_file_change` is opt-in: Nudge stores only matching file paths, timestamps, and reminder frequency state in a local JSON file. It does not store prompt text. Set `NUDGE_STATE_DIR` to override the storage directory, or delete the state file from Nudge's local data directory to clear it.
 
 ## Workflow Completion Gates
 
@@ -238,6 +264,10 @@ You can test a specific rule with the `test` subcommand:
 ```bash
 nudge test --rule no-inline-imports --tool Write --file test.rs \
   --content $'fn main() {\n    use std::io;\n}'
+
+nudge test --rule hurry-local-test-reminder \
+  --changed-file packages/hurry/src/daemon.rs \
+  --prompt "try executing it"
 ```
 
 Or pipe raw hook JSON to nudge directly:

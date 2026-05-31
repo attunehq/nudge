@@ -8,7 +8,9 @@ use serde_json::Value;
 use crate::{
     hook::{
         BashInput, EditInput, NudgeHook, PreToolUse, ToolUse, UserPromptSubmit, WebFetchInput,
-        WriteInput, response::HookOutcome,
+        WriteInput,
+        response::HookOutcome,
+        state::{FileChangeContext, InteractionState, now_seconds},
     },
     rules::{
         ContentMatcher, LoadedConfig, PreToolUseBashMatcher, PreToolUseEditMatcher,
@@ -20,7 +22,18 @@ use crate::{
 
 /// Evaluate a normalized hook batch against the full loaded config.
 pub fn evaluate_config_hooks(hooks: &[NudgeHook], config: &LoadedConfig) -> Result<HookOutcome> {
-    let rule_outcome = evaluate_hooks(hooks, &config.rules);
+    let mut state = InteractionState::default();
+    evaluate_config_hooks_with_state(hooks, config, &mut state)
+}
+
+/// Evaluate a normalized hook batch against the full loaded config and local
+/// interaction state.
+pub fn evaluate_config_hooks_with_state(
+    hooks: &[NudgeHook],
+    config: &LoadedConfig,
+    state: &mut InteractionState,
+) -> Result<HookOutcome> {
+    let rule_outcome = evaluate_hooks_with_state(hooks, &config.rules, state);
     let workflow_outcome = crate::workflow::evaluate_hooks(hooks, &config.workflows)?;
 
     Ok(combine_outcomes(rule_outcome, workflow_outcome))
@@ -52,9 +65,30 @@ fn combine_outcomes(rule_outcome: HookOutcome, workflow_outcome: HookOutcome) ->
 /// A raw provider hook can normalize into multiple Nudge events. This happens
 /// for Codex `apply_patch`, where one tool call can touch several files.
 pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
+    let mut state = InteractionState::default();
+    evaluate_hooks_with_state(hooks, rules, &mut state)
+}
+
+/// Evaluate a normalized hook batch against loaded rules and local interaction
+/// state.
+pub fn evaluate_hooks_with_state(
+    hooks: &[NudgeHook],
+    rules: &[Rule],
+    state: &mut InteractionState,
+) -> HookOutcome {
+    evaluate_hooks_at(hooks, rules, state, now_seconds())
+}
+
+fn evaluate_hooks_at(
+    hooks: &[NudgeHook],
+    rules: &[Rule],
+    state: &mut InteractionState,
+    now: u64,
+) -> HookOutcome {
     let mut pretooluse_matches = Vec::new();
     let mut pretooluse_update = None;
     let mut user_prompt_matches = Vec::new();
+    let mut user_prompt_updates = Vec::new();
 
     for hook in hooks {
         match hook {
@@ -64,7 +98,9 @@ pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
                 pretooluse_matches.extend(evaluate_pretooluse(&payload, rules));
             }
             NudgeHook::UserPromptSubmit(payload) => {
-                user_prompt_matches.extend(evaluate_userpromptsubmit(payload, rules));
+                let (matches, updates) = evaluate_userpromptsubmit(payload, rules, state, now);
+                user_prompt_matches.extend(matches);
+                user_prompt_updates.extend(updates);
             }
             NudgeHook::PermissionRequest(_) | NudgeHook::Stop(_) | NudgeHook::Other => {}
         }
@@ -83,10 +119,22 @@ pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
     }
 
     if !user_prompt_matches.is_empty() {
+        for update in user_prompt_updates {
+            state.mark_reminder_shown(
+                &update.cwd,
+                &update.rule_name,
+                now,
+                update.change_id,
+                update.change_timestamp,
+            );
+        }
+
         return HookOutcome::AddContext {
             context: user_prompt_matches.join("\n\n"),
         };
     }
+
+    state.record_file_changes(hooks, rules, now);
 
     if let Some(update) = pretooluse_update {
         return HookOutcome::UpdatePreToolUse {
@@ -97,6 +145,20 @@ pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
     }
 
     HookOutcome::Passthrough
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UserPromptStateUpdate {
+    cwd: std::path::PathBuf,
+    rule_name: String,
+    change_id: Option<u64>,
+    change_timestamp: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UserPromptRuleMatch {
+    matches: Vec<Match>,
+    state_update: Option<UserPromptStateUpdate>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,21 +266,34 @@ fn evaluate_pretooluse(payload: &PreToolUse, rules: &[Rule]) -> Vec<String> {
     vec![source_for_tool(&payload.tool).annotate(annotations)]
 }
 
-fn evaluate_userpromptsubmit(payload: &UserPromptSubmit, rules: &[Rule]) -> Vec<String> {
-    let annotations = rules
-        .iter()
-        .flat_map(|rule| {
-            rule.hooks_userpromptsubmit()
-                .flat_map(|matcher| evaluate_user_prompt(payload, matcher))
-                .pipe_matches(rule)
-        })
-        .collect_vec();
-
-    if annotations.is_empty() {
-        return Vec::new();
+fn evaluate_userpromptsubmit(
+    payload: &UserPromptSubmit,
+    rules: &[Rule],
+    state: &InteractionState,
+    now: u64,
+) -> (Vec<String>, Vec<UserPromptStateUpdate>) {
+    let mut updates = Vec::new();
+    let mut annotations = Vec::new();
+    for rule in rules {
+        for matcher in rule.hooks_userpromptsubmit() {
+            let Some(rule_match) = evaluate_user_prompt(payload, matcher, rule, state, now) else {
+                continue;
+            };
+            if let Some(update) = rule_match.state_update {
+                updates.push(update);
+            }
+            annotations.extend(rule.annotate_matches(rule_match.matches));
+        }
     }
 
-    vec![Source::from(&payload.prompt).annotate(annotations)]
+    if annotations.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    (
+        vec![Source::from(&payload.prompt).annotate(annotations)],
+        updates,
+    )
 }
 
 trait PipeMatches: Iterator<Item = Match> + Sized {
@@ -292,8 +367,112 @@ fn bash_project_state_matches(payload: &PreToolUse, matcher: &PreToolUseBashMatc
         .all(|state_matcher| state_matcher.is_match(&payload.context.cwd))
 }
 
-fn evaluate_user_prompt(input: &UserPromptSubmit, matcher: &UserPromptSubmitMatcher) -> Vec<Match> {
-    evaluate_all_matched(&input.prompt, &matcher.prompt)
+fn evaluate_user_prompt(
+    input: &UserPromptSubmit,
+    matcher: &UserPromptSubmitMatcher,
+    rule: &Rule,
+    state: &InteractionState,
+    now: u64,
+) -> Option<UserPromptRuleMatch> {
+    let mut matches = Vec::new();
+
+    if !matcher.prompt.is_empty() {
+        let prompt_matches = evaluate_all_matched(&input.prompt, &matcher.prompt);
+        if prompt_matches.is_empty() {
+            return None;
+        }
+        matches.extend(prompt_matches);
+    }
+
+    if let Some(intent) = &matcher.intent {
+        let intent_matches = intent.matches_with_context(&input.prompt);
+        if intent_matches.is_empty() {
+            return None;
+        }
+        matches.extend(intent_matches);
+    }
+
+    if matcher.prompt.is_empty() && matcher.intent.is_none() {
+        return None;
+    }
+
+    let change = if matcher.after_file_change.is_empty() {
+        None
+    } else {
+        Some(state.latest_matching_file_change(
+            &input.context.cwd,
+            &matcher.after_file_change,
+            now,
+        )?)
+    };
+
+    if reminder_is_suppressed(input, matcher, rule, state, now, change.as_ref()) {
+        return None;
+    }
+
+    if let Some(change) = &change {
+        for prompt_match in &mut matches {
+            prompt_match
+                .captures
+                .insert("changed_file".to_string(), change.path.clone());
+            prompt_match
+                .captures
+                .insert("changed_at".to_string(), change.timestamp.to_string());
+        }
+    }
+
+    let state_update = matcher
+        .uses_interaction_state()
+        .then(|| UserPromptStateUpdate {
+            cwd: input.context.cwd.clone(),
+            rule_name: rule.name.clone(),
+            change_id: change.as_ref().map(|change| change.id),
+            change_timestamp: change.map(|change| change.timestamp),
+        });
+
+    Some(UserPromptRuleMatch {
+        matches,
+        state_update,
+    })
+}
+
+fn reminder_is_suppressed(
+    input: &UserPromptSubmit,
+    matcher: &UserPromptSubmitMatcher,
+    rule: &Rule,
+    state: &InteractionState,
+    now: u64,
+    change: Option<&FileChangeContext>,
+) -> bool {
+    let Some(reminder) = state.reminder(&input.context.cwd, &rule.name) else {
+        return false;
+    };
+
+    if matcher.once_per_change {
+        let Some(change) = change else {
+            return true;
+        };
+        let already_seen = if let Some(last_change_id) = reminder.last_change_id {
+            change.id <= last_change_id
+        } else {
+            reminder
+                .last_change_timestamp
+                .is_some_and(|last_change| change.timestamp <= last_change)
+        };
+        if already_seen {
+            return true;
+        }
+
+        return false;
+    }
+
+    if let Some(cooldown) = matcher.cooldown
+        && now.saturating_sub(reminder.last_shown_at) < cooldown.as_secs()
+    {
+        return true;
+    }
+
+    false
 }
 
 fn source_for_tool(tool: &ToolUse) -> Source {

@@ -12,12 +12,14 @@ use crate::{
 pub use content::{ContentMatcher, RegexMatcher};
 pub use path::GlobMatcher;
 pub use project_state::ProjectStateMatcher;
+pub use prompt::{DurationSeconds, FileChangeMatcher, PromptIntentMatcher};
 pub use syntax::{Language, TreeSitterQuery};
 pub use url::UrlMatcher;
 
 mod content;
 mod path;
 mod project_state;
+mod prompt;
 mod syntax;
 mod url;
 
@@ -143,6 +145,12 @@ impl Rule {
         self.on
             .iter()
             .filter_map(fmap_match!(Hook::UserPromptSubmit))
+    }
+
+    /// Whether this rule needs local interaction state.
+    pub fn uses_interaction_state(&self) -> bool {
+        self.hooks_userpromptsubmit()
+            .any(UserPromptSubmitMatcher::uses_interaction_state)
     }
 
     /// Annotate matching spans with the message from the rule.
@@ -372,6 +380,36 @@ pub struct UserPromptSubmitMatcher {
     /// patterns, the rule is triggered.
     #[serde(default)]
     pub prompt: Vec<ContentMatcher>,
+
+    /// Example-based semantic intent matcher for the user prompt.
+    ///
+    /// This is local and deterministic: Nudge compares normalized prompt tokens
+    /// to author-provided examples. It never calls an external model or
+    /// service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<PromptIntentMatcher>,
+
+    /// Only match after a recent project file change.
+    ///
+    /// File changes are recorded locally only for rules that opt into this
+    /// field, and only matching file paths and timestamps are stored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub after_file_change: Vec<FileChangeMatcher>,
+
+    /// Suppress this prompt reminder until the cooldown has elapsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cooldown: Option<DurationSeconds>,
+
+    /// Suppress repeats until another matching file change occurs.
+    #[serde(default)]
+    pub once_per_change: bool,
+}
+
+impl UserPromptSubmitMatcher {
+    /// Whether this matcher needs local interaction state.
+    pub fn uses_interaction_state(&self) -> bool {
+        !self.after_file_change.is_empty() || self.cooldown.is_some()
+    }
 }
 
 #[cfg(test)]
@@ -413,5 +451,27 @@ mod tests {
             serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         pretty_assert_eq!(matcher.project_state.len(), 1);
+    }
+
+    #[test]
+    fn test_user_prompt_semantic_matcher_deserialize() {
+        let yaml = r#"
+            hook: UserPromptSubmit
+            intent:
+              examples:
+                - "let's test this"
+                - "try running it"
+            after_file_change:
+              - file: "packages/hurry/src/**"
+                within: "30m"
+            once_per_change: true
+            cooldown: "1h"
+        "#;
+        let matcher = serde_yaml::from_str::<UserPromptSubmitMatcher>(yaml)
+            .expect("valid user prompt matcher yaml");
+        assert!(matcher.intent.is_some());
+        pretty_assert_eq!(matcher.after_file_change.len(), 1);
+        assert!(matcher.once_per_change);
+        assert!(matcher.uses_interaction_state());
     }
 }

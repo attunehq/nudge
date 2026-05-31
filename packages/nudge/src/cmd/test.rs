@@ -1,7 +1,7 @@
 //! Test rules against sample input.
 
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 use clap::Args;
 use color_eyre::eyre::{Context, Result, bail, eyre};
@@ -9,7 +9,12 @@ use serde_json::json;
 
 use nudge::{
     agent::claude,
-    hook::{NudgeHook, evaluate::evaluate_hooks, response::HookOutcome},
+    hook::{
+        NudgeHook,
+        evaluate::{evaluate_hooks, evaluate_hooks_with_state},
+        response::HookOutcome,
+        state::{InteractionState, now_seconds},
+    },
     rules,
 };
 
@@ -42,6 +47,10 @@ pub struct Config {
     /// User prompt to test against (for UserPromptSubmit rules).
     #[arg(long)]
     pub prompt: Option<String>,
+
+    /// Simulate a prior file change before testing a UserPromptSubmit rule.
+    #[arg(long, requires = "prompt")]
+    pub changed_file: Vec<PathBuf>,
 }
 
 pub fn main(config: Config) -> Result<()> {
@@ -57,7 +66,17 @@ pub fn main(config: Config) -> Result<()> {
     println!("Rule: {}", config.rule);
     println!();
 
-    match evaluate_hooks(&hooks, &[rule]) {
+    let outcome = if config.changed_file.is_empty() {
+        evaluate_hooks(&hooks, &[rule])
+    } else {
+        let now = now_seconds();
+        let mut state = InteractionState::default();
+        let file_hooks = build_changed_file_hooks(&config)?;
+        state.record_file_changes(&file_hooks, std::slice::from_ref(&rule), now);
+        evaluate_hooks_with_state(&hooks, &[rule], &mut state)
+    };
+
+    match outcome {
         HookOutcome::Passthrough => {
             println!("Result: Passthrough");
             println!("The rule did not match the provided input.");
@@ -95,6 +114,33 @@ pub fn main(config: Config) -> Result<()> {
     Ok(())
 }
 
+fn build_changed_file_hooks(config: &Config) -> Result<Vec<NudgeHook>> {
+    let cwd = env::current_dir()
+        .context("get current directory")?
+        .to_string_lossy()
+        .to_string();
+    let mut hooks = Vec::new();
+
+    for file_path in &config.changed_file {
+        let payload = json!({
+            "hook_event_name": "PreToolUse",
+            "session_id": "test",
+            "transcript_path": "/tmp/test",
+            "permission_mode": "default",
+            "cwd": cwd,
+            "tool_name": "Write",
+            "tool_use_id": "test-changed-file",
+            "tool_input": {
+                "file_path": file_path,
+                "content": ""
+            }
+        });
+        hooks.extend(claude::parse_hook(payload).context("failed to build changed file hook")?);
+    }
+
+    Ok(hooks)
+}
+
 /// Build a Hook from the CLI arguments.
 fn build_hooks(config: &Config) -> Result<Vec<NudgeHook>> {
     // Determine what kind of hook to build based on arguments
@@ -121,13 +167,17 @@ fn build_user_prompt_hook(config: &Config) -> Result<Vec<NudgeHook>> {
         .prompt
         .as_ref()
         .expect("prompt required for UserPromptSubmit hook");
+    let cwd = env::current_dir()
+        .context("get current directory")?
+        .to_string_lossy()
+        .to_string();
 
     let payload = json!({
         "hook_event_name": "UserPromptSubmit",
         "session_id": "test",
         "transcript_path": "/tmp/test",
         "permission_mode": "default",
-        "cwd": "/tmp",
+        "cwd": cwd,
         "prompt": prompt
     });
 
@@ -135,6 +185,10 @@ fn build_user_prompt_hook(config: &Config) -> Result<Vec<NudgeHook>> {
 }
 
 fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
+    let cwd = env::current_dir()
+        .context("get current directory")?
+        .to_string_lossy()
+        .to_string();
     let tool = config.tool.as_deref().unwrap_or("Write");
     let file_path = config
         .file
@@ -185,7 +239,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
         "session_id": "test",
         "transcript_path": "/tmp/test",
         "permission_mode": "default",
-        "cwd": "/tmp",
+        "cwd": cwd,
         "tool_name": tool,
         "tool_use_id": "test-123",
         "tool_input": tool_input

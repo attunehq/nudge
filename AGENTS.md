@@ -67,6 +67,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/hook/evaluate.rs` - Provider-neutral rule evaluation
 - `src/hook/response.rs` - Provider-specific response rendering
 - `src/hook/apply_patch.rs` - Codex apply_patch normalization
+- `src/hook/state.rs` - Local opt-in interaction state for context-aware prompt reminders
 - `src/workflow.rs` - Opt-in workflow completion gates backed by per-session state
 - `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates config, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
@@ -80,6 +81,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/rules.rs` - Rule/workflow loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
 - `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
+- `src/rules/schema/prompt.rs` - UserPromptSubmit intent, cooldown, and file-change gate schema helpers
 - `src/snippet.rs` - Code snippet rendering for rule violations (uses `annotate-snippets`)
 
 ### How Nudge Communicates
