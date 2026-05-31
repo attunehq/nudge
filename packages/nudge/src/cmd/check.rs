@@ -13,7 +13,9 @@ use color_eyre::eyre::{Context, Result};
 use glob::Pattern;
 use ignore::WalkBuilder;
 
-use nudge::rules::{self, ContentMatcher, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction};
+use nudge::rules::{
+    self, ContentMatcher, GlobMatcher, Hook, LoadedConfig, PreToolUseMatcher, Rule, RuleAction,
+};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -81,11 +83,14 @@ pub fn main(config: Config) -> Result<()> {
     }
 }
 
-fn collect_file_rules(rules_by_source: &[(PathBuf, Vec<Rule>)]) -> (Vec<FileRule<'_>>, usize) {
-    let total_rules = rules_by_source.iter().map(|(_, rules)| rules.len()).sum();
+fn collect_file_rules(rules_by_source: &[(PathBuf, LoadedConfig)]) -> (Vec<FileRule<'_>>, usize) {
+    let total_rules = rules_by_source
+        .iter()
+        .map(|(_, config)| config.rules.len())
+        .sum();
     let file_rules = rules_by_source
         .iter()
-        .flat_map(|(_, rules)| rules)
+        .flat_map(|(_, config)| &config.rules)
         .flat_map(file_rules_for_rule)
         .collect();
 
@@ -255,19 +260,23 @@ fn byte_offset_to_line(content: &str, offset: usize) -> usize {
 fn print_success(
     checked_files: usize,
     total_rules: usize,
-    rules_by_source: &[(PathBuf, Vec<Rule>)],
+    rules_by_source: &[(PathBuf, LoadedConfig)],
 ) {
     println!(
         "\u{2713} Checked {} files against {} rules",
         checked_files, total_rules
     );
-    for (source, rules) in rules_by_source {
-        if !rules.is_empty() {
+    for (source, config) in rules_by_source {
+        if !config.rules.is_empty() {
             println!(
                 "  - {}: {} {}",
                 source.display(),
-                rules.len(),
-                if rules.len() == 1 { "rule" } else { "rules" }
+                config.rules.len(),
+                if config.rules.len() == 1 {
+                    "rule"
+                } else {
+                    "rules"
+                }
             );
         }
     }

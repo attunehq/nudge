@@ -35,6 +35,12 @@ pub enum HookOutcome {
         /// Context text.
         context: String,
     },
+
+    /// Prevent a `Stop` event from ending the turn.
+    ContinueStop {
+        /// Feedback sent to the agent as its continuation prompt.
+        reason: String,
+    },
 }
 
 /// Render and print a hook outcome.
@@ -52,6 +58,16 @@ pub fn render(_agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOut
     match outcome {
         HookOutcome::Passthrough => Ok(RenderedHookOutcome::NoOutput),
         HookOutcome::AddContext { context } => Ok(RenderedHookOutcome::Stdout(context)),
+        HookOutcome::ContinueStop { reason } => {
+            let response = StopResponse {
+                decision: "block".to_string(),
+                reason,
+            };
+
+            Ok(RenderedHookOutcome::Stdout(
+                serde_json::to_string(&response).context("serialize stop response")?,
+            ))
+        }
         HookOutcome::DenyPreToolUse { message } => {
             let response = PreToolUseResponse {
                 system_message: Some("Nudge blocked operation due to rule violation.".to_string()),
@@ -120,6 +136,13 @@ struct PreToolUseOutput {
     updated_input: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     additional_context: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StopResponse {
+    decision: String,
+    reason: String,
 }
 
 #[cfg(test)]
@@ -234,6 +257,27 @@ mod tests {
         pretty_assert_eq!(
             rendered,
             RenderedHookOutcome::Stdout("remember this".to_string())
+        );
+    }
+
+    #[test]
+    fn stop_continuation_renders_block_decision() {
+        let rendered = render(
+            AgentKind::Codex,
+            HookOutcome::ContinueStop {
+                reason: "Run tests before stopping.".to_string(),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["decision"], Value::String("block".to_string()));
+        pretty_assert_eq!(
+            json["reason"],
+            Value::String("Run tests before stopping.".to_string())
         );
     }
 }
