@@ -38,6 +38,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Stuttering types     | Avoid type names that repeat their Rust module context      |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
+| Check then unwrap    | Prefer `let-else` or `match` over guard clauses plus unwrap |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 | Indexed iteration    | Use `.iter().enumerate()` instead of `0..items.len()` loops |
 | Functional iteration | Prefer iterator adapters over simple mutable Rust loops     |
@@ -134,6 +135,21 @@ rules:
         content:
           - kind: RustFunctionalMutation
             patterns: [vec_push, find, fold]
+```
+
+For Rust guard clauses that check `Option` or `Result` state and then unwrap the same value, use the semantic `RustCheckThenUnwrap` matcher:
+
+```yaml
+version: 1
+rules:
+  - name: prefer-let-else-over-check-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
 ```
 
 ## Context-Aware Prompt Reminders
@@ -292,14 +308,14 @@ x Found 3 issues in 2 files
 ./src/lib.rs:23 [no-inline-imports]
   Move this `use` statement to the top of the file, then retry.
 
-Checked 25 files against 6 rules
+Checked 25 files against 7 rules
 ```
 
 When all checks pass:
 
 ```
-Checked 25 files against 6 rules
-  - .nudge.yaml: 6 rules
+Checked 25 files against 7 rules
+  - .nudge.yaml: 7 rules
 ```
 
 ### Manual Testing

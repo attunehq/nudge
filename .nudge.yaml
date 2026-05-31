@@ -120,6 +120,23 @@ rules:
                 macro: (identifier) @macro
                 (#eq? @macro "assert_eq"))
 
+  # Catch guard clauses that check Option/Result state and then unwrap the same value.
+  # Prefer `let-else` or match-style control flow so the invariant stays explicit.
+  - name: prefer-let-else-over-check-unwrap
+    description: Prefer let-else or match-style control flow over check-then-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustCheckThenUnwrap
+
   # Catch .unwrap() calls and suggest .expect() instead.
   # Uses tree-sitter to match actual method calls, avoiding false positives
   # from doc comments or string literals containing ".unwrap()".

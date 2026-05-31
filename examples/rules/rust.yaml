@@ -46,6 +46,24 @@ rules:
           - kind: Regex
             pattern: "(?m)^\\s*let\\s+(mut\\s+)?[a-zA-Z_][a-zA-Z0-9_]*\\s*:\\s*"
 
+  # Catch guard clauses that check Option/Result state and then unwrap the same value.
+  # Patterns include `value.is_none()`, `!value.is_some()`, `result.is_err()`,
+  # and `!result.is_ok()` followed by a same-receiver `.unwrap()`.
+  - name: prefer-let-else-over-check-unwrap
+    description: Prefer let-else or match-style control flow over check-then-unwrap
+    message: "Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: RustCheckThenUnwrap
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: RustCheckThenUnwrap
+
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
   - name: no-qualified-paths

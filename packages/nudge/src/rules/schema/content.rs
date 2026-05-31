@@ -17,7 +17,7 @@ use crate::{
 };
 
 use super::{
-    Language, TreeSitterQuery,
+    Language, TreeSitterQuery, rust,
     rust_functional_mutation::{
         RustFunctionalMutationPattern, default_rust_functional_mutation_patterns,
         rust_functional_mutation_matches,
@@ -68,6 +68,22 @@ pub enum ContentMatcher {
         query: TreeSitterQuery,
 
         /// Optional suggestion template, same as Regex variant.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        suggestion: Option<String>,
+    },
+
+    /// Match Rust guard clauses that check an Option/Result and then unwrap.
+    ///
+    /// This catches multi-line patterns such as:
+    ///
+    /// ```rust,ignore
+    /// if value.is_none() {
+    ///     return Err(...);
+    /// }
+    /// let value = value.unwrap();
+    /// ```
+    RustCheckThenUnwrap {
+        /// Optional suggestion template, same as Regex and SyntaxTree.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         suggestion: Option<String>,
     },
@@ -177,6 +193,9 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                     suggestion: raw.suggestion,
                 })
             }
+            "RustCheckThenUnwrap" => Ok(ContentMatcher::RustCheckThenUnwrap {
+                suggestion: raw.suggestion,
+            }),
             "External" => {
                 let command = raw
                     .command
@@ -229,6 +248,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 &[
                     "Regex",
                     "SyntaxTree",
+                    "RustCheckThenUnwrap",
                     "External",
                     "StutteringTypeName",
                     "RustIndexedIteration",
@@ -247,6 +267,10 @@ impl ContentMatcher {
             ContentMatcher::SyntaxTree {
                 language, query, ..
             } => syntax_tree_matches(*language, query, s)
+                .into_iter()
+                .next()
+                .is_some(),
+            ContentMatcher::RustCheckThenUnwrap { .. } => rust::check_then_unwrap_matches(s)
                 .into_iter()
                 .next()
                 .is_some(),
@@ -276,6 +300,10 @@ impl ContentMatcher {
             ContentMatcher::SyntaxTree {
                 language, query, ..
             } => syntax_tree_matches(*language, query, s)
+                .into_iter()
+                .map(|m| m.span)
+                .collect(),
+            ContentMatcher::RustCheckThenUnwrap { .. } => rust::check_then_unwrap_matches(s)
                 .into_iter()
                 .map(|m| m.span)
                 .collect(),
@@ -322,6 +350,11 @@ impl ContentMatcher {
                 suggestion,
             } => {
                 let mut matches = syntax_tree_matches(*language, query, s);
+                apply_suggestion(&mut matches, suggestion);
+                matches
+            }
+            ContentMatcher::RustCheckThenUnwrap { suggestion } => {
+                let mut matches = rust::check_then_unwrap_matches(s);
                 apply_suggestion(&mut matches, suggestion);
                 matches
             }
@@ -626,6 +659,50 @@ mod tests {
         .expect("valid regex matcher yaml");
 
         pretty_assert_eq!(matcher.replace_all("npm install lodash"), "yarn add lodash");
+    }
+
+    #[test]
+    fn test_content_matcher_rust_check_then_unwrap_deserialize() {
+        let yaml = r#"
+            kind: RustCheckThenUnwrap
+            suggestion: "Replace {{ $receiver }} with let-else"
+        "#;
+        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::RustCheckThenUnwrap { .. }
+        ));
+    }
+
+    #[test]
+    fn rust_check_then_unwrap_sets_captures_and_suggestion() {
+        let matcher = ContentMatcher::RustCheckThenUnwrap {
+            suggestion: Some("Use let-else for {{ $receiver }}".to_string()),
+        };
+        let code = r#"
+fn parse(value: Option<String>) -> Result<String, String> {
+    if value.is_none() {
+        return Err("missing".to_string());
+    }
+    let value = value.unwrap();
+    Ok(value)
+}
+"#;
+        let matches = matcher.matches_with_context(code);
+
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
+            matches[0].captures.get("receiver"),
+            Some(&"value".to_string())
+        );
+        pretty_assert_eq!(
+            matches[0].captures.get("check_method"),
+            Some(&"is_none".to_string())
+        );
+        pretty_assert_eq!(
+            matches[0].captures.get("suggestion"),
+            Some(&"Use let-else for value".to_string())
+        );
     }
 
     #[test]

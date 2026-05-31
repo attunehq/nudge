@@ -332,6 +332,8 @@ const DOCS: &str = cstr!("\
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
     <green>RustIndexedIteration</green>
                  Rust-specific `0..items.len()` iteration that indexes `items[i]`
+    <green>RustCheckThenUnwrap</green>
+                  Rust Option/Result guard clauses followed by same-value unwrap
 
   <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
   <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
@@ -419,6 +421,35 @@ const DOCS: &str = cstr!("\
     preallocated vectors such as <green>Vec::with_capacity(...)</green>, and control-flow-heavy
     expressions such as <green>?</green>, <green>return</green>, <green>break</green>, or <green>await</green>.
 
+<bold>Rust Check-Then-Unwrap Matching</bold>
+
+  Use <cyan>kind: RustCheckThenUnwrap</cyan> for Rust guard clauses that check
+  <cyan>Option</cyan> or <cyan>Result</cyan> state, exit early, and then call
+  <cyan>.unwrap()</cyan> on the same receiver. This is the multi-line pattern
+  where <cyan>let-else</cyan> or match-style control flow is usually clearer.
+
+  <white>Basic Syntax:</white>
+    <yellow>content:</yellow>
+      <yellow>- kind: RustCheckThenUnwrap</yellow>
+        <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
+
+  <white>Detected Guards:</white>
+    <green>value.is_none()</green>       followed by <green>value.unwrap()</green>
+    <green>!value.is_some()</green>      followed by <green>value.unwrap()</green>
+    <green>result.is_err()</green>       followed by <green>result.unwrap()</green>
+    <green>!result.is_ok()</green>       followed by <green>result.unwrap()</green>
+
+  The guard body must end with a top-level <cyan>return</cyan>, <cyan>break</cyan>, or
+  <cyan>continue</cyan>. The unwrap must be the next executable statement in the same
+  block; blank lines and comments between the guard and unwrap are allowed.
+
+  <white>Captures:</white>
+    <green>{{ $receiver }}</green>        Checked receiver, such as value or result
+    <green>{{ $check_method }}</green>    is_none, is_some, is_err, or is_ok
+    <green>{{ $checked_state }}</green>   none or err
+    <green>{{ $unwrap_binding }}</green>  Pattern bound by the let statement
+    <green>{{ $early_exit }}</green>      return, break, or continue
+
 <bold>External Program Matching</bold>
 
   Use <cyan>kind: External</cyan> to delegate matching to an external program (linter, formatter,
@@ -448,6 +479,8 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>        Simple patterns you can express in regex
     <green>SyntaxTree</green>   Structural patterns in supported languages
     <green>RustFunctionalMutation</green>  Rust iterator-style loop rewrites
+    <green>RustCheckThenUnwrap</green>
+                  Built-in Rust Option/Result guard plus unwrap detection
 
   <dim>Note: External commands add latency. Use sparingly for checks that are</dim>
   <dim>difficult or impossible to express with Regex or SyntaxTree matchers.</dim>
@@ -541,6 +574,21 @@ const DOCS: &str = cstr!("\
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"(?P<<expr>>\\\\w+)\\\\.unwrap\\\\(\\\\)\"</yellow>
               <yellow>suggestion: \"Replace {{ $expr }}.unwrap() with {{ $expr }}.expect(\\\"...\\\")\"</yellow>
+
+  <cyan>Prefer let-else over check-then-unwrap (Rust)</cyan>
+
+    <dim># Catches `if value.is_none() { return ...; }` followed by</dim>
+    <dim># `let value = value.unwrap();` and equivalent Result guards.</dim>
+
+    <yellow>- name: prefer-let-else-over-check-unwrap</yellow>
+      <yellow>description: Prefer let-else over checking state and unwrapping later</yellow>
+      <yellow>message: \"Replace the {{ $check_method }} + unwrap guard for `{{ $receiver }}` with let-else or match-style control flow, then retry.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: RustCheckThenUnwrap</yellow>
 
   <cyan>Block use statements inside function bodies (SyntaxTree)</cyan>
 

@@ -80,8 +80,9 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
 - `src/rules.rs` - Rule/workflow loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
-- `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
+- `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, Rust semantic checks, tree-sitter syntax, and URLs
 - `src/rules/schema/prompt.rs` - UserPromptSubmit intent, cooldown, and file-change gate schema helpers
+- `src/rules/schema/rust.rs` - Rust-specific check-then-unwrap matcher helpers
 - `src/rules/schema/rust_functional_mutation.rs` - Rust-specific matcher for conservative loop-to-iterator mutation patterns
 - `src/rules/schema/rust_indexed_iteration.rs` - Rust-specific matcher for indexed range iteration
 - `src/rules/schema/stuttering.rs` - Rust module-aware stuttering type-name matcher
