@@ -16,6 +16,7 @@ mod message_content;
 mod multiple_rules;
 mod non_rust_files;
 mod setup;
+mod stuttering_types;
 mod syntax_tree;
 mod user_prompt;
 mod webfetch;

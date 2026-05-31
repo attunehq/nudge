@@ -330,7 +330,7 @@ fn annotate_bash(rule: &Rule, payload: &PreToolUse, input: &BashInput) -> Vec<An
 
 fn evaluate_write(input: &WriteInput, matcher: &PreToolUseWriteMatcher) -> Vec<Match> {
     if matcher.file.is_match_path(&input.file_path) {
-        evaluate_all_matched(&input.content, &matcher.content)
+        evaluate_all_file_matched(&input.file_path, &input.content, &matcher.content)
     } else {
         Vec::new()
     }
@@ -338,7 +338,7 @@ fn evaluate_write(input: &WriteInput, matcher: &PreToolUseWriteMatcher) -> Vec<M
 
 fn evaluate_edit(input: &EditInput, matcher: &PreToolUseEditMatcher) -> Vec<Match> {
     if matcher.file.is_match_path(&input.file_path) {
-        evaluate_all_matched(&input.new_string, &matcher.new_content)
+        evaluate_all_file_matched(&input.file_path, &input.new_string, &matcher.new_content)
     } else {
         Vec::new()
     }
@@ -488,9 +488,19 @@ fn source_for_tool(tool: &ToolUse) -> Source {
 /// Evaluate all content matchers and return matches only if every matcher
 /// matched.
 fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
+    evaluate_all_file_matched(std::path::Path::new(""), content, matchers)
+}
+
+/// Evaluate all content matchers with file path context and return matches only
+/// if every matcher matched.
+fn evaluate_all_file_matched(
+    path: &std::path::Path,
+    content: &str,
+    matchers: &[ContentMatcher],
+) -> Vec<Match> {
     let mut matches = Vec::new();
     for matcher in matchers {
-        let matcher_matches = matcher.matches_with_context(content);
+        let matcher_matches = matcher.matches_with_path_context(Some(path), content);
         if matcher_matches.is_empty() {
             return Vec::new();
         }

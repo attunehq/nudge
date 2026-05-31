@@ -36,6 +36,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | No inline imports    | Move `use` statements to the top of the file                |
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
 | Qualified paths      | Import and use shorter names instead of long paths          |
+| Stuttering types     | Avoid type names that repeat their Rust module context      |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 
@@ -90,6 +91,26 @@ rules:
 ```
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
+
+## Rust Semantic Rules
+
+For Rust modules, use `kind: StutteringTypeName` when a type should not repeat
+context that the module path already supplies. The matcher understands inline
+modules and file-derived modules such as `src/storage.rs`, flags configured
+suffixes like `Manager`, `Service`, and `Handler`, and supports an `allow` list
+for intentional repetitions:
+
+```yaml
+content:
+  - kind: StutteringTypeName
+    language: rust
+    redundant_suffixes: ["Manager", "Service", "Handler"]
+    module_aliases:
+      db: ["Database"]
+    allow:
+      - "storage::StorageEngine"
+    suggestion: "Rename `{{ $type }}` to `{{ $replacement }}`; {{ $reason }}."
+```
 
 ## Context-Aware Prompt Reminders
 

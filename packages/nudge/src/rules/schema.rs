@@ -20,6 +20,7 @@ mod content;
 mod path;
 mod project_state;
 mod prompt;
+mod stuttering;
 mod syntax;
 mod url;
 

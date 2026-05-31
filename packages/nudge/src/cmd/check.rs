@@ -168,13 +168,21 @@ fn check_file(file: &Path, file_rules: &[FileRule<'_>]) -> (Vec<Issue>, bool) {
 
 fn rule_issues(file: &Path, content: &str, file_rule: &FileRule<'_>) -> Vec<Issue> {
     let matchers = file_rule.matchers.as_slice();
-    if matchers.is_empty() || !matchers.iter().all(|m| m.is_match(content)) {
+    if matchers.is_empty() {
         return Vec::new();
     }
 
-    matchers
+    let matches_by_matcher = matchers
         .iter()
-        .flat_map(|matcher| matcher.matches_with_context(content))
+        .map(|matcher| matcher.matches_with_path_context(Some(file), content))
+        .collect::<Vec<_>>();
+    if matches_by_matcher.iter().any(Vec::is_empty) {
+        return Vec::new();
+    }
+
+    matches_by_matcher
+        .into_iter()
+        .flatten()
         .map(|m| {
             let line = byte_offset_to_line(content, m.span.start);
             let message = nudge::template::interpolate(file_rule.rule.message(), &m.captures);
