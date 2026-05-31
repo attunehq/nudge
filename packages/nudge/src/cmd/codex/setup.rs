@@ -63,6 +63,12 @@ pub fn main(config: Config) -> Result<()> {
         (
             "UserPromptSubmit",
             json!({
+                "hooks": [nudge_hook.clone()]
+            }),
+        ),
+        (
+            "Stop",
+            json!({
                 "hooks": [nudge_hook]
             }),
         ),

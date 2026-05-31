@@ -13,7 +13,7 @@ pub fn main(_config: Config) -> Result<()> {
 }
 
 const DOCS: &str = cstr!("\
-<bold><blue>Nudge Rule Writing Guide</blue></bold>
+<bold><blue>Nudge Config Writing Guide</blue></bold>
 
 <bold>What is Nudge?</bold>
 
@@ -25,9 +25,9 @@ const DOCS: &str = cstr!("\
   a colleague tapping you on the shoulder. The messages are direct (sometimes
   blunt) because that's what cuts through when you're focused.
 
-<bold>Rule File Locations</bold>
+<bold>Config File Locations</bold>
 
-  Rules are loaded from these locations (all additive):
+  Rules and workflows are loaded from these locations (all additive):
 
     <cyan>$CONFIG_DIR/rules.yaml</cyan>        <dim>User-level rules</dim>
     <cyan>.nudge.yaml</cyan>                   <dim>Project root</dim>
@@ -66,6 +66,38 @@ const DOCS: &str = cstr!("\
               <yellow>pattern: \"your-regex\"</yellow>
               <yellow>suggestion: \"optional\"</yellow>
 
+<bold>Workflow Format</bold>
+
+  Workflows are opt-in completion gates. They activate on matching user prompts,
+  record the original prompt and done criteria for the session, and use Stop hooks
+  to keep the agent working until it confirms completion.
+
+  <yellow>version: 1</yellow>
+
+  <yellow>workflows:</yellow>
+    <yellow>- name: issue-resolution</yellow>
+      <yellow>description: Finish issue work before stopping</yellow> <dim># Optional</dim>
+      <yellow>prompt:</yellow>                       <dim># All patterns must match to activate</dim>
+        <yellow>- kind: Regex</yellow>
+          <yellow>pattern: \"(?i)issue #[0-9]+|pull request|\\\\bPR\\\\b\"</yellow>
+      <yellow>done:</yellow>
+        <yellow>- \"Add or update end-to-end tests.\"</yellow>
+        <yellow>- \"Implement the permanent fix.\"</yellow>
+        <yellow>- \"Run relevant tests and report exact proof.\"</yellow>
+
+  When active, Nudge tells the agent to include this exact line only after every
+  criterion is complete:
+
+    <green>NUDGE_WORKFLOW_COMPLETE: issue-resolution</green>
+
+  If Stop fires before that line appears, Nudge returns <cyan>decision: \"block\"</cyan>
+  with the original prompt, done criteria, and continuation instructions. Once the
+  confirmation line appears, Nudge clears the session workflow state and lets Stop
+  pass through.
+
+  Workflow state is stored in Nudge's per-user data directory. Set
+  <cyan>NUDGE_STATE_DIR</cyan> to isolate state for tests or automation.
+
 <bold>Hook Types</bold>
 
   <green>PreToolUse</green>        Triggers before provider-supported Write/Edit/WebFetch/Bash
@@ -74,6 +106,10 @@ const DOCS: &str = cstr!("\
 
   <green>UserPromptSubmit</green>  Triggers when user submits a prompt. Always <cyan>continues</cyan>
                     (injects context into the conversation).
+
+  <green>Stop</green>              Triggers when the agent tries to finish. Workflow gates can
+                    return <cyan>decision: \"block\"</cyan> to continue the turn until done
+                    criteria are confirmed.
 
 <bold>Tool Types (PreToolUse only)</bold>
 
@@ -103,6 +139,7 @@ const DOCS: &str = cstr!("\
   <green>PreToolUse Bash</green>              yes             partial, Codex hook coverage is incomplete for some shell paths
   <green>PermissionRequest</green>            parsed only     parsed only
   <green>UserPromptSubmit</green>             yes             yes
+  <green>Stop workflows</green>               yes             yes
 
   <dim>Delete and PermissionRequest are parsed so Nudge can name them precisely, but</dim>
   <dim>they do not have YAML matchers yet. Codex apply_patch is an adapter detail:</dim>

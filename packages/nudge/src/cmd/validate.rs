@@ -22,12 +22,12 @@ pub fn main(config: Config) -> Result<()> {
 
 /// Validate all discoverable config files.
 fn validate_all() -> Result<()> {
-    let rules = rules::load_all_attributed().context("load rules")?;
-    for (path, rules) in rules {
-        let yaml = serde_yaml::to_string(&rules).context("serialize rules")?;
+    let configs = rules::load_all_attributed().context("load rules")?;
+    for (path, config) in configs {
+        let yaml = serde_yaml::to_string(&config).context("serialize config")?;
         println!("Config file: {path:?}");
         println!("{yaml}");
-        print_codex_warnings(&rules);
+        print_codex_warnings(&config.rules);
         println!("------");
         println!();
     }
@@ -37,10 +37,10 @@ fn validate_all() -> Result<()> {
 
 /// Validate a single config file and print results.
 fn validate_file(path: &Path) -> Result<()> {
-    let rules = rules::load_from(path).context("parse rules file")?;
-    let yaml = serde_yaml::to_string(&rules).context("serialize rules")?;
+    let config = rules::load_from(path).context("parse rules file")?;
+    let yaml = serde_yaml::to_string(&config).context("serialize config")?;
     println!("{yaml}");
-    print_codex_warnings(&rules);
+    print_codex_warnings(&config.rules);
     Ok(())
 }
 
