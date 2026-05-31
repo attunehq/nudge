@@ -343,7 +343,8 @@ pub struct UserPromptSubmitMatcher {
     /// Example-based semantic intent matcher for the user prompt.
     ///
     /// This is local and deterministic: Nudge compares normalized prompt tokens
-    /// to author-provided examples. It never calls an external model or service.
+    /// to author-provided examples. It never calls an external model or
+    /// service.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent: Option<PromptIntentMatcher>,
 

@@ -72,7 +72,8 @@ impl InteractionState {
         fs::write(&path, content).with_context(|| format!("write {}", path.display()))
     }
 
-    /// Record allowed file changes that match at least one stateful prompt rule.
+    /// Record allowed file changes that match at least one stateful prompt
+    /// rule.
     pub fn record_file_changes(&mut self, hooks: &[NudgeHook], rules: &[Rule], now: u64) {
         let file_gates = rules
             .iter()
@@ -107,7 +108,8 @@ impl InteractionState {
         }
     }
 
-    /// Find the newest local file change that satisfies any of the supplied gates.
+    /// Find the newest local file change that satisfies any of the supplied
+    /// gates.
     pub fn latest_matching_file_change(
         &self,
         cwd: &Path,
