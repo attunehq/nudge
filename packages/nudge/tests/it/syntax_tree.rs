@@ -66,7 +66,8 @@ fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     (exit_code, combined)
 }
 
-/// Run a nudge subcommand in the given directory.
+/// Run a nudge subcommand in a temporary directory and return exit code,
+/// stdout, and stderr.
 fn run_nudge_in_dir(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
     let output = Command::new(nudge_binary())
         .args(args)
