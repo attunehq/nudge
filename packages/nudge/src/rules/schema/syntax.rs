@@ -251,6 +251,15 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_invalid_javascript_returns_tree_with_errors() {
+        let code = "if (user == null) {";
+        let tree = Language::JavaScript
+            .parse(code)
+            .expect("JavaScript parser returns trees for incomplete code");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_language_parse_valid_python() {
         let code = "def main():\n    print(\"hello\")\n";
         let tree = Language::Python.parse(code);
