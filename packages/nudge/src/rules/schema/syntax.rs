@@ -186,6 +186,7 @@ impl<'de> Deserialize<'de> for TreeSitterQuery {
 mod tests {
     use std::{panic::catch_unwind, sync::Mutex};
 
+    use clap::ValueEnum;
     use pretty_assertions::assert_eq as pretty_assert_eq;
 
     use super::*;
@@ -202,6 +203,15 @@ mod tests {
         let code = "fn main( { }";
         let tree = Language::Rust.parse(code);
         assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_typescript_parse_invalid_returns_tree_with_errors() {
+        let code = "function process(data: any";
+        let tree = Language::TypeScript
+            .parse(code)
+            .expect("TypeScript parser should return an error-tolerant tree");
+        assert!(tree.root_node().has_error());
     }
 
     #[test]
@@ -245,6 +255,28 @@ mod tests {
             .parse(code)
             .expect("Go parser should recover an error tree");
         assert!(tree.root_node().has_error());
+    }
+
+    #[test]
+    fn test_cli_language_values_match_yaml_names_with_legacy_aliases() {
+        pretty_assert_eq!(
+            Language::from_str("typescript", false),
+            Ok(Language::TypeScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("type-script", false),
+            Ok(Language::TypeScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("javascript", false),
+            Ok(Language::JavaScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("java-script", false),
+            Ok(Language::JavaScript)
+        );
+        pretty_assert_eq!(Language::from_str("csharp", false), Ok(Language::CSharp));
+        pretty_assert_eq!(Language::from_str("c-sharp", false), Ok(Language::CSharp));
     }
 
     #[test]

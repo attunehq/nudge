@@ -126,6 +126,42 @@ fn test_syntaxtree_inline_code() {
 }
 
 #[test]
+fn test_syntaxtree_typescript_language() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "typescript",
+        "interface User { name: string; age?: number }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("interface_declaration"),
+        "syntaxtree should show TypeScript interface node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("property_signature") && stdout.contains("age"),
+        "syntaxtree should show TypeScript property signatures, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_typescript_legacy_alias() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "type-script",
+        "const name = user.profile?.name;",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("member_expression"),
+        "legacy type-script alias should still parse TypeScript, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_shows_field_names() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",
@@ -204,33 +240,4 @@ fn test_syntaxtree_accepts_csharp_language_name() {
         stdout.contains("invocation_expression") && stdout.contains("WriteLine"),
         "syntaxtree should show C# invocation, got: {stdout}"
     );
-}
-
-#[test]
-fn test_syntaxtree_accepts_canonical_and_legacy_compound_language_names() {
-    let cases = [
-        ("typescript", "let value: string = 'ok';", "type_annotation"),
-        (
-            "type-script",
-            "let value: string = 'ok';",
-            "type_annotation",
-        ),
-        ("javascript", "const value = 1;", "lexical_declaration"),
-        ("java-script", "const value = 1;", "lexical_declaration"),
-        ("csharp", "public class Test {}", "class_declaration"),
-        ("c-sharp", "public class Test {}", "class_declaration"),
-    ];
-
-    for (language, code, expected_node) in cases {
-        let (exit_code, stdout, stderr) = run_nudge(&["syntaxtree", "--language", language, code]);
-        pretty_assert_eq!(
-            exit_code,
-            0,
-            "syntaxtree should accept {language}, stderr: {stderr}"
-        );
-        assert!(
-            stdout.contains(expected_node),
-            "syntaxtree should show {expected_node} for {language}, got: {stdout}"
-        );
-    }
 }
