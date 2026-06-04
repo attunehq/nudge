@@ -43,17 +43,42 @@ jobs:
                     - fresh-versioned
                     - upgrade-versioned
 
-        env:
-            FRESH_VERSION: "0.2.1"
-            UPGRADE_FROM_VERSION: "0.1.0"
-            UPGRADE_TO_VERSION: "0.2.1"
-
         steps:
             - uses: actions/checkout@v4
+
+            - name: Select release versions
+              id: releases
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { owner, repo } = context.repo;
+                      const latest = await github.rest.repos.getLatestRelease({ owner, repo });
+                      const releases = await github.paginate(github.rest.repos.listReleases, {
+                        owner,
+                        repo,
+                        per_page: 100,
+                      });
+                      const candidates = releases
+                        .filter((release) => !release.draft && !release.prerelease)
+                        .sort((left, right) => new Date(right.published_at) - new Date(left.published_at));
+                      const previous = candidates.find((release) => release.tag_name !== latest.data.tag_name);
+
+                      if (!previous) {
+                        core.setFailed("Need at least two published non-prerelease releases to test versioned installs and upgrades.");
+                        return;
+                      }
+
+                      const stripPrefix = (tag) => tag.replace(/^v/, "");
+                      core.setOutput("latest_version", stripPrefix(latest.data.tag_name));
+                      core.setOutput("previous_version", stripPrefix(previous.tag_name));
+                      core.notice(`Selected installer versions: LATEST=${latest.data.tag_name}, LATEST-1=${previous.tag_name}`);
 
             - name: Run shell installer
               if: matrix.platform.installer == 'shell'
               shell: bash
+              env:
+                  LATEST_VERSION: ${{ steps.releases.outputs.latest_version }}
+                  PREVIOUS_VERSION: ${{ steps.releases.outputs.previous_version }}
               run: |
                   case "${{ matrix.scenario }}" in
                     help)
@@ -78,35 +103,37 @@ jobs:
                       ;;
                     fresh-versioned)
                       # Exercises a fresh install with --version, --bin-dir, and
-                      # --tmp-dir against a known released artifact.
+                      # --tmp-dir against LATEST-1, selected by CI from published
+                      # GitHub Releases.
                       bin_dir="$RUNNER_TEMP/nudge-bin-fresh-versioned"
                       tmp_dir="$RUNNER_TEMP/nudge-installer-fresh-versioned"
                       mkdir -p "$bin_dir" "$tmp_dir"
 
                       bash scripts/install.sh \
-                        --version "$FRESH_VERSION" \
+                        --version "$PREVIOUS_VERSION" \
                         --bin-dir "$bin_dir" \
                         --tmp-dir "$tmp_dir"
-                      "$bin_dir/nudge" --version | grep -q "v$FRESH_VERSION"
+                      "$bin_dir/nudge" --version | grep -q "v$PREVIOUS_VERSION"
                       ;;
                     upgrade-versioned)
-                      # Exercises the upgrade path by installing an older release,
-                      # then installing a newer release into the same --bin-dir.
+                      # Exercises the upgrade path by installing LATEST-1, then
+                      # installing LATEST into the same --bin-dir. CI owns the
+                      # release selection; the installer remains generic.
                       bin_dir="$RUNNER_TEMP/nudge-bin-upgrade"
                       tmp_dir="$RUNNER_TEMP/nudge-installer-upgrade"
                       mkdir -p "$bin_dir" "$tmp_dir"
 
                       bash scripts/install.sh \
-                        -v "$UPGRADE_FROM_VERSION" \
+                        -v "$PREVIOUS_VERSION" \
                         -b "$bin_dir" \
                         -t "$tmp_dir"
-                      "$bin_dir/nudge" --version | grep -q "v$UPGRADE_FROM_VERSION"
+                      "$bin_dir/nudge" --version | grep -q "v$PREVIOUS_VERSION"
 
                       bash scripts/install.sh \
-                        -v "$UPGRADE_TO_VERSION" \
+                        -v "$LATEST_VERSION" \
                         -b "$bin_dir" \
                         -t "$tmp_dir"
-                      "$bin_dir/nudge" --version | grep -q "v$UPGRADE_TO_VERSION"
+                      "$bin_dir/nudge" --version | grep -q "v$LATEST_VERSION"
                       ;;
                     *)
                       echo "Unknown installer scenario: ${{ matrix.scenario }}" >&2
@@ -118,6 +145,9 @@ jobs:
             - name: Run PowerShell installer
               if: matrix.platform.installer == 'powershell'
               shell: pwsh
+              env:
+                  LATEST_VERSION: ${{ steps.releases.outputs.latest_version }}
+                  PREVIOUS_VERSION: ${{ steps.releases.outputs.previous_version }}
               run: |
                   switch ("${{ matrix.scenario }}") {
                       "help" {
@@ -140,30 +170,31 @@ jobs:
                       }
                       "fresh-versioned" {
                           # Exercises a fresh install with -Version and -BinDir against
-                          # a known released artifact.
+                          # LATEST-1, selected by CI from published GitHub Releases.
                           $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-fresh-versioned"
 
-                          ./scripts/install.ps1 -Version $env:FRESH_VERSION -BinDir $binDir
+                          ./scripts/install.ps1 -Version $env:PREVIOUS_VERSION -BinDir $binDir
                           $version = & (Join-Path $binDir "nudge.exe") --version
-                          if ($version -notmatch "v$env:FRESH_VERSION") {
-                              throw "Expected v$env:FRESH_VERSION, got $version"
+                          if ($version -notmatch "v$env:PREVIOUS_VERSION") {
+                              throw "Expected v$env:PREVIOUS_VERSION, got $version"
                           }
                       }
                       "upgrade-versioned" {
-                          # Exercises the upgrade path by installing an older release,
-                          # then installing a newer release into the same -BinDir.
+                          # Exercises the upgrade path by installing LATEST-1, then
+                          # installing LATEST into the same -BinDir. CI owns the
+                          # release selection; the installer remains generic.
                           $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-upgrade"
 
-                          ./scripts/install.ps1 -Version $env:UPGRADE_FROM_VERSION -BinDir $binDir
+                          ./scripts/install.ps1 -Version $env:PREVIOUS_VERSION -BinDir $binDir
                           $oldVersion = & (Join-Path $binDir "nudge.exe") --version
-                          if ($oldVersion -notmatch "v$env:UPGRADE_FROM_VERSION") {
-                              throw "Expected v$env:UPGRADE_FROM_VERSION, got $oldVersion"
+                          if ($oldVersion -notmatch "v$env:PREVIOUS_VERSION") {
+                              throw "Expected v$env:PREVIOUS_VERSION, got $oldVersion"
                           }
 
-                          ./scripts/install.ps1 -Version $env:UPGRADE_TO_VERSION -BinDir $binDir
+                          ./scripts/install.ps1 -Version $env:LATEST_VERSION -BinDir $binDir
                           $newVersion = & (Join-Path $binDir "nudge.exe") --version
-                          if ($newVersion -notmatch "v$env:UPGRADE_TO_VERSION") {
-                              throw "Expected v$env:UPGRADE_TO_VERSION, got $newVersion"
+                          if ($newVersion -notmatch "v$env:LATEST_VERSION") {
+                              throw "Expected v$env:LATEST_VERSION, got $newVersion"
                           }
                       }
                       default {
