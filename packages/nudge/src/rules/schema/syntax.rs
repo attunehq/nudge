@@ -187,6 +187,8 @@ impl<'de> Deserialize<'de> for TreeSitterQuery {
 mod tests {
     use std::{panic::catch_unwind, sync::Mutex};
 
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+
     use super::*;
 
     #[test]
@@ -201,6 +203,20 @@ mod tests {
         let code = "fn main( { }";
         let tree = Language::Rust.parse(code);
         assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_rust_reuses_parser_for_multiple_sources() {
+        let first = Language::Rust
+            .parse("fn first() {}")
+            .expect("parse first source");
+        let second = Language::Rust
+            .parse("fn second() { let value: usize = 1; }")
+            .expect("parse second source");
+
+        pretty_assert_eq!(first.root_node().kind(), "source_file");
+        pretty_assert_eq!(second.root_node().kind(), "source_file");
+        assert!(!second.root_node().has_error());
     }
 
     #[test]
