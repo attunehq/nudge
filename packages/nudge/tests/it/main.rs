@@ -7,6 +7,7 @@
 
 mod bash;
 mod basic;
+mod check;
 mod cli;
 mod codex;
 mod edit_tool;
