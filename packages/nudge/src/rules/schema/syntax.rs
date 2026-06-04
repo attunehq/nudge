@@ -27,6 +27,7 @@ pub enum Language {
     /// The Java programming language.
     Java,
     /// The C# programming language.
+    #[value(name = "csharp", alias = "c-sharp")]
     CSharp,
     /// The Kotlin programming language.
     Kotlin,
@@ -200,6 +201,15 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_invalid_csharp_returns_tree_with_errors() {
+        let code = "public class Test { public void Example( { Console.WriteLine(\"debug\"); }";
+        let tree = Language::CSharp
+            .parse(code)
+            .expect("C# parser should return a tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_lock_parser_panics_when_mutex_is_poisoned() {
         let parser = Mutex::new(());
         let poison = catch_unwind(|| {
@@ -220,6 +230,12 @@ mod tests {
     #[test]
     fn test_treesitter_query_compile_valid() {
         let query = TreeSitterQuery::new(Language::Rust, "(function_item)");
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_valid_csharp() {
+        let query = TreeSitterQuery::new(Language::CSharp, "(method_declaration)");
         assert!(query.is_ok());
     }
 

@@ -218,11 +218,17 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: rust</yellow>              <dim># Required: rust (more languages coming)</dim>
+        <yellow>language: rust</yellow>              <dim># Required: rust, typescript, javascript, python, go, java, csharp, kotlin, or haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_item</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
+
+  <white>Supported Languages:</white>
+    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
+
+  Use <cyan>nudge syntaxtree --language csharp 'public class Example {}'</cyan> to inspect
+  the node and field names for a snippet before writing a query.
 
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
@@ -243,8 +249,8 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
-  <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
-  <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
+  <dim>Note: Incomplete or invalid code is still evaluated when tree-sitter can</dim>
+  <dim>produce a partial tree. If parsing returns no tree, the matcher passes silently.</dim>
 
 <bold>External Program Matching</bold>
 
