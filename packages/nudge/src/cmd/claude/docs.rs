@@ -228,9 +228,6 @@ const DOCS: &str = cstr!("\
   <white>Supported Languages:</white>
     <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
 
-  Use <cyan>nudge syntaxtree --language csharp 'public class Example {}'</cyan> to inspect
-  the node and field names for a snippet before writing a query.
-
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
     and captures are marked with <green>@name</green>.
