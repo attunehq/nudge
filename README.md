@@ -194,6 +194,10 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
+When you pass explicit paths or globs, each one must resolve to at least one
+file. Missing paths, empty directories, and glob patterns that match no files
+fail with a non-zero exit so CI scripts do not silently check nothing.
+
 `nudge check` evaluates file-based block rules for `PreToolUse` Write/Edit
 matchers, including Regex, SyntaxTree, and External content matchers. It
 supports SyntaxTree rules for Rust, TypeScript, JavaScript, Python, Go, Java,

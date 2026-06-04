@@ -153,6 +153,85 @@ rules:
 }
 
 #[test]
+fn check_fails_when_explicit_path_does_not_exist() {
+    let dir = TempDir::new().expect("create temp dir");
+    fs::write(
+        dir.path().join(".nudge.yaml"),
+        r#"
+version: 1
+rules:
+  - name: block-todo
+    message: "Resolve TODO before commit."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.txt"
+        content:
+          - kind: Regex
+            pattern: "TODO"
+"#,
+    )
+    .expect("write config");
+
+    let (exit_code, stdout, stderr) =
+        run_nudge_in_dir(&dir, &["check", "definitely-does-not-exist.rs"]);
+
+    pretty_assert_eq!(
+        exit_code,
+        1,
+        "check should fail for missing explicit paths, stdout: {stdout}, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("check path does not exist: definitely-does-not-exist.rs"),
+        "expected missing path error, got stderr: {stderr}"
+    );
+    assert!(
+        stdout.is_empty(),
+        "expected no success output for missing path, got: {stdout}"
+    );
+}
+
+#[test]
+fn check_fails_when_glob_pattern_matches_no_files() {
+    let dir = TempDir::new().expect("create temp dir");
+    fs::write(
+        dir.path().join(".nudge.yaml"),
+        r#"
+version: 1
+rules:
+  - name: block-todo
+    message: "Resolve TODO before commit."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.txt"
+        content:
+          - kind: Regex
+            pattern: "TODO"
+"#,
+    )
+    .expect("write config");
+    fs::create_dir_all(dir.path().join("src")).expect("create src dir");
+    fs::write(dir.path().join("src/main.txt"), "Plain text.\n").expect("write file");
+
+    let (exit_code, stdout, stderr) = run_nudge_in_dir(&dir, &["check", "**/*.rs"]);
+
+    pretty_assert_eq!(
+        exit_code,
+        1,
+        "check should fail for zero-match glob patterns, stdout: {stdout}, stderr: {stderr}"
+    );
+    assert!(
+        stderr.contains("check glob pattern matched no files: **/*.rs"),
+        "expected zero-match glob error, got stderr: {stderr}"
+    );
+    assert!(
+        stdout.is_empty(),
+        "expected no success output for zero-match glob, got: {stdout}"
+    );
+}
+
+#[test]
 fn check_exits_successfully_when_no_file_rules_exist() {
     let dir = TempDir::new().expect("create temp dir");
     fs::write(

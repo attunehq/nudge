@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 
 use clap::Args;
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{Context, Result, eyre};
 use glob::Pattern;
 use ignore::WalkBuilder;
 
@@ -189,24 +189,16 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
     if paths.is_empty() {
-        // Walk entire project from current directory
-        for entry in WalkBuilder::new(".").hidden(false).build() {
-            let entry = entry.context("walk directory")?;
-            if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                files.push(entry.into_path());
-            }
-        }
+        collect_walk_files(Path::new("."), &mut files).context("walk project")?;
     } else {
-        // Process each provided path
         for path in paths {
             let path_str = path.to_string_lossy();
+            let initial_file_count = files.len();
 
-            // Check if it's a glob pattern
-            if path_str.contains('*') || path_str.contains('?') || path_str.contains('[') {
+            if looks_like_glob(&path_str) {
                 let pattern = Pattern::new(&path_str)
                     .with_context(|| format!("invalid glob pattern: {path_str}"))?;
 
-                // Walk from current directory and filter by pattern
                 for entry in WalkBuilder::new(".").hidden(false).build() {
                     let entry = entry.context("walk directory")?;
                     if entry.file_type().is_some_and(|ft| ft.is_file())
@@ -215,23 +207,41 @@ fn collect_files(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
                         files.push(entry.into_path());
                     }
                 }
+
+                if files.len() == initial_file_count {
+                    return Err(eyre!("check glob pattern matched no files: {path_str}"));
+                }
             } else if path.is_dir() {
-                // Walk the directory
-                for entry in WalkBuilder::new(path).hidden(false).build() {
-                    let entry = entry.context("walk directory")?;
-                    if entry.file_type().is_some_and(|ft| ft.is_file()) {
-                        files.push(entry.into_path());
-                    }
+                collect_walk_files(path, &mut files)
+                    .with_context(|| format!("walk check path: {}", path.display()))?;
+
+                if files.len() == initial_file_count {
+                    return Err(eyre!("check path contains no files: {}", path.display()));
                 }
             } else if path.is_file() {
                 files.push(path.clone());
             } else {
-                tracing::warn!(?path, "path does not exist, skipping");
+                return Err(eyre!("check path does not exist: {}", path.display()));
             }
         }
     }
 
     Ok(files)
+}
+
+fn collect_walk_files(root: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in WalkBuilder::new(root).hidden(false).build() {
+        let entry = entry.context("walk directory")?;
+        if entry.file_type().is_some_and(|ft| ft.is_file()) {
+            files.push(entry.into_path());
+        }
+    }
+
+    Ok(())
+}
+
+fn looks_like_glob(input: &str) -> bool {
+    input.contains('*') || input.contains('?') || input.contains('[')
 }
 
 /// Convert a byte offset to a 1-indexed line number.
