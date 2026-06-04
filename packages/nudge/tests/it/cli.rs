@@ -126,6 +126,30 @@ fn test_syntaxtree_inline_code() {
 }
 
 #[test]
+fn test_syntaxtree_javascript_language_name() {
+    let (exit_code, stdout, stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "javascript",
+        "if (user == null) { eval(payload); }",
+    ]);
+
+    pretty_assert_eq!(
+        exit_code,
+        0,
+        "syntaxtree should accept language:javascript, stderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("binary_expression"),
+        "syntaxtree should show JavaScript binary_expression, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("call_expression") && stdout.contains("eval"),
+        "syntaxtree should show JavaScript eval call, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_typescript_language() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",
