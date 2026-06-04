@@ -200,6 +200,15 @@ mod tests {
     }
 
     #[test]
+    fn test_go_parse_invalid_returns_tree_with_errors() {
+        let code = "package main\nfunc main( { panic(\"boom\")";
+        let tree = Language::Go
+            .parse(code)
+            .expect("Go parser should recover an error tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_lock_parser_panics_when_mutex_is_poisoned() {
         let parser = Mutex::new(());
         let poison = catch_unwind(|| {
