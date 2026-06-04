@@ -19,7 +19,7 @@ enum Commands {
     /// Responds to Codex hooks.
     Hook(hook::Config),
 
-    /// Set up Nudge hooks in .codex/hooks.json.
+    /// Set up Nudge hooks in .codex/hooks.json, backing up existing hooks.
     Setup(setup::Config),
 
     /// Show documentation for writing Nudge rules.

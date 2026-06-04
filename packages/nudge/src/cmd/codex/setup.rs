@@ -63,7 +63,8 @@ pub fn main(config: Config) -> Result<()> {
         ),
     ];
 
-    let mut config = if hooks_file.exists() {
+    let hooks_file_existed = hooks_file.exists();
+    let mut config = if hooks_file_existed {
         let content = fs::read_to_string(&hooks_file).context("read existing hooks.json")?;
         serde_json::from_str::<Value>(&content).context("parse existing hooks.json")?
     } else {
@@ -74,9 +75,20 @@ pub fn main(config: Config) -> Result<()> {
     json_hooks::merge_hooks(hooks, desired_hooks)?;
 
     let hooks_json = serde_json::to_string_pretty(&config).context("serialize hooks.json")?;
+    let backup_path = if hooks_file_existed {
+        setup_command::backup_existing_file(&hooks_file)?
+    } else {
+        None
+    };
     fs::write(&hooks_file, hooks_json).context("write hooks.json")?;
 
     println!("✓ Wrote hooks configuration to {}", hooks_file.display());
+    if let Some(backup_path) = backup_path {
+        println!(
+            "  Backed up previous configuration to {}",
+            backup_path.display()
+        );
+    }
     println!();
     println!("Next steps:");
     println!("1. Restart Codex sessions so hooks are loaded.");

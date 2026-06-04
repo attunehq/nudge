@@ -19,7 +19,8 @@ enum Commands {
     /// Responds to Claude Code hooks.
     Hook(hook::Config),
 
-    /// Set up Nudge hooks in .claude/settings.local.json.
+    /// Set up Nudge hooks in .claude/settings.local.json, backing up existing
+    /// settings.
     Setup(setup::Config),
 
     /// Show documentation for writing Nudge rules.
