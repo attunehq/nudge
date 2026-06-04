@@ -22,12 +22,12 @@ concurrency:
 
 jobs:
     installers:
-        name: Test ${{ matrix.name }} installer
-        runs-on: ${{ matrix.os }}
+        name: Test ${{ matrix.platform.name }} installer (${{ matrix.scenario }})
+        runs-on: ${{ matrix.platform.os }}
         strategy:
             fail-fast: false
             matrix:
-                include:
+                platform:
                     - name: Linux
                       os: ubuntu-latest
                       installer: shell
@@ -37,26 +37,136 @@ jobs:
                     - name: Windows
                       os: windows-latest
                       installer: powershell
+                scenario:
+                    - help
+                    - fresh-latest
+                    - fresh-versioned
+                    - upgrade-versioned
+
+        env:
+            FRESH_VERSION: "0.2.1"
+            UPGRADE_FROM_VERSION: "0.1.0"
+            UPGRADE_TO_VERSION: "0.2.1"
 
         steps:
             - uses: actions/checkout@v4
 
             - name: Run shell installer
-              if: matrix.installer == 'shell'
+              if: matrix.platform.installer == 'shell'
               shell: bash
               run: |
-                  bin_dir="$RUNNER_TEMP/nudge-bin"
-                  tmp_dir="$RUNNER_TEMP/nudge-installer"
-                  mkdir -p "$bin_dir" "$tmp_dir"
+                  case "${{ matrix.scenario }}" in
+                    help)
+                      # Exercises -h/--help without installing.
+                      bash scripts/install.sh --help | tee "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--version" "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--bin-dir" "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--tmp-dir" "$RUNNER_TEMP/nudge-install-help.txt"
+                      bash scripts/install.sh -h > /dev/null
+                      ;;
+                    fresh-latest)
+                      # Exercises a fresh install with default latest-version lookup,
+                      # plus explicit --bin-dir and --tmp-dir. This is the release
+                      # health case most likely to fail when the latest published
+                      # release is missing assets or checksums.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-fresh-latest"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-fresh-latest"
+                      mkdir -p "$bin_dir" "$tmp_dir"
 
-                  bash scripts/install.sh --bin-dir "$bin_dir" --tmp-dir "$tmp_dir"
-                  "$bin_dir/nudge" --version
+                      bash scripts/install.sh --bin-dir "$bin_dir" --tmp-dir "$tmp_dir"
+                      "$bin_dir/nudge" --version
+                      ;;
+                    fresh-versioned)
+                      # Exercises a fresh install with --version, --bin-dir, and
+                      # --tmp-dir against a known released artifact.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-fresh-versioned"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-fresh-versioned"
+                      mkdir -p "$bin_dir" "$tmp_dir"
+
+                      bash scripts/install.sh \
+                        --version "$FRESH_VERSION" \
+                        --bin-dir "$bin_dir" \
+                        --tmp-dir "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$FRESH_VERSION"
+                      ;;
+                    upgrade-versioned)
+                      # Exercises the upgrade path by installing an older release,
+                      # then installing a newer release into the same --bin-dir.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-upgrade"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-upgrade"
+                      mkdir -p "$bin_dir" "$tmp_dir"
+
+                      bash scripts/install.sh \
+                        -v "$UPGRADE_FROM_VERSION" \
+                        -b "$bin_dir" \
+                        -t "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$UPGRADE_FROM_VERSION"
+
+                      bash scripts/install.sh \
+                        -v "$UPGRADE_TO_VERSION" \
+                        -b "$bin_dir" \
+                        -t "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$UPGRADE_TO_VERSION"
+                      ;;
+                    *)
+                      echo "Unknown installer scenario: ${{ matrix.scenario }}" >&2
+                      exit 1
+                      ;;
+                  esac
+
 
             - name: Run PowerShell installer
-              if: matrix.installer == 'powershell'
+              if: matrix.platform.installer == 'powershell'
               shell: pwsh
               run: |
-                  $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin"
+                  switch ("${{ matrix.scenario }}") {
+                      "help" {
+                          # Exercises -Help without installing.
+                          $help = ./scripts/install.ps1 -Help | Out-String
+                          $help | Write-Host
+                          if ($help -notmatch "Version" -or $help -notmatch "BinDir" -or $help -notmatch "Help") {
+                              throw "Installer help did not list expected options"
+                          }
+                      }
+                      "fresh-latest" {
+                          # Exercises a fresh install with default latest-version lookup,
+                          # plus explicit -BinDir. This is the release health case most
+                          # likely to fail when the latest published release is missing
+                          # assets or checksums.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-fresh-latest"
 
-                  ./scripts/install.ps1 -BinDir $binDir
-                  & (Join-Path $binDir "nudge.exe") --version
+                          ./scripts/install.ps1 -BinDir $binDir
+                          & (Join-Path $binDir "nudge.exe") --version
+                      }
+                      "fresh-versioned" {
+                          # Exercises a fresh install with -Version and -BinDir against
+                          # a known released artifact.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-fresh-versioned"
+
+                          ./scripts/install.ps1 -Version $env:FRESH_VERSION -BinDir $binDir
+                          $version = & (Join-Path $binDir "nudge.exe") --version
+                          if ($version -notmatch "v$env:FRESH_VERSION") {
+                              throw "Expected v$env:FRESH_VERSION, got $version"
+                          }
+                      }
+                      "upgrade-versioned" {
+                          # Exercises the upgrade path by installing an older release,
+                          # then installing a newer release into the same -BinDir.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-upgrade"
+
+                          ./scripts/install.ps1 -Version $env:UPGRADE_FROM_VERSION -BinDir $binDir
+                          $oldVersion = & (Join-Path $binDir "nudge.exe") --version
+                          if ($oldVersion -notmatch "v$env:UPGRADE_FROM_VERSION") {
+                              throw "Expected v$env:UPGRADE_FROM_VERSION, got $oldVersion"
+                          }
+
+                          ./scripts/install.ps1 -Version $env:UPGRADE_TO_VERSION -BinDir $binDir
+                          $newVersion = & (Join-Path $binDir "nudge.exe") --version
+                          if ($newVersion -notmatch "v$env:UPGRADE_TO_VERSION") {
+                              throw "Expected v$env:UPGRADE_TO_VERSION, got $newVersion"
+                          }
+                      }
+                      default {
+                          throw "Unknown installer scenario: ${{ matrix.scenario }}"
+                      }
+                  }
