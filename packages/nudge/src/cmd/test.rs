@@ -67,6 +67,15 @@ pub fn main(config: Config) -> Result<()> {
             println!("Matched content:");
             println!("{message}");
         }
+        HookOutcome::AllowPreToolUseWithContext {
+            system_message,
+            additional_context,
+        } => {
+            println!("Result: Warning");
+            println!();
+            println!("{system_message}");
+            println!("{additional_context}");
+        }
         HookOutcome::UpdatePreToolUse {
             system_message,
             additional_context,
@@ -134,7 +143,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
         .file
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "test.txt".to_string());
+        .unwrap_or_else(|| String::from("test.txt"));
 
     // Get content from --content or --content-file
     let content = match (&config.content, &config.content_file) {
@@ -158,7 +167,7 @@ fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
             let url = config
                 .url
                 .clone()
-                .unwrap_or_else(|| "https://example.com".to_string());
+                .unwrap_or_else(|| String::from("https://example.com"));
             json!({
                 "url": url,
                 "prompt": content

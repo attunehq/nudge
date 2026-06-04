@@ -1,7 +1,7 @@
 //! Schema types for user-defined rules.
 
 use monostate::MustBe;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{
     fmap_match,
@@ -23,6 +23,7 @@ mod url;
 
 /// A rule configuration file.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RuleConfig {
     /// The version of the rule configuration file.
     pub version: MustBe!(1),
@@ -33,6 +34,7 @@ pub struct RuleConfig {
 
 /// A single rule definition.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     /// Unique identifier for this rule.
     pub name: String,
@@ -61,7 +63,21 @@ pub struct Rule {
     /// Every incoming hook event from the agent is evaluated against this list
     /// in the order in which they are defined; if any rule matches then the
     /// overall rule is considered to match.
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub on: Vec<Hook>,
+}
+
+fn deserialize_non_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let values = Vec::<T>::deserialize(deserializer)?;
+    if values.is_empty() {
+        return Err(de::Error::invalid_length(0, &"at least one matcher"));
+    }
+
+    Ok(values)
 }
 
 impl Rule {
@@ -239,6 +255,7 @@ pub enum PreToolUseMatcher {
 
 /// Matches the Write tool.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreToolUseWriteMatcher {
     // Monostate fields to parse the overall object.
     hook: MustBe!("PreToolUse"),
@@ -255,12 +272,13 @@ pub struct PreToolUseWriteMatcher {
     ///
     /// When the content being written by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub content: Vec<ContentMatcher>,
 }
 
 /// Matches the Edit tool.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreToolUseEditMatcher {
     // Monostate fields to parse the overall object.
     hook: MustBe!("PreToolUse"),
@@ -277,12 +295,13 @@ pub struct PreToolUseEditMatcher {
     ///
     /// When the new content being written by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub new_content: Vec<ContentMatcher>,
 }
 
 /// Matches the WebFetch tool.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreToolUseWebFetchMatcher {
     // Monostate fields to parse the overall object.
     hook: MustBe!("PreToolUse"),
@@ -292,12 +311,13 @@ pub struct PreToolUseWebFetchMatcher {
     ///
     /// When the URL being fetched by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub url: Vec<UrlMatcher>,
 }
 
 /// Matches the Bash tool.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct PreToolUseBashMatcher {
     // Monostate fields to parse the overall object.
     hook: MustBe!("PreToolUse"),
@@ -307,7 +327,7 @@ pub struct PreToolUseBashMatcher {
     ///
     /// When the command being executed by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub command: Vec<ContentMatcher>,
 
     /// Project state matchers.
@@ -321,6 +341,7 @@ pub struct PreToolUseBashMatcher {
 
 /// Matches the UserPromptSubmit hook.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct UserPromptSubmitMatcher {
     // Monostate field to parse the overall object.
     hook: MustBe!("UserPromptSubmit"),
@@ -329,7 +350,7 @@ pub struct UserPromptSubmitMatcher {
     ///
     /// When the user's prompt submitted to the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub prompt: Vec<ContentMatcher>,
 }
 
@@ -372,5 +393,125 @@ mod tests {
             serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         pretty_assert_eq!(matcher.project_state.len(), 1);
+    }
+
+    #[test]
+    fn rule_config_rejects_unknown_top_level_fields() {
+        let yaml = r#"
+            version: 1
+            rules: []
+            workflows: []
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "unknown top-level fields must fail");
+    }
+
+    #[test]
+    fn rule_rejects_unknown_fields() {
+        let yaml = r#"
+            version: 1
+            rules:
+              - name: test
+                message: test
+                typo: true
+                on:
+                  - hook: UserPromptSubmit
+                    prompt:
+                      - kind: Regex
+                        pattern: test
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "unknown rule fields must fail");
+    }
+
+    #[test]
+    fn matcher_rejects_unknown_fields() {
+        let yaml = r#"
+            version: 1
+            rules:
+              - name: test
+                message: test
+                on:
+                  - hook: PreToolUse
+                    tool: Write
+                    file: "**/*.rs"
+                    content:
+                      - kind: Regex
+                        pattern: test
+                    typo: true
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "unknown matcher fields must fail");
+    }
+
+    #[test]
+    fn content_matcher_rejects_unknown_fields() {
+        let yaml = r#"
+            kind: Regex
+            pattern: test
+            typo: true
+        "#;
+
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+
+        assert!(result.is_err(), "unknown content matcher fields must fail");
+    }
+
+    #[test]
+    fn write_matcher_requires_content_matchers() {
+        let yaml = r#"
+            version: 1
+            rules:
+              - name: test
+                message: test
+                on:
+                  - hook: PreToolUse
+                    tool: Write
+                    file: "**/*.rs"
+                    content: []
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "empty content matcher lists must fail");
+    }
+
+    #[test]
+    fn bash_matcher_requires_command_matchers() {
+        let yaml = r#"
+            version: 1
+            rules:
+              - name: test
+                message: test
+                on:
+                  - hook: PreToolUse
+                    tool: Bash
+                    command: []
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "empty command matcher lists must fail");
+    }
+
+    #[test]
+    fn rules_require_at_least_one_hook_matcher() {
+        let yaml = r#"
+            version: 1
+            rules:
+              - name: test
+                message: test
+                on: []
+        "#;
+
+        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+
+        assert!(result.is_err(), "rules without hook matchers must fail");
     }
 }

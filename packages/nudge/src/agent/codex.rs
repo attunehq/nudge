@@ -57,7 +57,15 @@ fn pretooluse(raw: Value, context: HookContext) -> Vec<NudgeHook> {
                     .collect(),
                 Err(error) => {
                     tracing::warn!(?error, "failed to parse Codex apply_patch input");
-                    vec![NudgeHook::Other]
+                    // Codex may change apply_patch syntax faster than Nudge can
+                    // update its parser. Warn the model so the user hears that
+                    // file-content rules were skipped, but allow the work to
+                    // continue instead of blocking on an uninspectable patch.
+                    vec![NudgeHook::WarnPreToolUse {
+                        message: format!(
+                            "Nudge warning: Nudge could not normalize Codex apply_patch input, so file-content rules were not evaluated for this tool call. Continue the requested work, but tell the user about this warning in your next response because they cannot see hook warnings directly.\n\nReason: {error}"
+                        ),
+                    }]
                 }
             }
         }
@@ -230,6 +238,23 @@ mod tests {
 
         assert!(
             matches!(hooks.as_slice(), [NudgeHook::PreToolUse(payload)] if matches!(payload.tool, ToolUse::Delete(_)))
+        );
+    }
+
+    #[test]
+    fn malformed_apply_patch_normalizes_to_pretooluse_warning() {
+        let hooks = parse_hook(json!({
+            "hook_event_name": "PreToolUse",
+            "cwd": "/tmp",
+            "tool_name": "apply_patch",
+            "tool_input": {
+                "command": "*** Begin Patch\n*** Add File: test.rs\n+fn main() {}\n"
+            }
+        }))
+        .expect("parse hook");
+
+        assert!(
+            matches!(hooks.as_slice(), [NudgeHook::WarnPreToolUse { message }] if message.contains("tell the user about this warning"))
         );
     }
 
