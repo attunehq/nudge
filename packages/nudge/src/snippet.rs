@@ -207,7 +207,7 @@ mod tests {
         let source = (1..=30)
             .map(|line| {
                 if line == 25 {
-                    "let value = maybe.unwrap();".to_string()
+                    String::from("let value = maybe.unwrap();")
                 } else {
                     format!("// filler line {line}")
                 }
@@ -231,8 +231,8 @@ mod tests {
     fn test_render_snippet_folds_between_distant_spans() {
         let source = (1..=30)
             .map(|line| match line {
-                5 => "let first = left.unwrap();".to_string(),
-                25 => "let second = right.unwrap();".to_string(),
+                5 => String::from("let first = left.unwrap();"),
+                25 => String::from("let second = right.unwrap();"),
                 _ => format!("// filler line {line}"),
             })
             .collect::<Vec<_>>()

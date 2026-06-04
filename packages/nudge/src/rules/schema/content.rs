@@ -94,60 +94,65 @@ impl<'de> Deserialize<'de> for ContentMatcher {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        struct Raw {
-            kind: String,
-            pattern: Option<String>,
-            language: Option<Language>,
-            query: Option<String>,
-            command: Option<Vec<String>>,
-            timeout_ms: Option<u64>,
-            suggestion: Option<String>,
-            replace: Option<String>,
+        #[serde(tag = "kind")]
+        enum RawContentMatcher {
+            Regex(RawRegexMatcher),
+            SyntaxTree(RawSyntaxTreeMatcher),
+            External(RawExternalMatcher),
         }
 
-        let raw = Raw::deserialize(deserializer)?;
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawRegexMatcher {
+            pattern: Option<String>,
+            replace: Option<String>,
+            suggestion: Option<String>,
+        }
 
-        match raw.kind.as_str() {
-            "Regex" => Ok(ContentMatcher::Regex {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawSyntaxTreeMatcher {
+            language: Language,
+            query: String,
+            suggestion: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawExternalMatcher {
+            command: Vec<String>,
+            timeout_ms: Option<u64>,
+        }
+
+        let raw = RawContentMatcher::deserialize(deserializer)?;
+
+        match raw {
+            RawContentMatcher::Regex(raw) => Ok(ContentMatcher::Regex {
                 pattern: deserialize_regex(raw.pattern)?,
                 replace: raw.replace,
                 suggestion: raw.suggestion,
             }),
-            "SyntaxTree" => {
-                let language = raw
-                    .language
-                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
-                let query = raw
-                    .query
-                    .ok_or_else(|| serde::de::Error::missing_field("query"))
-                    .and_then(|query| {
-                        TreeSitterQuery::new(language, query).map_err(serde::de::Error::custom)
-                    })?;
+            RawContentMatcher::SyntaxTree(raw) => {
+                let query = TreeSitterQuery::new(raw.language, raw.query)
+                    .map_err(serde::de::Error::custom)?;
                 Ok(ContentMatcher::SyntaxTree {
-                    language,
+                    language: raw.language,
                     query,
                     suggestion: raw.suggestion,
                 })
             }
-            "External" => {
-                let command = raw
-                    .command
-                    .ok_or_else(|| serde::de::Error::missing_field("command"))?;
-                if command.is_empty() {
+            RawContentMatcher::External(raw) => {
+                if raw.command.is_empty() {
                     return Err(serde::de::Error::custom("command cannot be empty"));
                 }
                 let timeout_ms = raw
                     .timeout_ms
                     .unwrap_or_else(default_external_command_timeout_ms);
                 Ok(ContentMatcher::External {
-                    command,
+                    command: raw.command,
                     timeout_ms,
                 })
             }
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["Regex", "SyntaxTree", "External"],
-            )),
         }
     }
 }
@@ -220,8 +225,8 @@ impl ContentMatcher {
             } => {
                 if let Some(result) = run_external_command(command, s, *timeout_ms) {
                     let captures = Captures::from_iter([
-                        ("command".to_string(), result.command),
-                        ("external_status".to_string(), result.status),
+                        (String::from("command"), result.command),
+                        (String::from("external_status"), result.status),
                     ]);
                     vec![Match {
                         span: Span::from(0..s.len()),
@@ -300,7 +305,7 @@ pub(crate) fn apply_suggestion(matches: &mut [Match], suggestion: &Option<String
 
     for m in matches {
         let interpolated = template::interpolate(suggestion_template, &m.captures);
-        m.captures.insert("suggestion".to_string(), interpolated);
+        m.captures.insert(String::from("suggestion"), interpolated);
     }
 }
 
@@ -334,7 +339,7 @@ impl ExternalCommandMatch {
             command,
             status: match status.code() {
                 Some(code) => format!("command exited with status {code}"),
-                None => "command exited non-zero".to_string(),
+                None => String::from("command exited non-zero"),
             },
         }
     }
@@ -375,7 +380,7 @@ fn run_external_command(
         tracing::warn!("external command is empty");
         return Some(ExternalCommandMatch {
             command: formatted_command,
-            status: "command is empty".to_string(),
+            status: String::from("command is empty"),
         });
     };
 
@@ -667,6 +672,77 @@ mod tests {
     }
 
     #[test]
+    fn content_matchers_reject_fields_from_other_variants() {
+        let cases = [
+            (
+                "Regex with External command",
+                r#"
+                kind: Regex
+                pattern: test
+                command: ["false"]
+                "#,
+            ),
+            (
+                "External with Regex pattern",
+                r#"
+                kind: External
+                command: ["false"]
+                pattern: test
+                "#,
+            ),
+            (
+                "External with Regex suggestion",
+                r#"
+                kind: External
+                command: ["false"]
+                suggestion: use something else
+                "#,
+            ),
+            (
+                "External with Regex replace",
+                r#"
+                kind: External
+                command: ["false"]
+                replace: replacement
+                "#,
+            ),
+            (
+                "External with typoed timeout",
+                r#"
+                kind: External
+                command: ["false"]
+                timeout_mss: 100
+                "#,
+            ),
+            (
+                "SyntaxTree with Regex replace",
+                r#"
+                kind: SyntaxTree
+                language: rust
+                query: "(function_item)"
+                replace: replacement
+                "#,
+            ),
+            (
+                "SyntaxTree with External command",
+                r#"
+                kind: SyntaxTree
+                language: rust
+                query: "(function_item)"
+                command: ["false"]
+                "#,
+            ),
+        ];
+
+        for (name, yaml) in cases {
+            assert!(
+                serde_yaml::from_str::<ContentMatcher>(yaml).is_err(),
+                "{name} should reject fields from another matcher variant"
+            );
+        }
+    }
+
+    #[test]
     fn test_content_matcher_syntax_tree_deserialize_invalid_query() {
         let yaml = r#"
             kind: SyntaxTree
@@ -837,7 +913,7 @@ mod tests {
     #[test]
     fn test_external_is_match_when_command_fails() {
         let matcher = ContentMatcher::External {
-            command: vec!["false".to_string()],
+            command: vec![String::from("false")],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(matcher.is_match("any content"));
@@ -846,7 +922,7 @@ mod tests {
     #[test]
     fn test_external_is_not_match_when_command_succeeds() {
         let matcher = ContentMatcher::External {
-            command: vec!["true".to_string()],
+            command: vec![String::from("true")],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("any content"));
@@ -855,14 +931,14 @@ mod tests {
     #[test]
     fn test_external_matches_with_context_sets_command_capture() {
         let matcher = ContentMatcher::External {
-            command: vec!["false".to_string()],
+            command: vec![String::from("false")],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
         pretty_assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"false".to_string())
+            Some(&String::from("false"))
         );
     }
 
@@ -870,10 +946,10 @@ mod tests {
     fn test_external_matches_with_context_formats_command_with_args() {
         let matcher = ContentMatcher::External {
             command: vec![
-                "test".to_string(),
-                "1".to_string(),
-                "-eq".to_string(),
-                "0".to_string(),
+                String::from("test"),
+                String::from("1"),
+                String::from("-eq"),
+                String::from("0"),
             ],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
@@ -881,14 +957,18 @@ mod tests {
         pretty_assert_eq!(matches.len(), 1);
         pretty_assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"test 1 -eq 0".to_string())
+            Some(&String::from("test 1 -eq 0"))
         );
     }
 
     #[test]
     fn test_external_passes_content_to_stdin() {
         let matcher = ContentMatcher::External {
-            command: vec!["grep".to_string(), "-q".to_string(), "needle".to_string()],
+            command: vec![
+                String::from("grep"),
+                String::from("-q"),
+                String::from("needle"),
+            ],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("haystack with needle inside"));
@@ -898,7 +978,7 @@ mod tests {
     #[test]
     fn test_external_zero_timeout_waits_without_bounding() {
         let matcher = ContentMatcher::External {
-            command: vec!["true".to_string()],
+            command: vec![String::from("true")],
             timeout_ms: 0,
         };
         assert!(!matcher.is_match("any content"));
@@ -907,14 +987,14 @@ mod tests {
     #[test]
     fn test_external_matches_with_context_sets_status_capture() {
         let matcher = ContentMatcher::External {
-            command: vec!["false".to_string()],
+            command: vec![String::from("false")],
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
         pretty_assert_eq!(
             matches[0].captures.get("external_status"),
-            Some(&"command exited with status 1".to_string())
+            Some(&String::from("command exited with status 1"))
         );
     }
 }

@@ -107,6 +107,7 @@ const DOCS: &str = cstr!("\
   <dim>Delete and PermissionRequest are parsed so Nudge can name them precisely, but</dim>
   <dim>they do not have YAML matchers yet. Codex apply_patch is an adapter detail:</dim>
   <dim>write rules in terms of Write, Edit, and future Delete policy instead.</dim>
+  <dim>Uninspectable Codex apply_patch input is allowed with a model-visible warning.</dim>
 
 <bold>Regex Inline Flags</bold>
 

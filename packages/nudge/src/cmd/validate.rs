@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::Args;
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{Context, Result, bail};
 use nudge::rules;
 
 #[derive(Args, Clone, Debug)]
@@ -37,6 +37,14 @@ fn validate_all() -> Result<()> {
 
 /// Validate a single config file and print results.
 fn validate_file(path: &Path) -> Result<()> {
+    if !path.exists() {
+        bail!("config file does not exist: {}", path.display());
+    }
+
+    if !path.is_file() {
+        bail!("config path is not a file: {}", path.display());
+    }
+
     let rules = rules::load_from(path).context("parse rules file")?;
     let yaml = serde_yaml::to_string(&rules).context("serialize rules")?;
     println!("{yaml}");
