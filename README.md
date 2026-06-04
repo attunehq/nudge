@@ -34,6 +34,7 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 |----------------------|-------------------------------------------------------------|
 | No inline imports    | Move `use` statements to the top of the file                |
 | LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
+| String literals      | Use `String::from("...")` instead of `"...".to_string()`    |
 | Qualified paths      | Import and use shorter names instead of long paths          |
 | Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
