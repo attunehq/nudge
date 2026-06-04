@@ -1,6 +1,5 @@
 //! Set up Nudge hooks for Claude Code.
 
-use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
@@ -15,7 +14,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::json_hooks;
+use crate::cmd::{json_hooks, setup_command};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -92,13 +91,7 @@ pub fn main(config: Config) -> Result<()> {
     let settings_file = dotclaude.join("settings.local.json");
     tracing::debug!(?dotclaude, ?settings_file, "read existing settings");
 
-    let nudge_path = env::current_exe()
-        .context("get current executable path")?
-        .to_str()
-        .ok_or_eyre("convert current executable path to string")?
-        .to_string();
-
-    let nudge_command = format!("{nudge_path} claude hook");
+    let nudge_command = setup_command::current_hook_command("claude")?;
     let nudge_hook = HookConfig::builder()
         .command(&nudge_command)
         .timeout(5)

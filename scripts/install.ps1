@@ -119,27 +119,36 @@ function Install-Binary {
 
     Write-Info "Verifying checksum..."
 
+    # Download checksums
     try {
-        # Download checksums
         $checksums = Invoke-RestMethod -Uri $checksumsUrl -ErrorAction Stop
-
-        # Calculate hash
-        $hash = (Get-FileHash -Path $archivePath -Algorithm SHA256).Hash.ToLower()
-
-        # Find expected hash
-        $expectedHash = ($checksums -split "`n" | Where-Object { $_ -match $archiveName } | ForEach-Object {
-            ($_ -split '\s+')[0]
-        })
-
-        if ($hash -ne $expectedHash) {
-            Write-Error-Message "Checksum verification failed!`nExpected: $expectedHash`nGot: $hash"
-        }
-
-        Write-Info "Checksum verified successfully"
     }
     catch {
-        Write-Warning-Message "Could not verify checksum: $_"
+        Write-Error-Message "Could not download checksums from $checksumsUrl. Error: $_"
     }
+
+    # Calculate hash
+    try {
+        $hash = (Get-FileHash -Path $archivePath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLower()
+    }
+    catch {
+        Write-Error-Message "Could not calculate checksum for $archivePath. Error: $_"
+    }
+
+    # Find expected hash
+    $expectedHash = ($checksums -split "`n" | Where-Object { $_ -match $archiveName } | ForEach-Object {
+        ($_ -split '\s+')[0]
+    } | Select-Object -First 1)
+
+    if ([string]::IsNullOrWhiteSpace($expectedHash)) {
+        Write-Error-Message "Could not find checksum for $archiveName in $checksumsUrl"
+    }
+
+    if ($hash -ne $expectedHash.ToLower()) {
+        Write-Error-Message "Checksum verification failed!`nExpected: $expectedHash`nGot: $hash"
+    }
+
+    Write-Info "Checksum verified successfully"
 
     Write-Info "Extracting archive..."
 
