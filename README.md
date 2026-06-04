@@ -19,6 +19,10 @@ Nudge uses agent hook systems to watch supported operations:
 - [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)
 - [Codex CLI hooks](https://developers.openai.com/codex/hooks)
 
+For provider-free usage, `nudge check` runs file rules as a one-shot project
+checker for CI, pre-commit hooks, and other scripts. See
+[CI and programmatic checks](docs/ci.md).
+
 When something matches a rule you've defined:
 
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
@@ -161,7 +165,9 @@ You'll see Nudge's hook being called and its response in the logs.
 
 ### CI / Linting Mode
 
-Use `nudge check` to validate your entire project against rules, useful for CI pipelines or local linting:
+Use `nudge check` to validate your project against file rules without Claude
+Code, Codex CLI, or installed hooks. This is the right mode for CI pipelines,
+pre-commit checks, release gates, and other programmatic usage.
 
 ```bash
 # Check entire project
@@ -175,7 +181,12 @@ nudge check "**/*.rs"
 nudge check || exit 1
 ```
 
-`nudge check` only evaluates file-based block rules for `PreToolUse` Write/Edit matchers. It ignores `action: substitute` rules because substitutions rewrite live Bash hook payloads and need a provider to receive `updatedInput`.
+`nudge check` evaluates file-based block rules for `PreToolUse` Write/Edit
+matchers, including Regex, SyntaxTree, and External content matchers. It
+supports SyntaxTree rules for Rust, TypeScript, JavaScript, Python, Go, Java,
+C#, Kotlin, and Haskell. Hook-only behavior such as Bash substitutions,
+WebFetch, UserPromptSubmit reminders, permissions, delete events, and
+workflows still belongs to live hook mode.
 
 Example output when violations are found:
 
@@ -200,6 +211,9 @@ When all checks pass:
 Checked 25 files against 6 rules
   - .nudge.yaml: 6 rules
 ```
+
+For the full check-mode contract, CI examples, and supported-feature matrix,
+see [CI and programmatic checks](docs/ci.md).
 
 ### Manual Testing
 
