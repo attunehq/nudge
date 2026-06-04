@@ -107,7 +107,8 @@ pub fn main(config: Config) -> Result<()> {
     ];
     tracing::debug!(?desired_hooks, "generate desired hooks");
 
-    let mut settings = if settings_file.exists() {
+    let settings_existed = settings_file.exists();
+    let mut settings = if settings_existed {
         let content =
             fs::read_to_string(&settings_file).context("read existing settings.local.json")?;
         serde_json::from_str::<Value>(&content).context("parse existing settings.local.json")?
@@ -122,10 +123,6 @@ pub fn main(config: Config) -> Result<()> {
     // existing settings that we may not know about. We've enabled the
     // `preserve_order` feature of serde_json; this should reduce the impact of
     // our changes on the user's settings file.
-    //
-    // TODO: we might want to warn the user so that we don't clobber their
-    // comments or whatever, or at least back up their existing settings file
-    // and leave it behind for them to merge with our changes if desired.
     {
         let hooks = json_hooks::hooks_object(&mut settings, "settings")?;
         let desired_hooks = desired_hooks
@@ -137,10 +134,21 @@ pub fn main(config: Config) -> Result<()> {
     }
 
     let settings_json = serde_json::to_string_pretty(&settings).context("serialize settings")?;
+    let backup_path = if settings_existed {
+        setup_command::backup_existing_file(&settings_file)?
+    } else {
+        None
+    };
     fs::write(&settings_file, settings_json).context("write settings file")?;
     tracing::debug!(?settings, ?settings_file, "wrote merged settings file");
 
     println!("✓ Wrote hooks configuration to {}", settings_file.display());
+    if let Some(backup_path) = backup_path {
+        println!(
+            "  Backed up previous configuration to {}",
+            backup_path.display()
+        );
+    }
     println!();
 
     if !config.skip_claude_md {
