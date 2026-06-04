@@ -218,11 +218,15 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: rust</yellow>              <dim># Required: rust, typescript, javascript, python, go, java, csharp, kotlin, or haskell</dim>
+        <yellow>language: rust</yellow>              <dim># One of: rust, typescript, javascript,</dim>
+                                            <dim># python, go, java, csharp, kotlin, haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_item</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
+
+  <white>Supported Languages:</white>
+    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
 
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
@@ -244,8 +248,8 @@ const DOCS: &str = cstr!("\
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
   <dim>Note: If a parser cannot produce a tree, the matcher passes silently.</dim>
-  <dim>When a parser produces a tree with syntax errors, Nudge still evaluates</dim>
-  <dim>the query because code being written is often incomplete.</dim>
+  <dim>Tree-sitter usually recovers from incomplete or invalid syntax, and</dim>
+  <dim>SyntaxTree matchers run against recovered trees so useful matches can still fire.</dim>
 
 <bold>External Program Matching</bold>
 

@@ -202,6 +202,35 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_valid_python() {
+        let code = "def main():\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_invalid_python_returns_tree_with_errors() {
+        let code = "def main(:\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+        assert!(
+            tree.expect("parser should recover a tree")
+                .root_node()
+                .has_error(),
+            "invalid Python should produce a recovered tree with errors"
+        );
+    }
+
+    #[test]
+    fn test_go_parse_invalid_returns_tree_with_errors() {
+        let code = "package main\nfunc main( { panic(\"boom\")";
+        let tree = Language::Go
+            .parse(code)
+            .expect("Go parser should recover an error tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_language_parse_haskell_reuses_parser_and_accepts_error_trees() {
         let valid = "module Main where\n\nfirstElem xs = head xs\n";
         let first_tree = Language::Haskell.parse(valid).expect("parse valid haskell");
@@ -258,5 +287,20 @@ mod tests {
             "#,
         );
         assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_valid() {
+        let query = TreeSitterQuery::new(
+            Language::Python,
+            "(call function: (identifier) @function_name)",
+        );
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_invalid() {
+        let query = TreeSitterQuery::new(Language::Python, "(not_a_real_python_node)");
+        assert!(query.is_err());
     }
 }
