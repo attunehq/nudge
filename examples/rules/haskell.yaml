@@ -1,0 +1,71 @@
+# Nudge rules for Haskell code style enforcement.
+#
+# These rules demonstrate SyntaxTree matchers against tree-sitter-haskell.
+# Copy and adapt for your projects.
+
+version: 1
+
+rules:
+  # Catch partial `head` calls while ignoring mentions in comments and strings.
+  - name: no-partial-head
+    description: Avoid partial list functions
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.hs"
+        content:
+          - kind: SyntaxTree
+            language: haskell
+            query: |
+              (apply
+                function: (variable) @fn
+                argument: (_) @arg
+                (#eq? @fn "head"))
+            suggestion: "Avoid `{{ $fn }} {{ $arg }}`. Use pattern matching or `listToMaybe` instead, then retry."
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.hs"
+        new_content:
+          - kind: SyntaxTree
+            language: haskell
+            query: |
+              (apply
+                function: (variable) @fn
+                argument: (_) @arg
+                (#eq? @fn "head"))
+            suggestion: "Avoid `{{ $fn }} {{ $arg }}`. Use pattern matching or `listToMaybe` instead, then retry."
+
+  # Catch imports of unsafePerformIO from System.IO.Unsafe.
+  - name: no-unsafe-perform-io
+    description: Avoid unsafePerformIO
+    message: "Avoid importing {{ $name }} from {{ $module }}. Keep IO explicit, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.hs"
+        content:
+          - kind: SyntaxTree
+            language: haskell
+            query: |
+              (import
+                module: (module) @module
+                names: (import_list
+                  (import_name
+                    variable: (variable) @name))
+                (#eq? @module "System.IO.Unsafe")
+                (#eq? @name "unsafePerformIO"))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.hs"
+        new_content:
+          - kind: SyntaxTree
+            language: haskell
+            query: |
+              (import
+                module: (module) @module
+                names: (import_list
+                  (import_name
+                    variable: (variable) @name))
+                (#eq? @module "System.IO.Unsafe")
+                (#eq? @name "unsafePerformIO"))

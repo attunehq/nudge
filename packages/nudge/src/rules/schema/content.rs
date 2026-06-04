@@ -436,6 +436,26 @@ mod tests {
     }
 
     #[test]
+    fn test_content_matcher_syntax_tree_deserialize_haskell() {
+        let yaml = r#"
+            kind: SyntaxTree
+            language: haskell
+            query: |
+              (apply
+                function: (variable) @fn
+                (#eq? @fn "head"))
+        "#;
+        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid haskell yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::SyntaxTree {
+                language: Language::Haskell,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn regex_replace_interpolates_captures() {
         let matcher = serde_yaml::from_str::<ContentMatcher>(
             r#"
@@ -454,6 +474,17 @@ mod tests {
         let yaml = r#"
             kind: SyntaxTree
             language: rust
+            query: "(not_a_real_node)"
+        "#;
+        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_content_matcher_syntax_tree_deserialize_invalid_haskell_query() {
+        let yaml = r#"
+            kind: SyntaxTree
+            language: haskell
             query: "(not_a_real_node)"
         "#;
         let result = serde_yaml::from_str::<ContentMatcher>(yaml);

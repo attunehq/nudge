@@ -247,8 +247,9 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
-  <dim>Note: Tree-sitter recovers from incomplete or invalid syntax. SyntaxTree</dim>
-  <dim>matchers run against the recovered tree so useful matches can still fire.</dim>
+  <dim>Note: If a parser cannot produce a tree, the matcher passes silently.</dim>
+  <dim>Tree-sitter usually recovers from incomplete or invalid syntax, and</dim>
+  <dim>SyntaxTree matchers run against recovered trees so useful matches can still fire.</dim>
 
 <bold>External Program Matching</bold>
 

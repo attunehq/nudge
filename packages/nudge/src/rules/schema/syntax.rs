@@ -311,6 +311,22 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_haskell_reuses_parser_and_accepts_error_trees() {
+        let valid = "module Main where\n\nfirstElem xs = head xs\n";
+        let first_tree = Language::Haskell.parse(valid).expect("parse valid haskell");
+        let second_tree = Language::Haskell.parse(valid).expect("parse haskell again");
+
+        pretty_assert_eq!(first_tree.root_node().kind(), "haskell");
+        pretty_assert_eq!(second_tree.root_node().kind(), "haskell");
+
+        let incomplete = "module Main where\n\nfirstElem xs =";
+        let tree = Language::Haskell
+            .parse(incomplete)
+            .expect("parse incomplete haskell into an error tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_language_parse_invalid_csharp_returns_tree_with_errors() {
         let code = "public class Test { public void Example( { Console.WriteLine(\"debug\"); }";
         let tree = Language::CSharp
@@ -362,6 +378,19 @@ mod tests {
     fn test_treesitter_query_compile_invalid() {
         let query = TreeSitterQuery::new(Language::Rust, "(not_a_real_node)");
         assert!(query.is_err());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_valid_haskell() {
+        let query = TreeSitterQuery::new(
+            Language::Haskell,
+            r#"
+            (apply
+              function: (variable) @fn
+              (#eq? @fn "head"))
+            "#,
+        );
+        assert!(query.is_ok());
     }
 
     #[test]
