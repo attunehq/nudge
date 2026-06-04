@@ -150,6 +150,35 @@ fn test_syntaxtree_javascript_language_name() {
 }
 
 #[test]
+fn test_syntaxtree_compound_language_legacy_aliases() {
+    for (language, code, expected_node) in [
+        (
+            "java-script",
+            "if (user == null) { eval(payload); }",
+            "call_expression",
+        ),
+        (
+            "type-script",
+            "let user: string = 'Ada';",
+            "type_annotation",
+        ),
+        ("c-sharp", "class User {}", "class_declaration"),
+    ] {
+        let (exit_code, stdout, stderr) = run_nudge(&["syntaxtree", "--language", language, code]);
+
+        pretty_assert_eq!(
+            exit_code,
+            0,
+            "syntaxtree should keep accepting legacy alias {language}, stderr: {stderr}"
+        );
+        assert!(
+            stdout.contains(expected_node),
+            "syntaxtree alias {language} should show {expected_node}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn test_syntaxtree_shows_field_names() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",
@@ -167,5 +196,45 @@ fn test_syntaxtree_shows_field_names() {
     assert!(
         stdout.contains("body:"),
         "syntaxtree should show 'body:' field, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_go_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "go",
+        "package main\nfunc main() { defer cleanup() }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("function_declaration"),
+        "syntaxtree should show Go function_declaration node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("defer_statement"),
+        "syntaxtree should show Go defer_statement node, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_python_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "python",
+        "def greet(name):\n    print(name)",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("function_definition"),
+        "syntaxtree should show function_definition node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("call") && stdout.contains("print"),
+        "syntaxtree should show print call nodes, got: {stdout}"
     );
 }
