@@ -11,6 +11,7 @@ mod java;
 mod javascript;
 mod kotlin;
 mod python;
+mod typescript_end_to_end;
 mod typescript_errors;
 mod typescript_types;
 
