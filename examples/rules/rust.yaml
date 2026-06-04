@@ -53,6 +53,39 @@ rules:
             query: |
               (let_declaration type: (_) @type)
 
+  # Prefer explicit string construction for string literals.
+  # Uses tree-sitter to match literal receiver calls while ignoring variables.
+  - name: prefer-string-from-literal
+    description: Use String::from instead of .to_string() on string literals
+    message: 'Use `String::from("...")` instead of calling `.to_string()` on a string literal, then retry.'
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (call_expression
+                function: (field_expression
+                  value: (string_literal) @string
+                  field: (field_identifier) @method
+                  (#eq? @method "to_string"))
+                arguments: (arguments))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (call_expression
+                function: (field_expression
+                  value: (string_literal) @string
+                  field: (field_identifier) @method
+                  (#eq? @method "to_string"))
+                arguments: (arguments))
+
   # Catch unnecessarily fully qualified paths in code (not imports).
   # Pattern: paths with 2+ `::` separators followed by ::, (, or <
   - name: no-qualified-paths
