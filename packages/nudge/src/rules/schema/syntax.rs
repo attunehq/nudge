@@ -215,6 +215,20 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_rust_reuses_parser_for_multiple_sources() {
+        let first = Language::Rust
+            .parse("fn first() {}")
+            .expect("parse first source");
+        let second = Language::Rust
+            .parse("fn second() { let value: usize = 1; }")
+            .expect("parse second source");
+
+        pretty_assert_eq!(first.root_node().kind(), "source_file");
+        pretty_assert_eq!(second.root_node().kind(), "source_file");
+        assert!(!second.root_node().has_error());
+    }
+
+    #[test]
     fn test_language_parse_valid_python() {
         let code = "def main():\n    print(\"hello\")\n";
         let tree = Language::Python.parse(code);
