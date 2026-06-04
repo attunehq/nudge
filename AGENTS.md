@@ -88,6 +88,7 @@ When Nudge has something to share, it responds in one of three ways:
 - **Passthrough**: Nothing to note. Carry on!
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
+- **Warning**: For provider inputs that look like supported PreToolUse surfaces but cannot be inspected (currently Codex apply_patch parse failures), Nudge allows the operation and tells the model to report the warning to the user
 - **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
 
 The response type is determined by the hook type:

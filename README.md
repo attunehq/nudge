@@ -226,8 +226,9 @@ echo '{
   }
 }' | nudge claude hook
 
-# Codex sends apply_patch for file writes and edits; Nudge normalizes those
-# into Write/Edit/Delete before evaluating rules.
+# Codex sends apply_patch for file writes and edits. Nudge normalizes supported
+# add/update/delete patches into Write/Edit/Delete before evaluating rules, and
+# warns the model when an apply_patch input cannot be inspected.
 echo '{
   "hook_event_name": "PreToolUse",
   "cwd": "/tmp",

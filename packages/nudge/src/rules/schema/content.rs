@@ -187,7 +187,7 @@ impl ContentMatcher {
             }
             ContentMatcher::External { command } => {
                 if let Some(command) = run_external_command(command, s) {
-                    let captures = Captures::from_iter([("command".to_string(), command)]);
+                    let captures = Captures::from_iter([(String::from("command"), command)]);
                     vec![Match {
                         span: Span::from(0..s.len()),
                         captures,
@@ -265,7 +265,7 @@ pub(crate) fn apply_suggestion(matches: &mut [Match], suggestion: &Option<String
 
     for m in matches {
         let interpolated = template::interpolate(suggestion_template, &m.captures);
-        m.captures.insert("suggestion".to_string(), interpolated);
+        m.captures.insert(String::from("suggestion"), interpolated);
     }
 }
 
@@ -589,7 +589,7 @@ mod tests {
     #[test]
     fn test_external_is_match_when_command_fails() {
         let matcher = ContentMatcher::External {
-            command: vec!["false".to_string()],
+            command: vec![String::from("false")],
         };
         assert!(matcher.is_match("any content"));
     }
@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn test_external_is_not_match_when_command_succeeds() {
         let matcher = ContentMatcher::External {
-            command: vec!["true".to_string()],
+            command: vec![String::from("true")],
         };
         assert!(!matcher.is_match("any content"));
     }
@@ -605,13 +605,13 @@ mod tests {
     #[test]
     fn test_external_matches_with_context_sets_command_capture() {
         let matcher = ContentMatcher::External {
-            command: vec!["false".to_string()],
+            command: vec![String::from("false")],
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
         pretty_assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"false".to_string())
+            Some(&String::from("false"))
         );
     }
 
@@ -619,24 +619,28 @@ mod tests {
     fn test_external_matches_with_context_formats_command_with_args() {
         let matcher = ContentMatcher::External {
             command: vec![
-                "test".to_string(),
-                "1".to_string(),
-                "-eq".to_string(),
-                "0".to_string(),
+                String::from("test"),
+                String::from("1"),
+                String::from("-eq"),
+                String::from("0"),
             ],
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
         pretty_assert_eq!(
             matches[0].captures.get("command"),
-            Some(&"test 1 -eq 0".to_string())
+            Some(&String::from("test 1 -eq 0"))
         );
     }
 
     #[test]
     fn test_external_passes_content_to_stdin() {
         let matcher = ContentMatcher::External {
-            command: vec!["grep".to_string(), "-q".to_string(), "needle".to_string()],
+            command: vec![
+                String::from("grep"),
+                String::from("-q"),
+                String::from("needle"),
+            ],
         };
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));

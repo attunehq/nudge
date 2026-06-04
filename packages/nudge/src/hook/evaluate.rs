@@ -21,12 +21,16 @@ use crate::{
 /// A raw provider hook can normalize into multiple Nudge events. This happens
 /// for Codex `apply_patch`, where one tool call can touch several files.
 pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
+    let mut pretooluse_warnings = Vec::new();
     let mut pretooluse_matches = Vec::new();
     let mut pretooluse_update = None;
     let mut user_prompt_matches = Vec::new();
 
     for hook in hooks {
         match hook {
+            NudgeHook::WarnPreToolUse { message } => {
+                pretooluse_warnings.push(message.clone());
+            }
             NudgeHook::PreToolUse(payload) => {
                 let (payload, update) = apply_pretooluse_substitutions(payload, rules);
                 pretooluse_update = pretooluse_update.or(update);
@@ -48,6 +52,13 @@ pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
 
                 {matches}
             "},
+        };
+    }
+
+    if !pretooluse_warnings.is_empty() {
+        return HookOutcome::AllowPreToolUseWithContext {
+            system_message: String::from("Nudge allowed the operation with a warning."),
+            additional_context: pretooluse_warnings.join("\n\n"),
         };
     }
 
@@ -146,7 +157,7 @@ fn updated_tool_input(tool_input: &Value, command: &str) -> Value {
     let mut updated_input = tool_input.clone();
     match &mut updated_input {
         Value::Object(map) => {
-            map.insert("command".to_string(), Value::String(command.to_string()));
+            map.insert(String::from("command"), Value::String(command.to_string()));
             updated_input
         }
         _ => serde_json::json!({ "command": command }),
@@ -352,6 +363,21 @@ rules:
         );
 
         pretty_assert_eq!(evaluate_hooks(&hook, &rules), HookOutcome::Passthrough);
+    }
+
+    #[test]
+    fn normalized_pretooluse_warning_allows_with_context_without_rules() {
+        let hook = vec![NudgeHook::WarnPreToolUse {
+            message: String::from("Provider input could not be inspected fully."),
+        }];
+
+        pretty_assert_eq!(
+            evaluate_hooks(&hook, &[]),
+            HookOutcome::AllowPreToolUseWithContext {
+                system_message: String::from("Nudge allowed the operation with a warning."),
+                additional_context: String::from("Provider input could not be inspected fully."),
+            }
+        );
     }
 
     #[test]
