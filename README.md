@@ -95,6 +95,19 @@ rules:
 
 Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
 
+### External Matcher Trust Model
+
+`kind: External` runs a command from your rule YAML with the file content piped to stdin. Treat rule files as trusted local code: do not install or run Nudge rules from a source you would not trust to execute shell commands on your machine.
+
+External commands fail closed. By default, each command has 5000ms to finish; set `timeout_ms` on the matcher when a legitimate checker needs a different bound. If you set `timeout_ms: 0`, Nudge waits indefinitely for that command. A non-zero exit status, missing command, spawn failure, wait failure, or timeout all count as a match so a broken external checker does not silently make a rule inert. Use `{{ $command }}` and `{{ $external_status }}` in the rule message to show the command and what happened.
+
+```yaml
+content:
+  - kind: External
+    command: ["markdownlint", "--stdin"]
+    timeout_ms: 10000
+```
+
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
 ### Rule Writing Is Iterative
