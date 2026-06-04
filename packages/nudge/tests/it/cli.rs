@@ -33,13 +33,12 @@ fn test_validate_specific_file() {
 
 #[test]
 fn test_validate_nonexistent_file() {
-    let (exit_code, stdout, _stderr) = run_nudge(&["validate", "nonexistent.yaml"]);
+    let (exit_code, _stdout, stderr) = run_nudge(&["validate", "nonexistent.yaml"]);
 
-    pretty_assert_eq!(exit_code, 0, "validate should exit 0 for nonexistent file");
-    // An empty list prints as [] in YAML
+    assert_ne!(exit_code, 0, "validate should fail for nonexistent file");
     assert!(
-        stdout.contains("[]") || stdout.trim().is_empty(),
-        "validate should report empty for nonexistent file, got: {stdout}"
+        stderr.contains("config file does not exist") || stderr.contains("nonexistent.yaml"),
+        "validate should report missing file, got: {stderr}"
     );
 }
 
