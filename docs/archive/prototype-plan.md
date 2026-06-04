@@ -1,3 +1,10 @@
+# Archived Prototype Plan
+
+> Historical context only. This was the original Claude-QA prototype plan and
+> does not describe the current Nudge 1.0 CLI, rule schema, release process, or
+> roadmap. Use the README, `nudge claude docs`, `nudge codex docs`, and
+> `examples/rules/` for current guidance.
+
 ## Claude-QA (better name TBD)
 
 Problem statement:

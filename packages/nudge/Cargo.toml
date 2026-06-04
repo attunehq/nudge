@@ -2,6 +2,12 @@
 name = "nudge"
 version = "0.1.0"
 edition = "2024"
+description = "Collaborative memory layer for Claude Code and Codex CLI agent hooks."
+license = "Apache-2.0"
+repository = "https://github.com/attunehq/nudge"
+readme = "../../README.md"
+keywords = ["agent", "hooks", "cli", "codex", "claude"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 bon = "3.8.1"

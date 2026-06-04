@@ -1,4 +1,10 @@
-# RFC 0001: User-Defined Rules
+# RFC 0001: User-Defined Rules (Historical)
+
+> Historical design note. This RFC records an early prototype schema with
+> top-level `match:` and `action: interrupt|continue` fields. That schema is
+> stale for Nudge 1.0. Do not copy the examples in this document into a current
+> Nudge config. For current rule syntax, run `nudge claude docs` or
+> `nudge codex docs`, or start from `examples/rules/`.
 
 ## Summary
 
