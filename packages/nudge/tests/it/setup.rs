@@ -2,6 +2,7 @@
 
 use std::{
     fs,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 
@@ -11,7 +12,11 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn run_nudge(args: &[&str]) -> (i32, String, String) {
-    let output = Command::new(nudge_binary())
+    run_nudge_binary(&nudge_binary(), args)
+}
+
+fn run_nudge_binary(binary: &Path, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(binary)
         .args(args)
         .env("RUST_BACKTRACE", "0")
         .env("NUDGE_LOG", "error")
@@ -23,6 +28,40 @@ fn run_nudge(args: &[&str]) -> (i32, String, String) {
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     (exit_code, stdout, stderr)
+}
+
+fn copy_nudge_binary_to_path_with_spaces(temp: &TempDir) -> PathBuf {
+    let bin_dir = temp.path().join("bin with spaces");
+    fs::create_dir_all(&bin_dir).expect("create spaced bin dir");
+
+    let source = nudge_binary();
+    let target = bin_dir.join(source.file_name().expect("binary filename"));
+    fs::copy(&source, &target).expect("copy nudge binary");
+
+    #[cfg(unix)]
+    {
+        let permissions = fs::metadata(&source)
+            .expect("source metadata")
+            .permissions();
+        fs::set_permissions(&target, permissions).expect("preserve executable permissions");
+    }
+
+    target
+}
+
+#[test]
+fn claude_setup_help_mentions_settings_local_json() {
+    let (exit_code, stdout, stderr) = run_nudge(&["claude", "setup", "--help"]);
+
+    pretty_assert_eq!(exit_code, 0, "help failed: {stderr}");
+    assert!(
+        stdout.contains(".claude/settings.local.json"),
+        "help should mention settings.local.json, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains(".claude/hooks"),
+        "help should not mention stale .claude/hooks path, got: {stdout}"
+    );
 }
 
 fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
@@ -113,6 +152,44 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
 }
 
 #[test]
+fn claude_setup_quotes_binary_path_with_spaces() {
+    let temp = TempDir::new().expect("temp dir");
+    let binary = copy_nudge_binary_to_path_with_spaces(&temp);
+    let claude_dir = temp.path().join(".claude");
+    let args = [
+        "claude",
+        "setup",
+        "--claude-dir",
+        claude_dir.to_str().expect("utf-8 path"),
+        "--skip-claude-md",
+    ];
+
+    let (exit_code, _stdout, stderr) = run_nudge_binary(&binary, &args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(claude_dir.join("settings.local.json")).expect("read settings"),
+    )
+    .expect("valid json");
+    let command = json["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("command");
+    assert!(
+        command.starts_with('\''),
+        "expected shell-quoted command for spaced path, got: {command}"
+    );
+    let words = shell_words::split(command).expect("split command");
+    pretty_assert_eq!(
+        words,
+        vec![
+            binary.to_str().expect("utf-8 binary").to_string(),
+            "claude".to_string(),
+            "hook".to_string()
+        ]
+    );
+}
+
+#[test]
 fn codex_setup_creates_hooks_json_and_is_idempotent() {
     let temp = TempDir::new().expect("temp dir");
     let codex_dir = temp.path().join(".codex");
@@ -135,6 +212,43 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "Bash|apply_patch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
+}
+
+#[test]
+fn codex_setup_quotes_binary_path_with_spaces() {
+    let temp = TempDir::new().expect("temp dir");
+    let binary = copy_nudge_binary_to_path_with_spaces(&temp);
+    let codex_dir = temp.path().join(".codex");
+    let args = [
+        "codex",
+        "setup",
+        "--codex-dir",
+        codex_dir.to_str().expect("utf-8 path"),
+    ];
+
+    let (exit_code, _stdout, stderr) = run_nudge_binary(&binary, &args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(codex_dir.join("hooks.json")).expect("read hooks"),
+    )
+    .expect("valid json");
+    let command = json["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("command");
+    assert!(
+        command.starts_with('\''),
+        "expected shell-quoted command for spaced path, got: {command}"
+    );
+    let words = shell_words::split(command).expect("split command");
+    pretty_assert_eq!(
+        words,
+        vec![
+            binary.to_str().expect("utf-8 binary").to_string(),
+            "codex".to_string(),
+            "hook".to_string()
+        ]
+    );
 }
 
 #[test]
