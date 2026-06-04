@@ -1,0 +1,62 @@
+# Smoke-test nudge installers against published GitHub Release assets.
+#
+# These checks run installer scripts from the checked-out workflow ref, but the
+# installers intentionally download the latest published release artifact. They
+# do not test installing the binary built from the same CI commit. That limitation
+# is expected: installer scripts are release-facing entrypoints, and this workflow
+# verifies that installer logic, platform detection, archive names, checksums,
+# extraction, and the current latest release assets continue to agree.
+#
+# Keep this separate from PR CI because failures can be caused by published
+# release state, not by the pull request being tested.
+name: Installers
+
+on:
+    workflow_dispatch:
+    schedule:
+        - cron: "17 16 * * *"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    installers:
+        name: Test ${{ matrix.name }} installer
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - name: Linux
+                      os: ubuntu-latest
+                      installer: shell
+                    - name: macOS
+                      os: macos-15-intel
+                      installer: shell
+                    - name: Windows
+                      os: windows-latest
+                      installer: powershell
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Run shell installer
+              if: matrix.installer == 'shell'
+              shell: bash
+              run: |
+                  bin_dir="$RUNNER_TEMP/nudge-bin"
+                  tmp_dir="$RUNNER_TEMP/nudge-installer"
+                  mkdir -p "$bin_dir" "$tmp_dir"
+
+                  bash scripts/install.sh --bin-dir "$bin_dir" --tmp-dir "$tmp_dir"
+                  "$bin_dir/nudge" --version
+
+            - name: Run PowerShell installer
+              if: matrix.installer == 'powershell'
+              shell: pwsh
+              run: |
+                  $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin"
+
+                  ./scripts/install.ps1 -BinDir $binDir
+                  & (Join-Path $binDir "nudge.exe") --version
