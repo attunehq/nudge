@@ -28,6 +28,7 @@ impl<'de> Deserialize<'de> for UrlMatcher {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Raw {
             kind: String,
             pattern: Option<String>,

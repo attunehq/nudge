@@ -62,6 +62,33 @@ fn codex_apply_patch_multi_file_aggregates_matches() {
 }
 
 #[test]
+fn codex_apply_patch_malformed_input_warns_model_and_allows() {
+    let patch = "*** Begin Patch\n*** Add File: test.rs\n+fn main() {}\n*** Unsupported Section\n";
+    let input = codex_apply_patch_hook("/tmp", patch);
+
+    let (exit_code, output) = run_codex_hook(&input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    let json = serde_json::from_str::<serde_json::Value>(&output).expect("valid json output");
+    assert!(
+        json["hookSpecificOutput"]["permissionDecision"] == "allow",
+        "expected permissionDecision:allow, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .is_some_and(|context| context
+                .contains("Nudge could not normalize Codex apply_patch input")
+                && context.contains("tell the user about this warning")),
+        "expected model-visible apply_patch warning, got: {output}"
+    );
+    assert!(
+        json["hookSpecificOutput"].get("updatedInput").is_none(),
+        "expected no updated input for warning-only allow, got: {output}"
+    );
+}
+
+#[test]
 fn codex_permission_request_passes_through() {
     let input = serde_json::json!({
         "hook_event_name": "PermissionRequest",

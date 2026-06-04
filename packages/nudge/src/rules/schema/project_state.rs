@@ -26,6 +26,7 @@ impl<'de> Deserialize<'de> for ProjectStateMatcher {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct Raw {
             kind: String,
             #[serde(default)]
