@@ -7,9 +7,8 @@ version: 1
 
 rules:
   # Catch `use` statements inside function bodies.
-  # Pattern: lines starting with horizontal whitespace followed by `use `.
-  # Limitation: This also triggers on `use` statements inside `mod test`;
-  #             to fix this we need to add treesitter parsing support.
+  # Uses SyntaxTree so module-level imports and `mod test` imports do not
+  # false-positive.
   - name: no-inline-imports
     description: Move imports to the top of the file
     message: Move this `use` statement to the top of the file with other imports, then retry.
@@ -18,14 +17,18 @@ rules:
         tool: Write
         file: "**/*.rs"
         content:
-          - kind: Regex
-            pattern: "(?m)^[ \\t]+use "
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (function_item body: (block (use_declaration) @use))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
         new_content:
-          - kind: Regex
-            pattern: "(?m)^[ \\t]+use "
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (function_item body: (block (use_declaration) @use))
 
   # Catch left-hand side type annotations in variable declarations.
   # Pattern: `let name: Type = ...` or `let mut name: Type = ...`
