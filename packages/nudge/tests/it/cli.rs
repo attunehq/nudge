@@ -200,6 +200,30 @@ fn test_syntaxtree_typescript_legacy_alias() {
 }
 
 #[test]
+fn test_syntaxtree_mermaid_language_name() {
+    let (exit_code, stdout, stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "mermaid",
+        "flowchart TD\n  Start --> Done\n",
+    ]);
+
+    pretty_assert_eq!(
+        exit_code,
+        0,
+        "syntaxtree should accept language:mermaid, stderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("diagram_flow"),
+        "syntaxtree should show Mermaid diagram_flow, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("flow_stmt_vertice") && stdout.contains("Start --> Done"),
+        "syntaxtree should show Mermaid flow edge, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_shows_field_names() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",

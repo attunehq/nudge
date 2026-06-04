@@ -1,0 +1,27 @@
+# Nudge rules for standalone Mermaid diagrams.
+#
+# These rules demonstrate SyntaxTree matchers against tree-sitter-mermaid.
+# Markdown fenced Mermaid blocks are not covered by this standalone file rule.
+
+version: 1
+rules:
+  - name: review-flowchart-edges
+    description: Review Mermaid flowchart edges
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.mmd"
+        content:
+          - kind: SyntaxTree
+            language: mermaid
+            query: "(flow_stmt_vertice) @edge"
+            suggestion: "Review Mermaid flow edge `{{ $edge }}`."
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.mermaid"
+        content:
+          - kind: SyntaxTree
+            language: mermaid
+            query: "(flow_stmt_vertice) @edge"
+            suggestion: "Review Mermaid flow edge `{{ $edge }}`."

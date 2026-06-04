@@ -87,10 +87,15 @@ skipped at debug log level, so keep rules targeted with `file` globs.
 - `csharp` (`c-sharp` is accepted as an alias)
 - `kotlin`
 - `haskell`
+- `mermaid`
 
 Use `nudge syntaxtree --language <language> <file-or-source>` when writing a
 query. This prints the parser's node names so the query can match the actual
 grammar shape for that language.
+
+For standalone Mermaid diagrams, target the file extensions you use, such as
+`**/*.mmd` and `**/*.mermaid`, and set `language: mermaid`. Markdown fenced
+Mermaid blocks are intentionally outside this surface for now.
 
 ## CI Examples
 

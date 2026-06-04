@@ -183,3 +183,53 @@ rules:
         "expected no-file-rule summary, got: {stdout}"
     );
 }
+
+#[test]
+fn check_skips_git_submodule_directories() {
+    let dir = TempDir::new().expect("create temp dir");
+    fs::write(
+        dir.path().join(".nudge.yaml"),
+        r#"
+version: 1
+rules:
+  - name: block-todo
+    description: Block TODO markers
+    message: "Resolve TODO before commit."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.txt"
+        content:
+          - kind: Regex
+            pattern: "TODO"
+"#,
+    )
+    .expect("write config");
+
+    fs::write(dir.path().join("root.txt"), "Clean root file.\n").expect("write root fixture");
+    let submodule = dir.path().join("vendor/upstream");
+    fs::create_dir_all(&submodule).expect("create submodule fixture");
+    fs::write(
+        submodule.join(".git"),
+        "gitdir: ../../.git/modules/vendor/upstream\n",
+    )
+    .expect("write submodule gitfile");
+    fs::write(submodule.join("bad.txt"), "TODO: third-party code\n")
+        .expect("write submodule fixture");
+
+    let (exit_code, stdout, stderr) = run_nudge_in_dir(&dir, &["check"]);
+
+    pretty_assert_eq!(
+        exit_code,
+        0,
+        "check should skip submodule files, stdout: {stdout}, stderr: {stderr}"
+    );
+    assert!(
+        stdout.contains("Checked 1 files against 1 rules"),
+        "expected only the root fixture to be checked, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("vendor/upstream"),
+        "submodule contents should not be reported, got: {stdout}"
+    );
+}

@@ -1,0 +1,3 @@
+[submodule "packages/tree-sitter-mermaid/upstream"]
+	path = packages/tree-sitter-mermaid/upstream
+	url = https://github.com/monaqa/tree-sitter-mermaid.git

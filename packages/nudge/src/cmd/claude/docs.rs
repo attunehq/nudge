@@ -220,14 +220,15 @@ const DOCS: &str = cstr!("\
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
         <yellow>language: typescript</yellow>        <dim># One of: rust, typescript, javascript,</dim>
-                                            <dim># python, go, java, csharp, kotlin, haskell</dim>
+                                            <dim># python, go, java, csharp, kotlin,</dim>
+                                            <dim># haskell, mermaid</dim>
         <yellow>query: |</yellow>
           <yellow>(function_declaration</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
 
   <white>Supported Languages:</white>
-    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
+    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>, <green>mermaid</green>
 
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)

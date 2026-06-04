@@ -35,6 +35,8 @@ pub enum Language {
     Kotlin,
     /// The Haskell programming language.
     Haskell,
+    /// The Mermaid diagram syntax.
+    Mermaid,
 }
 
 impl Language {
@@ -50,6 +52,7 @@ impl Language {
             Language::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
             Language::Kotlin => tree_sitter_kotlin_ng::LANGUAGE.into(),
             Language::Haskell => tree_sitter_haskell::LANGUAGE.into(),
+            Language::Mermaid => tree_sitter_mermaid::LANGUAGE.into(),
         }
     }
 
@@ -79,6 +82,7 @@ fn parser_for(language: Language) -> &'static Mutex<Parser> {
     static CSHARP: LazyLock<Mutex<Parser>> = LazyLock::new(|| new_parser(Language::CSharp));
     static KOTLIN: LazyLock<Mutex<Parser>> = LazyLock::new(|| new_parser(Language::Kotlin));
     static HASKELL: LazyLock<Mutex<Parser>> = LazyLock::new(|| new_parser(Language::Haskell));
+    static MERMAID: LazyLock<Mutex<Parser>> = LazyLock::new(|| new_parser(Language::Mermaid));
 
     match language {
         Language::Rust => &RUST,
@@ -90,6 +94,7 @@ fn parser_for(language: Language) -> &'static Mutex<Parser> {
         Language::CSharp => &CSHARP,
         Language::Kotlin => &KOTLIN,
         Language::Haskell => &HASKELL,
+        Language::Mermaid => &MERMAID,
     }
 }
 
@@ -308,6 +313,24 @@ mod tests {
         );
         pretty_assert_eq!(Language::from_str("csharp", false), Ok(Language::CSharp));
         pretty_assert_eq!(Language::from_str("c-sharp", false), Ok(Language::CSharp));
+        pretty_assert_eq!(Language::from_str("mermaid", false), Ok(Language::Mermaid));
+    }
+
+    #[test]
+    fn test_language_parse_mermaid_reuses_parser_and_accepts_error_trees() {
+        let valid = "flowchart TD\n  Start --> Done\n";
+        let first_tree = Language::Mermaid.parse(valid).expect("parse valid Mermaid");
+        let second_tree = Language::Mermaid.parse(valid).expect("parse Mermaid again");
+
+        pretty_assert_eq!(first_tree.root_node().kind(), "source_file");
+        pretty_assert_eq!(second_tree.root_node().kind(), "source_file");
+        assert!(!first_tree.root_node().has_error());
+
+        let incomplete = "flowchart TD\n  Start -->";
+        let tree = Language::Mermaid
+            .parse(incomplete)
+            .expect("parse incomplete Mermaid into an error tree");
+        assert!(tree.root_node().has_error());
     }
 
     #[test]
@@ -390,6 +413,12 @@ mod tests {
               (#eq? @fn "head"))
             "#,
         );
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_valid_mermaid() {
+        let query = TreeSitterQuery::new(Language::Mermaid, "(diagram_flow) @diagram");
         assert!(query.is_ok());
     }
 

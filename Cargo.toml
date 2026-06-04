@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "packages/nudge",
+    "packages/tree-sitter-mermaid",
 ]
 
 [workspace.lints.clippy]

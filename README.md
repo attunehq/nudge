@@ -197,7 +197,7 @@ nudge check || exit 1
 `nudge check` evaluates file-based block rules for `PreToolUse` Write/Edit
 matchers, including Regex, SyntaxTree, and External content matchers. It
 supports SyntaxTree rules for Rust, TypeScript, JavaScript, Python, Go, Java,
-C#, Kotlin, and Haskell. Hook-only behavior such as Bash substitutions,
+C#, Kotlin, Haskell, and Mermaid. Hook-only behavior such as Bash substitutions,
 WebFetch, UserPromptSubmit reminders, permissions, delete events, and
 workflows still belongs to live hook mode.
 

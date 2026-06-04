@@ -10,6 +10,7 @@ mod haskell;
 mod java;
 mod javascript;
 mod kotlin;
+mod mermaid;
 mod python;
 mod typescript_end_to_end;
 mod typescript_errors;
