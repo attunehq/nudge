@@ -225,6 +225,9 @@ const DOCS: &str = cstr!("\
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
 
+  <white>Supported Languages:</white>
+    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
+
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
     and captures are marked with <green>@name</green>.
