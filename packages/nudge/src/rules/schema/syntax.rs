@@ -199,10 +199,32 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_valid_java() {
+        let code = "class Test { void run() { System.out.println(\"hello\"); } }";
+        let tree = Language::Java.parse(code);
+        assert!(tree.is_some());
+        assert!(
+            !tree
+                .expect("valid Java should parse")
+                .root_node()
+                .has_error()
+        );
+    }
+
+    #[test]
     fn test_language_parse_invalid_returns_tree_with_errors() {
         let code = "fn main( { }";
         let tree = Language::Rust.parse(code);
         assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_invalid_java_returns_tree_with_errors() {
+        let code = "class Test { void run() { System.out.println(\"hello\") ";
+        let tree = Language::Java
+            .parse(code)
+            .expect("incomplete Java should still produce a tree");
+        assert!(tree.root_node().has_error());
     }
 
     #[test]
@@ -304,8 +326,23 @@ mod tests {
     }
 
     #[test]
+    fn test_treesitter_query_compile_valid_java() {
+        let query = TreeSitterQuery::new(
+            Language::Java,
+            "(method_invocation name: (identifier) @method)",
+        );
+        assert!(query.is_ok());
+    }
+
+    #[test]
     fn test_treesitter_query_compile_invalid() {
         let query = TreeSitterQuery::new(Language::Rust, "(not_a_real_node)");
+        assert!(query.is_err());
+    }
+
+    #[test]
+    fn test_treesitter_query_compile_invalid_java() {
+        let query = TreeSitterQuery::new(Language::Java, "(not_a_real_java_node)");
         assert!(query.is_err());
     }
 
