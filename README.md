@@ -151,7 +151,7 @@ nudge claude setup
 nudge codex setup
 ```
 
-Claude setup adds Nudge to `.claude/settings.local.json`. Codex setup adds Nudge to `.codex/hooks.json`. You can verify with `/hooks` in the relevant agent.
+Claude setup adds Nudge to `.claude/settings.local.json`. Codex setup adds Nudge to `.codex/hooks.json`. If the target file already exists, setup first writes a non-overwriting backup next to it, such as `settings.local.json.bak` or `hooks.json.bak.1`, and prints the backup path. You can verify with `/hooks` in the relevant agent.
 
 > [!NOTE]
 > Hook configuration is loaded when agent sessions start, so restart open Claude Code or Codex sessions after setup. Future changes to rules are internal to Nudge and therefore do not need an agent restart.

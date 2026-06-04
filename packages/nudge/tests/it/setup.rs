@@ -96,8 +96,16 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
         claude_dir,
         "--skip-claude-md",
     ];
-    let (exit_code, _, stderr) = run_nudge(&args);
+    let (exit_code, stdout, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Backed up previous configuration"),
+        "fresh setup should not report a backup, got: {stdout}"
+    );
+    assert!(
+        !temp.path().join(".claude/settings.local.json.bak").exists(),
+        "fresh setup should not create a backup"
+    );
     let first =
         fs::read_to_string(temp.path().join(".claude/settings.local.json")).expect("read settings");
 
@@ -152,6 +160,61 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
 }
 
 #[test]
+fn claude_setup_backs_up_existing_settings_without_overwriting_backups() {
+    let temp = TempDir::new().expect("temp dir");
+    let claude_dir = temp.path().join(".claude");
+    fs::create_dir_all(&claude_dir).expect("create .claude");
+    let canonical_claude_dir = claude_dir.canonicalize().expect("canonical .claude");
+
+    let settings_file = claude_dir.join("settings.local.json");
+    let first_backup = canonical_claude_dir.join("settings.local.json.bak");
+    let second_backup = canonical_claude_dir.join("settings.local.json.bak.1");
+    let original = r#"{"env":{"KEEP":"yes"}}"#;
+    fs::write(&settings_file, original).expect("write settings");
+
+    let args = [
+        "claude",
+        "setup",
+        "--claude-dir",
+        claude_dir.to_str().expect("utf-8 path"),
+        "--skip-claude-md",
+    ];
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            first_backup.display()
+        )),
+        "setup should print backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read backup"),
+        original
+    );
+    let installed = fs::read_to_string(&settings_file).expect("read installed settings");
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            second_backup.display()
+        )),
+        "repeated setup should print next backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read first backup"),
+        original,
+        "repeated setup must not overwrite the first backup"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(second_backup).expect("read second backup"),
+        installed
+    );
+}
+
+#[test]
 fn claude_setup_quotes_binary_path_with_spaces() {
     let temp = TempDir::new().expect("temp dir");
     let binary = copy_nudge_binary_to_path_with_spaces(&temp);
@@ -196,8 +259,16 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
     let codex_dir = codex_dir.to_str().expect("utf-8 path");
     let args = ["codex", "setup", "--codex-dir", codex_dir];
 
-    let (exit_code, _, stderr) = run_nudge(&args);
+    let (exit_code, stdout, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Backed up previous configuration"),
+        "fresh setup should not report a backup, got: {stdout}"
+    );
+    assert!(
+        !temp.path().join(".codex/hooks.json.bak").exists(),
+        "fresh setup should not create a backup"
+    );
     let first = fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
 
     let (exit_code, _, stderr) = run_nudge(&args);
@@ -212,6 +283,61 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "Bash|apply_patch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
+}
+
+#[test]
+fn codex_setup_backs_up_existing_hooks_without_overwriting_backups() {
+    let temp = TempDir::new().expect("temp dir");
+    let codex_dir = temp.path().join(".codex");
+    fs::create_dir_all(&codex_dir).expect("create .codex");
+    let canonical_codex_dir = codex_dir.canonicalize().expect("canonical .codex");
+
+    let hooks_file = codex_dir.join("hooks.json");
+    let first_backup = canonical_codex_dir.join("hooks.json.bak");
+    let second_backup = canonical_codex_dir.join("hooks.json.bak.1");
+    let original =
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}"#;
+    fs::write(&hooks_file, original).expect("write hooks");
+
+    let args = [
+        "codex",
+        "setup",
+        "--codex-dir",
+        codex_dir.to_str().expect("utf-8 path"),
+    ];
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            first_backup.display()
+        )),
+        "setup should print backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read backup"),
+        original
+    );
+    let installed = fs::read_to_string(&hooks_file).expect("read installed hooks");
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            second_backup.display()
+        )),
+        "repeated setup should print next backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read first backup"),
+        original,
+        "repeated setup must not overwrite the first backup"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(second_backup).expect("read second backup"),
+        installed
+    );
 }
 
 #[test]
