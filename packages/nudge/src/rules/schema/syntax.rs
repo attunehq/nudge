@@ -12,7 +12,6 @@ use crate::snippet::Span;
 /// 2. Adding a variant to this enum
 /// 3. Adding a match arm to `grammar()` that returns the language
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
-#[value(rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum Language {
     /// The Rust programming language.
