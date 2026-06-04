@@ -218,7 +218,7 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: rust</yellow>              <dim># Required: rust (more languages coming)</dim>
+        <yellow>language: rust</yellow>              <dim># Required: rust, typescript, javascript, python, go, java, csharp, kotlin, or haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_item</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
@@ -243,8 +243,9 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
-  <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
-  <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
+  <dim>Note: Nudge keeps parser-produced syntax trees even when they contain syntax</dim>
+  <dim>errors, because code being written is often incomplete. If the parser cannot</dim>
+  <dim>produce a tree at all, the matcher passes silently.</dim>
 
 <bold>External Program Matching</bold>
 

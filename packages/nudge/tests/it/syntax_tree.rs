@@ -18,7 +18,7 @@ use std::fs;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
 
-use crate::nudge_binary;
+use crate::{edit_hook, nudge_binary};
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use tempfile::TempDir;
 
@@ -63,6 +63,22 @@ fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     };
 
     (exit_code, combined)
+}
+
+fn run_nudge_in_dir(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(nudge_binary())
+        .args(args)
+        .current_dir(dir.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("failed to run nudge");
+
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    (exit_code, stdout, stderr)
 }
 
 /// Build a PreToolUse hook JSON payload for Write tool.
@@ -217,6 +233,142 @@ rules:
     assert!(
         output.contains("my_test_function"),
         "expected suggestion to contain function name, got: {output}"
+    );
+}
+
+#[test]
+fn test_syntax_tree_edit_matches_method_call_with_capture_interpolation() {
+    let config = r#"
+version: 1
+rules:
+  - name: no-unwrap-method
+    description: Use expect instead of unwrap
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (call_expression
+                function: (field_expression
+                  field: (field_identifier) @method)
+                (#eq? @method "unwrap"))
+            suggestion: "Replace .{{ $method }}() with .expect(\"...\") before retrying."
+"#;
+
+    let dir = setup_config(config);
+
+    let input = edit_hook(
+        "src/lib.rs",
+        "let value = maybe;",
+        "let value = maybe.unwrap();",
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for .unwrap() method call, got: {output}"
+    );
+    assert!(
+        output.contains(r#"Replace .unwrap() with .expect(\"...\") before retrying."#),
+        "expected interpolated method suggestion, got: {output}"
+    );
+
+    let input = edit_hook(
+        "src/lib.rs",
+        "let value = maybe;",
+        "let value = maybe.ok();",
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for safe method call, got: {output}"
+    );
+}
+
+#[test]
+fn test_syntax_tree_check_scans_rust_files_and_ignores_comments_and_strings() {
+    let config = r#"
+version: 1
+rules:
+  - name: no-lhs-type-annotations-ast
+    description: Use inference or turbofish instead of left-hand type annotations
+    message: "{{ $suggestion }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: "(let_declaration pattern: (identifier) @binding type: (_) @type)"
+            suggestion: "Remove {{ $type }} from {{ $binding }}, then retry."
+"#;
+
+    let dir = setup_config(config);
+    fs::create_dir_all(dir.path().join("src")).expect("create src dir");
+    fs::write(
+        dir.path().join("src/lib.rs"),
+        r#"fn build() {
+    // let fake: Vec<String> = Vec::new();
+    let items: Vec<String> = Vec::new();
+    let text = "let also_fake: usize = 1;";
+    let inferred = Vec::<String>::new();
+}
+"#,
+    )
+    .expect("write rust source");
+
+    let (exit_code, stdout, stderr) = run_nudge_in_dir(&dir, &["check", "src/lib.rs"]);
+
+    pretty_assert_eq!(exit_code, 1, "expected check failure, stderr: {stderr}");
+    assert!(
+        stdout.contains("Found 1 issue"),
+        "expected exactly one AST issue for the real type annotation, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("src/lib.rs:3 [no-lhs-type-annotations-ast]"),
+        "expected issue on the real let declaration line, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Remove Vec<String> from items, then retry."),
+        "expected capture interpolation from Rust AST nodes, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntax_tree_invalid_rust_error_only_tree_passes() {
+    let config = r#"
+version: 1
+rules:
+  - name: function-name-check
+    description: Check function naming
+    message: "Found a complete function."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: "(function_item name: (identifier) @fn_name)"
+"#;
+
+    let dir = setup_config(config);
+
+    let input = write_hook("src/lib.rs", "fn broken() { let x = ");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough when incomplete Rust only parses as ERROR nodes, got: {output}"
     );
 }
 
