@@ -7,6 +7,7 @@
 use std::fs;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use crate::nudge_binary;
 use pretty_assertions::assert_eq as pretty_assert_eq;
@@ -201,5 +202,82 @@ rules:
     assert!(
         output.is_empty(),
         "expected passthrough for non-.txt file, got: {output}"
+    );
+}
+
+#[test]
+fn test_external_missing_command_interrupts() {
+    let config = r#"
+version: 1
+rules:
+  - name: external-command-required
+    description: External command must be available
+    message: "External check failed: {{ $external_status }}. Command: {{ $command }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.txt"
+        content:
+          - kind: External
+            command: ["definitely-not-a-real-nudge-command"]
+"#;
+
+    let dir = setup_config(config);
+
+    let input = write_hook("test.txt", "Any content");
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt when external command cannot spawn, got: {output}"
+    );
+    assert!(
+        output.contains("failed to start"),
+        "expected spawn failure status in output, got: {output}"
+    );
+    assert!(
+        output.contains("definitely-not-a-real-nudge-command"),
+        "expected command capture in output, got: {output}"
+    );
+}
+
+#[test]
+fn test_external_timeout_interrupts_promptly() {
+    let config = r#"
+version: 1
+rules:
+  - name: external-command-timeout
+    description: External command must finish promptly
+    message: "External check failed: {{ $external_status }}. Command: {{ $command }}"
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.txt"
+        content:
+          - kind: External
+            command: ["sh", "-c", "sleep 20"]
+            timeout_ms: 100
+"#;
+
+    let dir = setup_config(config);
+
+    let input = write_hook("test.txt", "Any content");
+    let started = Instant::now();
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+    let elapsed = started.elapsed();
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "expected timeout to bound execution quickly, elapsed: {elapsed:?}, output: {output}"
+    );
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt when external command times out, got: {output}"
+    );
+    assert!(
+        output.contains("timed out after 100ms"),
+        "expected timeout status in output, got: {output}"
     );
 }
