@@ -12,6 +12,7 @@ mod codex;
 mod edit_tool;
 mod external;
 mod inline_imports;
+mod install_script;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;

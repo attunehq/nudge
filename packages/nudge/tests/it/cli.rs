@@ -126,6 +126,21 @@ fn test_syntaxtree_inline_code() {
 }
 
 #[test]
+fn test_syntaxtree_missing_path_like_input_fails() {
+    let (exit_code, _stdout, stderr) =
+        run_nudge(&["syntaxtree", "--language", "rust", "missing.rs"]);
+
+    assert_ne!(
+        exit_code, 0,
+        "syntaxtree should reject missing path-like input"
+    );
+    assert!(
+        stderr.contains("looks like a file path") && stderr.contains("missing.rs"),
+        "syntaxtree should explain missing path-like input, got: {stderr}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_javascript_language_name() {
     let (exit_code, stdout, stderr) = run_nudge(&[
         "syntaxtree",

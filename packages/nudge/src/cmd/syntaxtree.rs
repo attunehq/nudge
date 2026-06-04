@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use clap::Args;
-use color_eyre::Result;
+use color_eyre::eyre::{Context, Result, bail};
 use color_print::cformat;
 
 use nudge::rules::Language;
@@ -23,7 +23,7 @@ pub struct Config {
 }
 
 pub fn main(config: Config) -> Result<()> {
-    let code = resolve_input(&config.input);
+    let code = resolve_input(&config.input)?;
 
     let Some(tree) = config.language.parse(&code) else {
         println!("Failed to parse code");
@@ -39,13 +39,41 @@ pub fn main(config: Config) -> Result<()> {
 }
 
 /// Resolve the input as either a file path or literal code.
-fn resolve_input(input: &str) -> String {
+fn resolve_input(input: &str) -> Result<String> {
     let path = Path::new(input);
     if path.exists() {
-        fs::read_to_string(path).unwrap_or_else(|_| input.to_string())
-    } else {
-        input.to_string()
+        return fs::read_to_string(path)
+            .with_context(|| format!("read syntax tree input file: {input}"));
     }
+
+    if looks_like_path(input) {
+        bail!("syntax tree input looks like a file path, but it does not exist: {input}");
+    }
+
+    Ok(input.to_string())
+}
+
+fn looks_like_path(input: &str) -> bool {
+    let path = Path::new(input);
+    input.contains(std::path::MAIN_SEPARATOR)
+        || input.contains('/')
+        || input.contains('\\')
+        || matches!(
+            path.extension().and_then(|extension| extension.to_str()),
+            Some(
+                "rs" | "js"
+                    | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "py"
+                    | "go"
+                    | "java"
+                    | "cs"
+                    | "kt"
+                    | "kts"
+                    | "hs"
+            )
+        )
 }
 
 /// A flattened syntax node for rendering.
