@@ -29,8 +29,8 @@ pub type Captures = HashMap<String, String>;
 /// use nudge::template::interpolate;
 ///
 /// let mut captures = HashMap::new();
-/// captures.insert("1".to_string(), "foo".to_string());
-/// captures.insert("var".to_string(), "bar".to_string());
+/// captures.insert(String::from("1"), String::from("foo"));
+/// captures.insert(String::from("var"), String::from("bar"));
 ///
 /// let result = interpolate("Use {{ $var }} instead of {{ $1 }}", &captures);
 /// assert_eq!(result, "Use bar instead of foo");
@@ -57,8 +57,8 @@ mod tests {
     #[test]
     fn test_positional_interpolation() {
         let mut captures = Captures::new();
-        captures.insert("0".to_string(), "foo.unwrap()".to_string());
-        captures.insert("1".to_string(), "foo".to_string());
+        captures.insert(String::from("0"), String::from("foo.unwrap()"));
+        captures.insert(String::from("1"), String::from("foo"));
 
         let result = interpolate(
             "Replace {{ $1 }}.unwrap() with {{ $1 }}.expect()",
@@ -70,8 +70,8 @@ mod tests {
     #[test]
     fn test_named_interpolation() {
         let mut captures = Captures::new();
-        captures.insert("var".to_string(), "x".to_string());
-        captures.insert("type".to_string(), "String".to_string());
+        captures.insert(String::from("var"), String::from("x"));
+        captures.insert(String::from("type"), String::from("String"));
 
         let result = interpolate("Variable {{ $var }} has type {{ $type }}", &captures);
         pretty_assert_eq!(result, "Variable x has type String");
@@ -88,8 +88,8 @@ mod tests {
     fn test_suggestion_interpolation() {
         let mut captures = Captures::new();
         captures.insert(
-            "suggestion".to_string(),
-            "use .expect() instead".to_string(),
+            String::from("suggestion"),
+            String::from("use .expect() instead"),
         );
 
         let result = interpolate("Don't use .unwrap(). {{ $suggestion }}", &captures);
@@ -99,9 +99,9 @@ mod tests {
     #[test]
     fn test_mixed_captures() {
         let mut captures = Captures::new();
-        captures.insert("0".to_string(), "foo.is_none()".to_string());
-        captures.insert("1".to_string(), "foo".to_string());
-        captures.insert("var".to_string(), "foo".to_string());
+        captures.insert(String::from("0"), String::from("foo.is_none()"));
+        captures.insert(String::from("1"), String::from("foo"));
+        captures.insert(String::from("var"), String::from("foo"));
 
         let result = interpolate("let Some({{ $var }}) = {{ $var }} else { ... }", &captures);
         pretty_assert_eq!(result, "let Some(foo) = foo else { ... }");
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_no_placeholders() {
         let mut captures = Captures::new();
-        captures.insert("1".to_string(), "foo".to_string());
+        captures.insert(String::from("1"), String::from("foo"));
 
         let result = interpolate("No placeholders here", &captures);
         pretty_assert_eq!(result, "No placeholders here");

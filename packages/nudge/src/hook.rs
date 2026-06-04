@@ -16,6 +16,13 @@ pub enum NudgeHook {
     /// A tool is about to be used.
     PreToolUse(PreToolUse),
 
+    /// A provider tool input could not be fully inspected, but may proceed with
+    /// context.
+    WarnPreToolUse {
+        /// Feedback shown to the agent model.
+        message: String,
+    },
+
     /// The agent is requesting permission for a tool.
     PermissionRequest(PermissionRequest),
 

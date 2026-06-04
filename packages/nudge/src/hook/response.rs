@@ -18,6 +18,15 @@ pub enum HookOutcome {
         message: String,
     },
 
+    /// Allow a `PreToolUse` operation while surfacing warning context.
+    AllowPreToolUseWithContext {
+        /// User-visible audit message.
+        system_message: String,
+
+        /// Model-visible context explaining the warning.
+        additional_context: String,
+    },
+
     /// Update a `PreToolUse` operation and allow it to proceed.
     UpdatePreToolUse {
         /// User-visible audit message.
@@ -54,13 +63,34 @@ pub fn render(_agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOut
         HookOutcome::AddContext { context } => Ok(RenderedHookOutcome::Stdout(context)),
         HookOutcome::DenyPreToolUse { message } => {
             let response = PreToolUseResponse {
-                system_message: Some("Nudge blocked operation due to rule violation.".to_string()),
+                system_message: Some(String::from(
+                    "Nudge blocked operation due to rule violation.",
+                )),
                 hook_specific_output: PreToolUseOutput {
-                    hook_event_name: "PreToolUse".to_string(),
-                    permission_decision: "deny".to_string(),
+                    hook_event_name: String::from("PreToolUse"),
+                    permission_decision: String::from("deny"),
                     permission_decision_reason: Some(message),
                     updated_input: None,
                     additional_context: None,
+                },
+            };
+
+            Ok(RenderedHookOutcome::Stdout(
+                serde_json::to_string(&response).context("serialize hook response")?,
+            ))
+        }
+        HookOutcome::AllowPreToolUseWithContext {
+            system_message,
+            additional_context,
+        } => {
+            let response = PreToolUseResponse {
+                system_message: Some(system_message),
+                hook_specific_output: PreToolUseOutput {
+                    hook_event_name: String::from("PreToolUse"),
+                    permission_decision: String::from("allow"),
+                    permission_decision_reason: None,
+                    updated_input: None,
+                    additional_context: Some(additional_context),
                 },
             };
 
@@ -76,8 +106,8 @@ pub fn render(_agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOut
             let response = PreToolUseResponse {
                 system_message: Some(system_message),
                 hook_specific_output: PreToolUseOutput {
-                    hook_event_name: "PreToolUse".to_string(),
-                    permission_decision: "allow".to_string(),
+                    hook_event_name: String::from("PreToolUse"),
+                    permission_decision: String::from("allow"),
                     permission_decision_reason: None,
                     updated_input: Some(updated_input),
                     additional_context: Some(additional_context),
@@ -137,7 +167,7 @@ mod tests {
         let rendered = render(
             AgentKind::Claude,
             HookOutcome::DenyPreToolUse {
-                message: "blocked".to_string(),
+                message: String::from("blocked"),
             },
         )
         .expect("render");
@@ -148,7 +178,7 @@ mod tests {
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
         pretty_assert_eq!(
             json["hookSpecificOutput"]["permissionDecision"],
-            Value::String("deny".to_string())
+            Value::String(String::from("deny"))
         );
     }
 
@@ -157,7 +187,7 @@ mod tests {
         let rendered = render(
             AgentKind::Codex,
             HookOutcome::DenyPreToolUse {
-                message: "blocked".to_string(),
+                message: String::from("blocked"),
             },
         )
         .expect("render");
@@ -168,7 +198,7 @@ mod tests {
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
         pretty_assert_eq!(
             json["hookSpecificOutput"]["permissionDecision"],
-            Value::String("deny".to_string())
+            Value::String(String::from("deny"))
         );
         assert!(json.get("continue").is_none());
         assert!(json.get("stopReason").is_none());
@@ -180,11 +210,12 @@ mod tests {
         let rendered = render(
             AgentKind::Codex,
             HookOutcome::UpdatePreToolUse {
-                system_message: "Nudge substituted `npm install foo` -> `yarn add foo`."
-                    .to_string(),
-                additional_context:
-                    "Nudge rewrote the Bash command from `npm install foo` to `yarn add foo` before execution."
-                        .to_string(),
+                system_message: String::from(
+                    "Nudge substituted `npm install foo` -> `yarn add foo`.",
+                ),
+                additional_context: String::from(
+                    "Nudge rewrote the Bash command from `npm install foo` to `yarn add foo` before execution.",
+                ),
                 updated_input: serde_json::json!({
                     "command": "yarn add foo",
                     "description": "Install foo"
@@ -199,17 +230,43 @@ mod tests {
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
         pretty_assert_eq!(
             json["hookSpecificOutput"]["permissionDecision"],
-            Value::String("allow".to_string())
+            Value::String(String::from("allow"))
         );
         pretty_assert_eq!(
             json["hookSpecificOutput"]["updatedInput"]["command"],
-            Value::String("yarn add foo".to_string())
+            Value::String(String::from("yarn add foo"))
         );
         pretty_assert_eq!(
             json["hookSpecificOutput"]["updatedInput"]["description"],
-            Value::String("Install foo".to_string())
+            Value::String(String::from("Install foo"))
         );
         assert!(json["hookSpecificOutput"]["additionalContext"].is_string());
+    }
+
+    #[test]
+    fn warning_response_allows_with_context_and_no_updated_input() {
+        let rendered = render(
+            AgentKind::Codex,
+            HookOutcome::AllowPreToolUseWithContext {
+                system_message: String::from("Nudge allowed the operation with a warning."),
+                additional_context: String::from("Tell the user about this warning."),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["permissionDecision"],
+            Value::String(String::from("allow"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["additionalContext"],
+            Value::String(String::from("Tell the user about this warning."))
+        );
+        assert!(json["hookSpecificOutput"].get("updatedInput").is_none());
     }
 
     #[test]
@@ -226,14 +283,14 @@ mod tests {
         let rendered = render(
             AgentKind::Codex,
             HookOutcome::AddContext {
-                context: "remember this".to_string(),
+                context: String::from("remember this"),
             },
         )
         .expect("render");
 
         pretty_assert_eq!(
             rendered,
-            RenderedHookOutcome::Stdout("remember this".to_string())
+            RenderedHookOutcome::Stdout(String::from("remember this"))
         );
     }
 }
