@@ -126,6 +126,42 @@ fn test_syntaxtree_inline_code() {
 }
 
 #[test]
+fn test_syntaxtree_typescript_language() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "typescript",
+        "interface User { name: string; age?: number }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("interface_declaration"),
+        "syntaxtree should show TypeScript interface node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("property_signature") && stdout.contains("age"),
+        "syntaxtree should show TypeScript property signatures, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_typescript_legacy_alias() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "type-script",
+        "const name = user.profile?.name;",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("member_expression"),
+        "legacy type-script alias should still parse TypeScript, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_shows_field_names() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",

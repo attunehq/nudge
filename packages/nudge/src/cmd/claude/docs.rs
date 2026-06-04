@@ -215,12 +215,15 @@ const DOCS: &str = cstr!("\
   against the parsed AST. This is useful when you need to match code structure,
   not just text patterns.
 
+  <white>Supported languages:</white>
+    rust, typescript, javascript, python, go, java, csharp, kotlin, haskell
+
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: rust</yellow>              <dim># Required: rust (more languages coming)</dim>
+        <yellow>language: typescript</yellow>        <dim># Required</dim>
         <yellow>query: |</yellow>
-          <yellow>(function_item</yellow>
+          <yellow>(function_declaration</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
 
@@ -228,8 +231,8 @@ const DOCS: &str = cstr!("\
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
     and captures are marked with <green>@name</green>.
 
-    <green>(function_item)</green>                    Match any function
-    <green>(function_item name: (identifier))</green> Match function with name field
+    <green>(function_declaration)</green>                    Match any function
+    <green>(function_declaration name: (identifier))</green> Match function with name field
     <green>(identifier) @fn_name</green>              Capture the identifier as \"fn_name\"
 
     See: <cyan>https://tree-sitter.github.io/tree-sitter/using-parsers/queries</cyan>

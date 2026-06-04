@@ -11,6 +11,7 @@ mod java;
 mod javascript;
 mod kotlin;
 mod python;
+mod typescript_end_to_end;
 mod typescript_errors;
 mod typescript_types;
 
@@ -65,6 +66,23 @@ fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     (exit_code, combined)
 }
 
+/// Run a nudge subcommand in the given directory.
+fn run_nudge_in_dir(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(nudge_binary())
+        .args(args)
+        .current_dir(dir.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("failed to run nudge");
+
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    (exit_code, stdout, stderr)
+}
+
 /// Build a PreToolUse hook JSON payload for Write tool.
 fn write_hook(file_path: &str, content: &str) -> String {
     serde_json::json!({
@@ -78,6 +96,25 @@ fn write_hook(file_path: &str, content: &str) -> String {
         "tool_input": {
             "file_path": file_path,
             "content": content
+        }
+    })
+    .to_string()
+}
+
+/// Build a PreToolUse hook JSON payload for Edit tool.
+fn edit_hook(file_path: &str, old_string: &str, new_string: &str) -> String {
+    serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": "/tmp",
+        "tool_name": "Edit",
+        "tool_use_id": "123",
+        "tool_input": {
+            "file_path": file_path,
+            "old_string": old_string,
+            "new_string": new_string
         }
     })
     .to_string()
