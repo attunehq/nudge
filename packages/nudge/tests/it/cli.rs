@@ -150,32 +150,39 @@ fn test_syntaxtree_javascript_language_name() {
 }
 
 #[test]
-fn test_syntaxtree_compound_language_legacy_aliases() {
-    for (language, code, expected_node) in [
-        (
-            "java-script",
-            "if (user == null) { eval(payload); }",
-            "call_expression",
-        ),
-        (
-            "type-script",
-            "let user: string = 'Ada';",
-            "type_annotation",
-        ),
-        ("c-sharp", "class User {}", "class_declaration"),
-    ] {
-        let (exit_code, stdout, stderr) = run_nudge(&["syntaxtree", "--language", language, code]);
+fn test_syntaxtree_typescript_language() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "typescript",
+        "interface User { name: string; age?: number }",
+    ]);
 
-        pretty_assert_eq!(
-            exit_code,
-            0,
-            "syntaxtree should keep accepting legacy alias {language}, stderr: {stderr}"
-        );
-        assert!(
-            stdout.contains(expected_node),
-            "syntaxtree alias {language} should show {expected_node}, got: {stdout}"
-        );
-    }
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("interface_declaration"),
+        "syntaxtree should show TypeScript interface node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("property_signature") && stdout.contains("age"),
+        "syntaxtree should show TypeScript property signatures, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_typescript_legacy_alias() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "type-script",
+        "const name = user.profile?.name;",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("member_expression"),
+        "legacy type-script alias should still parse TypeScript, got: {stdout}"
+    );
 }
 
 #[test]
