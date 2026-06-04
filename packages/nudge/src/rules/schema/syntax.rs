@@ -187,6 +187,7 @@ mod tests {
     use std::{panic::catch_unwind, sync::Mutex};
 
     use clap::ValueEnum;
+    use pretty_assertions::assert_eq as pretty_assert_eq;
 
     use super::*;
 
@@ -244,24 +245,24 @@ mod tests {
 
     #[test]
     fn test_cli_language_values_match_yaml_names_with_legacy_aliases() {
-        assert_eq!(
+        pretty_assert_eq!(
             Language::from_str("typescript", false),
             Ok(Language::TypeScript)
         );
-        assert_eq!(
+        pretty_assert_eq!(
             Language::from_str("type-script", false),
             Ok(Language::TypeScript)
         );
-        assert_eq!(
+        pretty_assert_eq!(
             Language::from_str("javascript", false),
             Ok(Language::JavaScript)
         );
-        assert_eq!(
+        pretty_assert_eq!(
             Language::from_str("java-script", false),
             Ok(Language::JavaScript)
         );
-        assert_eq!(Language::from_str("csharp", false), Ok(Language::CSharp));
-        assert_eq!(Language::from_str("c-sharp", false), Ok(Language::CSharp));
+        pretty_assert_eq!(Language::from_str("csharp", false), Ok(Language::CSharp));
+        pretty_assert_eq!(Language::from_str("c-sharp", false), Ok(Language::CSharp));
     }
 
     #[test]
