@@ -43,6 +43,17 @@ cargo run -p nudge -- validate         # Validate rule config files
 cargo run -p nudge -- check            # Check project files against rules (for CI)
 ```
 
+## Release Version Contract
+
+`packages/nudge/Cargo.toml` keeps `[package] version = "0.1.0"` as package
+metadata only. This is intentional, not stale metadata.
+
+Nudge is distributed as built GitHub release binaries. The release version
+source of truth is the git tag, the built binary version derived by
+`packages/nudge/build.rs`, and the GitHub release assets. Do not flag Cargo
+package version metadata as a release blocker unless the project explicitly
+decides to publish crates.io artifacts.
+
 ## Architecture
 
 ### CLI Structure
