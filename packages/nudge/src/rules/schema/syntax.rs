@@ -17,8 +17,10 @@ pub enum Language {
     /// The Rust programming language.
     Rust,
     /// The TypeScript programming language.
+    #[value(name = "typescript", alias = "type-script")]
     TypeScript,
     /// The JavaScript programming language.
+    #[value(name = "javascript", alias = "java-script")]
     JavaScript,
     /// The Python programming language.
     Python,
@@ -27,6 +29,7 @@ pub enum Language {
     /// The Java programming language.
     Java,
     /// The C# programming language.
+    #[value(name = "csharp", alias = "c-sharp")]
     CSharp,
     /// The Kotlin programming language.
     Kotlin,
@@ -183,6 +186,7 @@ impl<'de> Deserialize<'de> for TreeSitterQuery {
 mod tests {
     use std::{panic::catch_unwind, sync::Mutex};
 
+    use clap::ValueEnum;
     use pretty_assertions::assert_eq as pretty_assert_eq;
 
     use super::*;
@@ -220,6 +224,15 @@ mod tests {
         let tree = Language::Java
             .parse(code)
             .expect("incomplete Java should still produce a tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
+    fn test_typescript_parse_invalid_returns_tree_with_errors() {
+        let code = "function process(data: any";
+        let tree = Language::TypeScript
+            .parse(code)
+            .expect("TypeScript parser should return an error-tolerant tree");
         assert!(tree.root_node().has_error());
     }
 
@@ -264,6 +277,28 @@ mod tests {
             .parse(code)
             .expect("Go parser should recover an error tree");
         assert!(tree.root_node().has_error());
+    }
+
+    #[test]
+    fn test_cli_language_values_match_yaml_names_with_legacy_aliases() {
+        pretty_assert_eq!(
+            Language::from_str("typescript", false),
+            Ok(Language::TypeScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("type-script", false),
+            Ok(Language::TypeScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("javascript", false),
+            Ok(Language::JavaScript)
+        );
+        pretty_assert_eq!(
+            Language::from_str("java-script", false),
+            Ok(Language::JavaScript)
+        );
+        pretty_assert_eq!(Language::from_str("csharp", false), Ok(Language::CSharp));
+        pretty_assert_eq!(Language::from_str("c-sharp", false), Ok(Language::CSharp));
     }
 
     #[test]

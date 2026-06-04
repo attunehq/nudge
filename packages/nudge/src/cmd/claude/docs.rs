@@ -218,11 +218,11 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: java</yellow>              <dim># One of: rust, typescript, javascript,</dim>
+        <yellow>language: typescript</yellow>        <dim># One of: rust, typescript, javascript,</dim>
                                             <dim># python, go, java, csharp, kotlin, haskell</dim>
         <yellow>query: |</yellow>
-          <yellow>(method_declaration</yellow>
-            <yellow>name: (identifier) @method)</yellow>
+          <yellow>(function_declaration</yellow>
+            <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
 
   <white>Supported Languages:</white>
@@ -232,9 +232,9 @@ const DOCS: &str = cstr!("\
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
     and captures are marked with <green>@name</green>.
 
-    <green>(method_declaration)</green>                    Match any Java method
-    <green>(method_declaration name: (identifier))</green> Match method with name field
-    <green>(identifier) @method</green>                    Capture the identifier as \"method\"
+    <green>(function_declaration)</green>                    Match any function
+    <green>(function_declaration name: (identifier))</green> Match function with name field
+    <green>(identifier) @fn_name</green>              Capture the identifier as \"fn_name\"
 
     See: <cyan>https://tree-sitter.github.io/tree-sitter/using-parsers/queries</cyan>
 
