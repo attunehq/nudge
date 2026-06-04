@@ -4,7 +4,7 @@ This document captures research on real-world CLAUDE.md usage patterns, common f
 
 ## Problem Validation
 
-The problems described in [PLAN.md](PLAN.md) are widely reported in the Claude Code community. Key GitHub issues confirm:
+The problems described in the archived [prototype plan](archive/prototype-plan.md) are widely reported in the Claude Code community. Key GitHub issues confirm:
 
 - Users report **~95% rule compliance in first messages → ~20-60% after 10+ exchanges**
 - Rules are followed initially but degrade as conversation length increases

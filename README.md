@@ -4,7 +4,7 @@ Nudge is a **collaborative memory layer** for agent hooks. It remembers the codi
 
 Think of Nudge as a helpful tap on the shoulder: *"Hey, remember this codebase uses turbofish syntax"* rather than a guard checking badges at the door.
 
-**See [docs/PLAN.md](docs/PLAN.md) for project goals and roadmap.**
+For current rule syntax, run `nudge claude docs` or `nudge codex docs`. Copyable starter rules live in [examples/rules](examples/rules).
 
 ## The Problem Nudge Solves
 
