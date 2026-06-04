@@ -147,6 +147,46 @@ fn test_syntaxtree_shows_field_names() {
 }
 
 #[test]
+fn test_syntaxtree_go_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "go",
+        "package main\nfunc main() { defer cleanup() }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("function_declaration"),
+        "syntaxtree should show Go function_declaration node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("defer_statement"),
+        "syntaxtree should show Go defer_statement node, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_syntaxtree_python_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "python",
+        "def greet(name):\n    print(name)",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("function_definition"),
+        "syntaxtree should show function_definition node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("call") && stdout.contains("print"),
+        "syntaxtree should show print call nodes, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_syntaxtree_accepts_csharp_language_name() {
     let (exit_code, stdout, _stderr) = run_nudge(&[
         "syntaxtree",
@@ -164,4 +204,33 @@ fn test_syntaxtree_accepts_csharp_language_name() {
         stdout.contains("invocation_expression") && stdout.contains("WriteLine"),
         "syntaxtree should show C# invocation, got: {stdout}"
     );
+}
+
+#[test]
+fn test_syntaxtree_accepts_canonical_and_legacy_compound_language_names() {
+    let cases = [
+        ("typescript", "let value: string = 'ok';", "type_annotation"),
+        (
+            "type-script",
+            "let value: string = 'ok';",
+            "type_annotation",
+        ),
+        ("javascript", "const value = 1;", "lexical_declaration"),
+        ("java-script", "const value = 1;", "lexical_declaration"),
+        ("csharp", "public class Test {}", "class_declaration"),
+        ("c-sharp", "public class Test {}", "class_declaration"),
+    ];
+
+    for (language, code, expected_node) in cases {
+        let (exit_code, stdout, stderr) = run_nudge(&["syntaxtree", "--language", language, code]);
+        pretty_assert_eq!(
+            exit_code,
+            0,
+            "syntaxtree should accept {language}, stderr: {stderr}"
+        );
+        assert!(
+            stdout.contains(expected_node),
+            "syntaxtree should show {expected_node} for {language}, got: {stdout}"
+        );
+    }
 }

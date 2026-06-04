@@ -17,8 +17,10 @@ pub enum Language {
     /// The Rust programming language.
     Rust,
     /// The TypeScript programming language.
+    #[value(name = "typescript", alias = "type-script")]
     TypeScript,
     /// The JavaScript programming language.
+    #[value(name = "javascript", alias = "java-script")]
     JavaScript,
     /// The Python programming language.
     Python,
@@ -201,6 +203,35 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_valid_python() {
+        let code = "def main():\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_invalid_python_returns_tree_with_errors() {
+        let code = "def main(:\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+        assert!(
+            tree.expect("parser should recover a tree")
+                .root_node()
+                .has_error(),
+            "invalid Python should produce a recovered tree with errors"
+        );
+    }
+
+    #[test]
+    fn test_go_parse_invalid_returns_tree_with_errors() {
+        let code = "package main\nfunc main( { panic(\"boom\")";
+        let tree = Language::Go
+            .parse(code)
+            .expect("Go parser should recover an error tree");
+        assert!(tree.root_node().has_error());
+    }
+
+    #[test]
     fn test_language_parse_invalid_csharp_returns_tree_with_errors() {
         let code = "public class Test { public void Example( { Console.WriteLine(\"debug\"); }";
         let tree = Language::CSharp
@@ -242,6 +273,21 @@ mod tests {
     #[test]
     fn test_treesitter_query_compile_invalid() {
         let query = TreeSitterQuery::new(Language::Rust, "(not_a_real_node)");
+        assert!(query.is_err());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_valid() {
+        let query = TreeSitterQuery::new(
+            Language::Python,
+            "(call function: (identifier) @function_name)",
+        );
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_invalid() {
+        let query = TreeSitterQuery::new(Language::Python, "(not_a_real_python_node)");
         assert!(query.is_err());
     }
 }
