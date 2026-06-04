@@ -1,0 +1,203 @@
+# Smoke-test nudge installers against published GitHub Release assets.
+#
+# These checks run installer scripts from the checked-out workflow ref, but the
+# installers intentionally download the latest published release artifact. They
+# do not test installing the binary built from the same CI commit. That limitation
+# is expected: installer scripts are release-facing entrypoints, and this workflow
+# verifies that installer logic, platform detection, archive names, checksums,
+# extraction, and the current latest release assets continue to agree.
+#
+# Keep this separate from PR CI because failures can be caused by published
+# release state, not by the pull request being tested.
+name: Installers
+
+on:
+    workflow_dispatch:
+    schedule:
+        - cron: "17 16 * * *"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    installers:
+        name: Test ${{ matrix.platform.name }} installer (${{ matrix.scenario }})
+        runs-on: ${{ matrix.platform.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                platform:
+                    - name: Linux
+                      os: ubuntu-latest
+                      installer: shell
+                    - name: macOS
+                      os: macos-15-intel
+                      installer: shell
+                    - name: Windows
+                      os: windows-latest
+                      installer: powershell
+                scenario:
+                    - help
+                    - fresh-latest
+                    - fresh-versioned
+                    - upgrade-versioned
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Select release versions
+              id: releases
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const { owner, repo } = context.repo;
+                      const latest = await github.rest.repos.getLatestRelease({ owner, repo });
+                      const releases = await github.paginate(github.rest.repos.listReleases, {
+                        owner,
+                        repo,
+                        per_page: 100,
+                      });
+                      const candidates = releases
+                        .filter((release) => !release.draft && !release.prerelease)
+                        .sort((left, right) => new Date(right.published_at) - new Date(left.published_at));
+                      const previous = candidates.find((release) => release.tag_name !== latest.data.tag_name);
+
+                      if (!previous) {
+                        core.setFailed("Need at least two published non-prerelease releases to test versioned installs and upgrades.");
+                        return;
+                      }
+
+                      const stripPrefix = (tag) => tag.replace(/^v/, "");
+                      core.setOutput("latest_version", stripPrefix(latest.data.tag_name));
+                      core.setOutput("previous_version", stripPrefix(previous.tag_name));
+                      core.notice(`Selected installer versions: LATEST=${latest.data.tag_name}, LATEST-1=${previous.tag_name}`);
+
+            - name: Run shell installer
+              if: matrix.platform.installer == 'shell'
+              shell: bash
+              env:
+                  LATEST_VERSION: ${{ steps.releases.outputs.latest_version }}
+                  PREVIOUS_VERSION: ${{ steps.releases.outputs.previous_version }}
+              run: |
+                  case "${{ matrix.scenario }}" in
+                    help)
+                      # Exercises -h/--help without installing.
+                      bash scripts/install.sh --help | tee "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--version" "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--bin-dir" "$RUNNER_TEMP/nudge-install-help.txt"
+                      grep -q -- "--tmp-dir" "$RUNNER_TEMP/nudge-install-help.txt"
+                      bash scripts/install.sh -h > /dev/null
+                      ;;
+                    fresh-latest)
+                      # Exercises a fresh install with default latest-version lookup,
+                      # plus explicit --bin-dir and --tmp-dir. This is the release
+                      # health case most likely to fail when the latest published
+                      # release is missing assets or checksums.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-fresh-latest"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-fresh-latest"
+                      mkdir -p "$bin_dir" "$tmp_dir"
+
+                      bash scripts/install.sh --bin-dir "$bin_dir" --tmp-dir "$tmp_dir"
+                      "$bin_dir/nudge" --version
+                      ;;
+                    fresh-versioned)
+                      # Exercises a fresh install with --version, --bin-dir, and
+                      # --tmp-dir against LATEST-1, selected by CI from published
+                      # GitHub Releases.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-fresh-versioned"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-fresh-versioned"
+                      mkdir -p "$bin_dir" "$tmp_dir"
+
+                      bash scripts/install.sh \
+                        --version "$PREVIOUS_VERSION" \
+                        --bin-dir "$bin_dir" \
+                        --tmp-dir "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$PREVIOUS_VERSION"
+                      ;;
+                    upgrade-versioned)
+                      # Exercises the upgrade path by installing LATEST-1, then
+                      # installing LATEST into the same --bin-dir. CI owns the
+                      # release selection; the installer remains generic.
+                      bin_dir="$RUNNER_TEMP/nudge-bin-upgrade"
+                      tmp_dir="$RUNNER_TEMP/nudge-installer-upgrade"
+                      mkdir -p "$bin_dir" "$tmp_dir"
+
+                      bash scripts/install.sh \
+                        -v "$PREVIOUS_VERSION" \
+                        -b "$bin_dir" \
+                        -t "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$PREVIOUS_VERSION"
+
+                      bash scripts/install.sh \
+                        -v "$LATEST_VERSION" \
+                        -b "$bin_dir" \
+                        -t "$tmp_dir"
+                      "$bin_dir/nudge" --version | grep -q "v$LATEST_VERSION"
+                      ;;
+                    *)
+                      echo "Unknown installer scenario: ${{ matrix.scenario }}" >&2
+                      exit 1
+                      ;;
+                  esac
+
+
+            - name: Run PowerShell installer
+              if: matrix.platform.installer == 'powershell'
+              shell: pwsh
+              env:
+                  LATEST_VERSION: ${{ steps.releases.outputs.latest_version }}
+                  PREVIOUS_VERSION: ${{ steps.releases.outputs.previous_version }}
+              run: |
+                  switch ("${{ matrix.scenario }}") {
+                      "help" {
+                          # Exercises -Help without installing.
+                          $help = ./scripts/install.ps1 -Help | Out-String
+                          $help | Write-Host
+                          if ($help -notmatch "Version" -or $help -notmatch "BinDir" -or $help -notmatch "Help") {
+                              throw "Installer help did not list expected options"
+                          }
+                      }
+                      "fresh-latest" {
+                          # Exercises a fresh install with default latest-version lookup,
+                          # plus explicit -BinDir. This is the release health case most
+                          # likely to fail when the latest published release is missing
+                          # assets or checksums.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-fresh-latest"
+
+                          ./scripts/install.ps1 -BinDir $binDir
+                          & (Join-Path $binDir "nudge.exe") --version
+                      }
+                      "fresh-versioned" {
+                          # Exercises a fresh install with -Version and -BinDir against
+                          # LATEST-1, selected by CI from published GitHub Releases.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-fresh-versioned"
+
+                          ./scripts/install.ps1 -Version $env:PREVIOUS_VERSION -BinDir $binDir
+                          $version = & (Join-Path $binDir "nudge.exe") --version
+                          if ($version -notmatch "v$env:PREVIOUS_VERSION") {
+                              throw "Expected v$env:PREVIOUS_VERSION, got $version"
+                          }
+                      }
+                      "upgrade-versioned" {
+                          # Exercises the upgrade path by installing LATEST-1, then
+                          # installing LATEST into the same -BinDir. CI owns the
+                          # release selection; the installer remains generic.
+                          $binDir = Join-Path $env:RUNNER_TEMP "nudge-bin-upgrade"
+
+                          ./scripts/install.ps1 -Version $env:PREVIOUS_VERSION -BinDir $binDir
+                          $oldVersion = & (Join-Path $binDir "nudge.exe") --version
+                          if ($oldVersion -notmatch "v$env:PREVIOUS_VERSION") {
+                              throw "Expected v$env:PREVIOUS_VERSION, got $oldVersion"
+                          }
+
+                          ./scripts/install.ps1 -Version $env:LATEST_VERSION -BinDir $binDir
+                          $newVersion = & (Join-Path $binDir "nudge.exe") --version
+                          if ($newVersion -notmatch "v$env:LATEST_VERSION") {
+                              throw "Expected v$env:LATEST_VERSION, got $newVersion"
+                          }
+                      }
+                      default {
+                          throw "Unknown installer scenario: ${{ matrix.scenario }}"
+                      }
+                  }

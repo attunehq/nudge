@@ -1,17 +1,17 @@
 //! Set up Nudge hooks for Codex CLI.
 
 use std::{
-    env, fs,
+    fs,
     io::ErrorKind,
     path::{Path, PathBuf},
 };
 
 use clap::Args;
-use color_eyre::eyre::{Context, OptionExt, Result};
+use color_eyre::eyre::{Context, Result};
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::json_hooks;
+use crate::cmd::{json_hooks, setup_command};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -39,12 +39,7 @@ pub fn main(config: Config) -> Result<()> {
     }
 
     let hooks_file = dotcodex.join("hooks.json");
-    let nudge_path = env::current_exe()
-        .context("get current executable path")?
-        .to_str()
-        .ok_or_eyre("convert current executable path to string")?
-        .to_string();
-    let nudge_command = format!("{nudge_path} codex hook");
+    let nudge_command = setup_command::current_hook_command("codex")?;
 
     let nudge_hook = json!({
         "type": "command",
