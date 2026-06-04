@@ -1,5 +1,8 @@
 [package]
 name = "nudge"
+# Cargo package metadata is not the release source of truth. Nudge ships as
+# built GitHub release binaries, and the CLI version comes from git tags/build
+# metadata via build.rs.
 version = "0.1.0"
 edition = "2024"
 description = "Collaborative memory layer for Claude Code and Codex CLI agent hooks."
