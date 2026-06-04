@@ -1,8 +1,15 @@
 use std::{
-    io::Write,
-    process::{Command, Stdio},
+    io::{Error, ErrorKind, Write},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::LazyLock,
+    thread,
+    time::{Duration, Instant},
 };
+
+#[cfg(unix)]
+use os::unix::process::CommandExt;
+#[cfg(unix)]
+use std::os;
 
 use derive_more::Display;
 use regex::Regex;
@@ -15,6 +22,8 @@ use crate::{
 };
 
 use super::{Language, TreeSitterQuery, syntax::union_of_captures};
+
+const DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS: u64 = 5_000;
 
 /// The method used to match hook content.
 ///
@@ -69,6 +78,13 @@ pub enum ContentMatcher {
     External {
         /// The command to run, as a list of arguments.
         command: Vec<String>,
+
+        /// Maximum command runtime in milliseconds.
+        #[serde(
+            default = "default_external_command_timeout_ms",
+            skip_serializing_if = "is_default_external_command_timeout_ms"
+        )]
+        timeout_ms: u64,
     },
 }
 
@@ -84,6 +100,7 @@ impl<'de> Deserialize<'de> for ContentMatcher {
             language: Option<Language>,
             query: Option<String>,
             command: Option<Vec<String>>,
+            timeout_ms: Option<u64>,
             suggestion: Option<String>,
             replace: Option<String>,
         }
@@ -119,7 +136,13 @@ impl<'de> Deserialize<'de> for ContentMatcher {
                 if command.is_empty() {
                     return Err(serde::de::Error::custom("command cannot be empty"));
                 }
-                Ok(ContentMatcher::External { command })
+                let timeout_ms = raw
+                    .timeout_ms
+                    .unwrap_or_else(default_external_command_timeout_ms);
+                Ok(ContentMatcher::External {
+                    command,
+                    timeout_ms,
+                })
             }
             other => Err(serde::de::Error::unknown_variant(
                 other,
@@ -140,7 +163,10 @@ impl ContentMatcher {
                 .into_iter()
                 .next()
                 .is_some(),
-            ContentMatcher::External { command } => run_external_command(command, s).is_some(),
+            ContentMatcher::External {
+                command,
+                timeout_ms,
+            } => run_external_command(command, s, *timeout_ms).is_some(),
         }
     }
 
@@ -154,8 +180,11 @@ impl ContentMatcher {
                 .into_iter()
                 .map(|m| m.span)
                 .collect(),
-            ContentMatcher::External { command } => {
-                if run_external_command(command, s).is_some() {
+            ContentMatcher::External {
+                command,
+                timeout_ms,
+            } => {
+                if run_external_command(command, s, *timeout_ms).is_some() {
                     vec![Span::from(0..s.len())]
                 } else {
                     Vec::new()
@@ -185,9 +214,15 @@ impl ContentMatcher {
                 apply_suggestion(&mut matches, suggestion);
                 matches
             }
-            ContentMatcher::External { command } => {
-                if let Some(command) = run_external_command(command, s) {
-                    let captures = Captures::from_iter([("command".to_string(), command)]);
+            ContentMatcher::External {
+                command,
+                timeout_ms,
+            } => {
+                if let Some(result) = run_external_command(command, s, *timeout_ms) {
+                    let captures = Captures::from_iter([
+                        ("command".to_string(), result.command),
+                        ("external_status".to_string(), result.status),
+                    ]);
                     vec![Match {
                         span: Span::from(0..s.len()),
                         captures,
@@ -279,42 +314,204 @@ where
         .map_err(serde::de::Error::custom)
 }
 
+fn default_external_command_timeout_ms() -> u64 {
+    DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS
+}
+
+fn is_default_external_command_timeout_ms(timeout_ms: &u64) -> bool {
+    *timeout_ms == DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS
+}
+
+#[derive(Debug, Clone)]
+struct ExternalCommandMatch {
+    command: String,
+    status: String,
+}
+
+impl ExternalCommandMatch {
+    fn non_zero(command: String, status: ExitStatus) -> Self {
+        Self {
+            command,
+            status: match status.code() {
+                Some(code) => format!("command exited with status {code}"),
+                None => "command exited non-zero".to_string(),
+            },
+        }
+    }
+
+    fn spawn_failed(command: String, error: &Error) -> Self {
+        Self {
+            command,
+            status: format!("failed to start: {error}"),
+        }
+    }
+
+    fn wait_failed(command: String, error: &Error) -> Self {
+        Self {
+            command,
+            status: format!("failed while waiting: {error}"),
+        }
+    }
+
+    fn timed_out(command: String, timeout_ms: u64) -> Self {
+        Self {
+            command,
+            status: format!("timed out after {timeout_ms}ms"),
+        }
+    }
+}
+
 /// Run an external command with content piped to stdin.
 ///
-/// Returns `Some(formatted_command)` if the command exits with non-zero status
-/// (indicating a match/violation), or `None` if the command succeeds.
-fn run_external_command(command: &[String], content: &str) -> Option<String> {
+/// Returns `Some` if the command exits with non-zero status or cannot be run
+/// safely, or `None` if the command succeeds.
+fn run_external_command(
+    command: &[String],
+    content: &str,
+    timeout_ms: u64,
+) -> Option<ExternalCommandMatch> {
+    let formatted_command = shell_words::join(command);
     let Some((program, args)) = command.split_first() else {
         tracing::warn!("external command is empty");
-        return None;
+        return Some(ExternalCommandMatch {
+            command: formatted_command,
+            status: "command is empty".to_string(),
+        });
     };
 
-    let mut child = match Command::new(program)
+    let mut command_builder = Command::new(program);
+    command_builder
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-    {
+        .stderr(Stdio::null());
+    configure_external_command(&mut command_builder);
+
+    let mut child = match command_builder.spawn() {
         Ok(child) => child,
         Err(e) => {
             tracing::warn!(?program, error = %e, "failed to spawn external command");
-            return None;
+            return Some(ExternalCommandMatch::spawn_failed(formatted_command, &e));
         }
     };
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(content.as_bytes());
-    }
+    let stdin_writer = child.stdin.take().map(|mut stdin| {
+        let content = content.as_bytes().to_vec();
+        thread::spawn(move || stdin.write_all(&content))
+    });
 
-    match child.wait() {
-        Ok(status) if status.success() => None,
-        Ok(_) => Some(shell_words::join(command)),
-        Err(e) => {
-            tracing::warn!(?program, error = %e, "failed to wait for external command");
-            None
+    let status = wait_for_external_command(&mut child, timeout_ms);
+    if let Some(handle) = stdin_writer {
+        match handle.join() {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => tracing::debug!(?program, error = %e, "external command stdin closed"),
+            Err(_) => tracing::warn!(?program, "external command stdin writer panicked"),
         }
     }
+
+    match status {
+        Ok(status) if status.success() => None,
+        Ok(status) => Some(ExternalCommandMatch::non_zero(formatted_command, status)),
+        Err(e) => {
+            tracing::warn!(?program, error = ?e, "external command failed");
+            match e.kind {
+                ExternalCommandErrorKind::TimedOut => Some(ExternalCommandMatch::timed_out(
+                    formatted_command,
+                    timeout_ms,
+                )),
+                ExternalCommandErrorKind::WaitFailed => Some(ExternalCommandMatch::wait_failed(
+                    formatted_command,
+                    &e.error,
+                )),
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ExternalCommandError {
+    kind: ExternalCommandErrorKind,
+    error: Error,
+}
+
+#[derive(Debug)]
+enum ExternalCommandErrorKind {
+    TimedOut,
+    WaitFailed,
+}
+
+fn wait_with_timeout(
+    child: &mut Child,
+    timeout: Duration,
+) -> Result<ExitStatus, ExternalCommandError> {
+    let started = Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) if started.elapsed() >= timeout => {
+                kill_external_command(child);
+                let error = Error::new(
+                    ErrorKind::TimedOut,
+                    format!("external command timed out after {timeout:?}"),
+                );
+                return Err(ExternalCommandError {
+                    kind: ExternalCommandErrorKind::TimedOut,
+                    error,
+                });
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+            Err(error) => {
+                kill_external_command(child);
+                return Err(ExternalCommandError {
+                    kind: ExternalCommandErrorKind::WaitFailed,
+                    error,
+                });
+            }
+        }
+    }
+}
+
+fn wait_for_external_command(
+    child: &mut Child,
+    timeout_ms: u64,
+) -> Result<ExitStatus, ExternalCommandError> {
+    if timeout_ms == 0 {
+        return child.wait().map_err(|error| ExternalCommandError {
+            kind: ExternalCommandErrorKind::WaitFailed,
+            error,
+        });
+    }
+
+    wait_with_timeout(child, Duration::from_millis(timeout_ms))
+}
+
+fn configure_external_command(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = command;
+    }
+}
+
+fn kill_external_command(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let process_group_id = child.id() as i32;
+        let _ = Command::new("kill")
+            .args(["-KILL", &format!("-{process_group_id}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Match on a regex pattern.
@@ -577,6 +774,24 @@ mod tests {
     }
 
     #[test]
+    fn test_external_deserialize_timeout() {
+        let yaml = r#"
+            kind: External
+            command: ["grep", "-q", "error"]
+            timeout_ms: 100
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::External {
+                timeout_ms: 100,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn test_external_deserialize_empty_command() {
         let yaml = r#"
             kind: External
@@ -587,9 +802,43 @@ mod tests {
     }
 
     #[test]
+    fn test_external_deserialize_zero_timeout() {
+        let yaml = r#"
+            kind: External
+            command: ["grep", "-q", "error"]
+            timeout_ms: 0
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::External { timeout_ms: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn test_external_deserialize_large_timeout() {
+        let yaml = r#"
+            kind: External
+            command: ["grep", "-q", "error"]
+            timeout_ms: 60000
+        "#;
+        let matcher =
+            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+        assert!(matches!(
+            matcher,
+            ContentMatcher::External {
+                timeout_ms: 60000,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn test_external_is_match_when_command_fails() {
         let matcher = ContentMatcher::External {
             command: vec!["false".to_string()],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(matcher.is_match("any content"));
     }
@@ -598,6 +847,7 @@ mod tests {
     fn test_external_is_not_match_when_command_succeeds() {
         let matcher = ContentMatcher::External {
             command: vec!["true".to_string()],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("any content"));
     }
@@ -606,6 +856,7 @@ mod tests {
     fn test_external_matches_with_context_sets_command_capture() {
         let matcher = ContentMatcher::External {
             command: vec!["false".to_string()],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
@@ -624,6 +875,7 @@ mod tests {
                 "-eq".to_string(),
                 "0".to_string(),
             ],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
@@ -637,8 +889,32 @@ mod tests {
     fn test_external_passes_content_to_stdin() {
         let matcher = ContentMatcher::External {
             command: vec!["grep".to_string(), "-q".to_string(), "needle".to_string()],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("haystack with needle inside"));
         assert!(matcher.is_match("haystack without the search term"));
+    }
+
+    #[test]
+    fn test_external_zero_timeout_waits_without_bounding() {
+        let matcher = ContentMatcher::External {
+            command: vec!["true".to_string()],
+            timeout_ms: 0,
+        };
+        assert!(!matcher.is_match("any content"));
+    }
+
+    #[test]
+    fn test_external_matches_with_context_sets_status_capture() {
+        let matcher = ContentMatcher::External {
+            command: vec!["false".to_string()],
+            timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
+        };
+        let matches = matcher.matches_with_context("content");
+        pretty_assert_eq!(matches.len(), 1);
+        pretty_assert_eq!(
+            matches[0].captures.get("external_status"),
+            Some(&"command exited with status 1".to_string())
+        );
     }
 }

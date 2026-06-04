@@ -260,19 +260,29 @@ const DOCS: &str = cstr!("\
     <yellow>content:</yellow>
       <yellow>- kind: External</yellow>
         <yellow>command: [\"program\", \"arg1\", \"arg2\"]</yellow>
+        <yellow>timeout_ms: 5000</yellow> <dim># Optional. Default 5000. Use 0 to wait indefinitely.</dim>
 
   <white>How It Works:</white>
     1. Content being written/edited is piped to the command's stdin
     2. If exit code is <green>0</green>: no violation (rule doesn't match)
     3. If exit code is <red>non-zero</red>: violation detected (rule matches)
-    4. The <green>{{ $command }}</green> capture is set to the formatted command string
+    4. Missing commands, spawn/wait failures, and timeouts also match
+    5. The <green>{{ $command }}</green> capture is set to the formatted command string
+    6. The <green>{{ $external_status }}</green> capture explains the exit status or runtime failure
+
+  <white>Trust Model:</white>
+    External matchers execute commands from rule YAML, so rule files are trusted local
+    code. Do not run rules from a source you would not trust to execute shell commands
+    on your machine. Nudge fails closed so broken or missing checkers do not silently
+    disable policy. Set <green>timeout_ms</green> to the bound you want; <green>0</green> means no timeout.
 
   <white>No Snippet Display:</white>
     External matchers don't identify specific locations, so no code snippet is shown.
-    Use <green>{{ $command }}</green> in your message to tell the user how to see details:
+    Use <green>{{ $command }}</green> and <green>{{ $external_status }}</green> in your message:
 
     <yellow>message: |</yellow>
       <yellow>Format this markdown table so columns are aligned.</yellow>
+      <yellow>Status: {{ $external_status }}</yellow>
       <yellow>Pipe the content to `{{ $command }}` to see tool output.</yellow>
 
   <white>When to Use:</white>
@@ -386,6 +396,7 @@ const DOCS: &str = cstr!("\
       <yellow>description: Ensure markdown tables have aligned columns</yellow>
       <yellow>message: |</yellow>
         <yellow>Format this markdown table so columns are aligned.</yellow>
+        <yellow>Status: {{ $external_status }}</yellow>
         <yellow>Pipe the content to `{{ $command }}` to see tool output.</yellow>
       <yellow>on:</yellow>
         <yellow>- hook: PreToolUse</yellow>
@@ -394,6 +405,7 @@ const DOCS: &str = cstr!("\
           <yellow>content:</yellow>
             <yellow>- kind: External</yellow>
               <yellow>command: [\"npx\", \"markdownlint\", \"--stdin\", \"-c\", \"{\\\"MD060\\\":{\\\"style\\\":\\\"aligned\\\"}}\"]</yellow>
+              <yellow>timeout_ms: 10000</yellow>
 
   <cyan>Redirect docs.rs to local source (WebFetch)</cyan>
 
