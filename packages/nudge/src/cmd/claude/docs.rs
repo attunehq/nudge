@@ -218,7 +218,8 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: rust</yellow>              <dim># Required: rust, typescript, javascript, python, go, java, csharp, kotlin, or haskell</dim>
+        <yellow>language: rust</yellow>              <dim># One of: rust, typescript, javascript,</dim>
+                                            <dim># python, go, java, csharp, kotlin, haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_item</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
@@ -246,8 +247,8 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
-  <dim>Note: Parser failures pass silently. Recovered parse trees with syntax errors</dim>
-  <dim>are still evaluated so useful matches can be found in incomplete code.</dim>
+  <dim>Note: Tree-sitter recovers from incomplete or invalid syntax. SyntaxTree</dim>
+  <dim>matchers run against the recovered tree so useful matches can still fire.</dim>
 
 <bold>External Program Matching</bold>
 

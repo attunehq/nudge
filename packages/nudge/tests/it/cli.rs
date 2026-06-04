@@ -165,3 +165,23 @@ fn test_syntaxtree_go_inline_code() {
         "syntaxtree should show Go defer_statement node, got: {stdout}"
     );
 }
+
+#[test]
+fn test_syntaxtree_python_inline_code() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "python",
+        "def greet(name):\n    print(name)",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("function_definition"),
+        "syntaxtree should show function_definition node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("call") && stdout.contains("print"),
+        "syntaxtree should show print call nodes, got: {stdout}"
+    );
+}

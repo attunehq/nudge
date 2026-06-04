@@ -4,9 +4,7 @@ use std::fs;
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
 
-use crate::edit_hook;
-
-use super::{run_hook_in_dir, run_nudge_in_dir, setup_config, write_hook};
+use super::{edit_hook, run_hook_in_dir, run_nudge_in_dir, setup_config, write_hook};
 
 #[test]
 fn test_go_empty_error_check() {
