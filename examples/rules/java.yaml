@@ -1,0 +1,60 @@
+# Nudge rules for Java code style enforcement.
+#
+# These rules demonstrate Java SyntaxTree matching with tree-sitter queries.
+# Copy and adapt them for your projects.
+
+version: 1
+
+rules:
+  # Catch System.out.println method calls while ignoring comments and strings.
+  - name: no-system-out
+    description: Use a logger instead of System.out.println
+    message: "Use a logger instead of System.out.{{ $method }}, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.java"
+        content:
+          - kind: SyntaxTree
+            language: java
+            query: |
+              (method_invocation
+                object: (field_access
+                  object: (identifier) @obj
+                  field: (identifier) @field)
+                name: (identifier) @method
+                (#eq? @obj "System")
+                (#eq? @field "out")
+                (#eq? @method "println"))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.java"
+        new_content:
+          - kind: SyntaxTree
+            language: java
+            query: |
+              (method_invocation
+                object: (field_access
+                  object: (identifier) @obj
+                  field: (identifier) @field)
+                name: (identifier) @method
+                (#eq? @obj "System")
+                (#eq? @field "out")
+                (#eq? @method "println"))
+
+  # Catch generic Exception handlers, a Java-specific structure that regex handles poorly.
+  - name: no-generic-exception-catch
+    description: Catch specific Java exception types
+    message: "Catch a specific exception type instead of {{ $type }}, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.java"
+        content:
+          - kind: SyntaxTree
+            language: java
+            query: |
+              (catch_clause
+                (catch_formal_parameter
+                  (catch_type (type_identifier) @type))
+                (#eq? @type "Exception"))

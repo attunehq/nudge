@@ -65,6 +65,23 @@ fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     (exit_code, combined)
 }
 
+/// Run a nudge subcommand in the specified directory.
+fn run_nudge_in_dir(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
+    let output = Command::new(nudge_binary())
+        .args(args)
+        .current_dir(dir.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .expect("failed to run nudge");
+
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    (exit_code, stdout, stderr)
+}
+
 /// Build a PreToolUse hook JSON payload for Write tool.
 fn write_hook(file_path: &str, content: &str) -> String {
     serde_json::json!({
