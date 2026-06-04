@@ -245,3 +245,23 @@ fn test_syntaxtree_python_inline_code() {
         "syntaxtree should show print call nodes, got: {stdout}"
     );
 }
+
+#[test]
+fn test_syntaxtree_accepts_csharp_language_name() {
+    let (exit_code, stdout, _stderr) = run_nudge(&[
+        "syntaxtree",
+        "--language",
+        "csharp",
+        "public class Test { public void Example() { Console.WriteLine(\"debug\"); } }",
+    ]);
+
+    pretty_assert_eq!(exit_code, 0, "syntaxtree should exit 0");
+    assert!(
+        stdout.contains("class_declaration"),
+        "syntaxtree should show C# class node, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("invocation_expression") && stdout.contains("WriteLine"),
+        "syntaxtree should show C# invocation, got: {stdout}"
+    );
+}
