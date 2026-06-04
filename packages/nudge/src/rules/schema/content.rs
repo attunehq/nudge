@@ -78,54 +78,60 @@ impl<'de> Deserialize<'de> for ContentMatcher {
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Raw {
-            kind: String,
-            pattern: Option<String>,
-            language: Option<Language>,
-            query: Option<String>,
-            command: Option<Vec<String>>,
-            suggestion: Option<String>,
-            replace: Option<String>,
+        #[serde(tag = "kind")]
+        enum RawContentMatcher {
+            Regex(RawRegexMatcher),
+            SyntaxTree(RawSyntaxTreeMatcher),
+            External(RawExternalMatcher),
         }
 
-        let raw = Raw::deserialize(deserializer)?;
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawRegexMatcher {
+            pattern: Option<String>,
+            replace: Option<String>,
+            suggestion: Option<String>,
+        }
 
-        match raw.kind.as_str() {
-            "Regex" => Ok(ContentMatcher::Regex {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawSyntaxTreeMatcher {
+            language: Language,
+            query: String,
+            suggestion: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawExternalMatcher {
+            command: Vec<String>,
+        }
+
+        let raw = RawContentMatcher::deserialize(deserializer)?;
+
+        match raw {
+            RawContentMatcher::Regex(raw) => Ok(ContentMatcher::Regex {
                 pattern: deserialize_regex(raw.pattern)?,
                 replace: raw.replace,
                 suggestion: raw.suggestion,
             }),
-            "SyntaxTree" => {
-                let language = raw
-                    .language
-                    .ok_or_else(|| serde::de::Error::missing_field("language"))?;
-                let query = raw
-                    .query
-                    .ok_or_else(|| serde::de::Error::missing_field("query"))
-                    .and_then(|query| {
-                        TreeSitterQuery::new(language, query).map_err(serde::de::Error::custom)
-                    })?;
+            RawContentMatcher::SyntaxTree(raw) => {
+                let query = TreeSitterQuery::new(raw.language, raw.query)
+                    .map_err(serde::de::Error::custom)?;
                 Ok(ContentMatcher::SyntaxTree {
-                    language,
+                    language: raw.language,
                     query,
                     suggestion: raw.suggestion,
                 })
             }
-            "External" => {
-                let command = raw
-                    .command
-                    .ok_or_else(|| serde::de::Error::missing_field("command"))?;
-                if command.is_empty() {
+            RawContentMatcher::External(raw) => {
+                if raw.command.is_empty() {
                     return Err(serde::de::Error::custom("command cannot be empty"));
                 }
-                Ok(ContentMatcher::External { command })
+                Ok(ContentMatcher::External {
+                    command: raw.command,
+                })
             }
-            other => Err(serde::de::Error::unknown_variant(
-                other,
-                &["Regex", "SyntaxTree", "External"],
-            )),
         }
     }
 }
@@ -468,6 +474,69 @@ mod tests {
         .expect("valid regex matcher yaml");
 
         pretty_assert_eq!(matcher.replace_all("npm install lodash"), "yarn add lodash");
+    }
+
+    #[test]
+    fn content_matchers_reject_fields_from_other_variants() {
+        let cases = [
+            (
+                "Regex with External command",
+                r#"
+                kind: Regex
+                pattern: test
+                command: ["false"]
+                "#,
+            ),
+            (
+                "External with Regex pattern",
+                r#"
+                kind: External
+                command: ["false"]
+                pattern: test
+                "#,
+            ),
+            (
+                "External with Regex suggestion",
+                r#"
+                kind: External
+                command: ["false"]
+                suggestion: use something else
+                "#,
+            ),
+            (
+                "External with Regex replace",
+                r#"
+                kind: External
+                command: ["false"]
+                replace: replacement
+                "#,
+            ),
+            (
+                "SyntaxTree with Regex replace",
+                r#"
+                kind: SyntaxTree
+                language: rust
+                query: "(function_item)"
+                replace: replacement
+                "#,
+            ),
+            (
+                "SyntaxTree with External command",
+                r#"
+                kind: SyntaxTree
+                language: rust
+                query: "(function_item)"
+                command: ["false"]
+                "#,
+            ),
+        ];
+
+        for (name, yaml) in cases {
+            assert!(
+                serde_yaml::from_str::<ContentMatcher>(yaml).is_err(),
+                "{name} should reject fields from another matcher variant"
+            );
+        }
     }
 
     #[test]
