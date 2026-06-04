@@ -218,7 +218,7 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: kotlin</yellow>            <dim># One of: rust, typescript, javascript,</dim>
+        <yellow>language: typescript</yellow>        <dim># One of: rust, typescript, javascript,</dim>
                                             <dim># python, go, java, csharp, kotlin, haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_declaration</yellow>
@@ -234,7 +234,7 @@ const DOCS: &str = cstr!("\
 
     <green>(function_declaration)</green>                    Match any function
     <green>(function_declaration name: (identifier))</green> Match function with name field
-    <green>(identifier) @fn_name</green>                     Capture the identifier as \"fn_name\"
+    <green>(identifier) @fn_name</green>              Capture the identifier as \"fn_name\"
 
     See: <cyan>https://tree-sitter.github.io/tree-sitter/using-parsers/queries</cyan>
 
