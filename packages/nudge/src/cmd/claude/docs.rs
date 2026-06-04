@@ -218,21 +218,23 @@ const DOCS: &str = cstr!("\
   <white>Basic Syntax:</white>
     <yellow>content:</yellow>
       <yellow>- kind: SyntaxTree</yellow>
-        <yellow>language: kotlin</yellow>            <dim># Required</dim>
+        <yellow>language: kotlin</yellow>            <dim># One of: rust, typescript, javascript,</dim>
+                                            <dim># python, go, java, csharp, kotlin, haskell</dim>
         <yellow>query: |</yellow>
           <yellow>(function_declaration</yellow>
             <yellow>name: (identifier) @fn_name)</yellow>
         <yellow>suggestion: \"...\"</yellow>           <dim># Optional: same as Regex</dim>
 
-    <dim>Supported languages: rust, typescript, javascript, python, go, java, csharp, kotlin, haskell</dim>
+  <white>Supported Languages:</white>
+    <green>rust</green>, <green>typescript</green>, <green>javascript</green>, <green>python</green>, <green>go</green>, <green>java</green>, <green>csharp</green>, <green>kotlin</green>, <green>haskell</green>
 
   <white>Query Syntax:</white>
     Tree-sitter uses S-expression queries. Nodes are matched by type (in parentheses)
     and captures are marked with <green>@name</green>.
 
-    <green>(function_item)</green>                    Match any function
-    <green>(function_item name: (identifier))</green> Match function with name field
-    <green>(identifier) @fn_name</green>              Capture the identifier as \"fn_name\"
+    <green>(function_declaration)</green>                    Match any function
+    <green>(function_declaration name: (identifier))</green> Match function with name field
+    <green>(identifier) @fn_name</green>                     Capture the identifier as \"fn_name\"
 
     See: <cyan>https://tree-sitter.github.io/tree-sitter/using-parsers/queries</cyan>
 
@@ -245,8 +247,8 @@ const DOCS: &str = cstr!("\
     <green>Regex</green>       Simple text patterns, doesn't need AST structure
     <green>SyntaxTree</green>  Structural patterns (e.g., \"use inside function body\")
 
-  <dim>Note: If code fails to parse (incomplete or invalid syntax), the matcher</dim>
-  <dim>passes silently. This is intentional because code being written is often incomplete.</dim>
+  <dim>Note: Tree-sitter recovers from incomplete or invalid syntax. SyntaxTree</dim>
+  <dim>matchers run against the recovered tree so useful matches can still fire.</dim>
 
 <bold>External Program Matching</bold>
 
