@@ -200,6 +200,26 @@ mod tests {
     }
 
     #[test]
+    fn test_language_parse_valid_python() {
+        let code = "def main():\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+    }
+
+    #[test]
+    fn test_language_parse_invalid_python_returns_tree_with_errors() {
+        let code = "def main(:\n    print(\"hello\")\n";
+        let tree = Language::Python.parse(code);
+        assert!(tree.is_some());
+        assert!(
+            tree.expect("parser should recover a tree")
+                .root_node()
+                .has_error(),
+            "invalid Python should produce a recovered tree with errors"
+        );
+    }
+
+    #[test]
     fn test_lock_parser_panics_when_mutex_is_poisoned() {
         let parser = Mutex::new(());
         let poison = catch_unwind(|| {
@@ -226,6 +246,21 @@ mod tests {
     #[test]
     fn test_treesitter_query_compile_invalid() {
         let query = TreeSitterQuery::new(Language::Rust, "(not_a_real_node)");
+        assert!(query.is_err());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_valid() {
+        let query = TreeSitterQuery::new(
+            Language::Python,
+            "(call function: (identifier) @function_name)",
+        );
+        assert!(query.is_ok());
+    }
+
+    #[test]
+    fn test_python_treesitter_query_compile_invalid() {
+        let query = TreeSitterQuery::new(Language::Python, "(not_a_real_python_node)");
         assert!(query.is_err());
     }
 }
