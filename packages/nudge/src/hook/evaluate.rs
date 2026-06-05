@@ -10,8 +10,9 @@ use crate::{
         WriteInput, response::HookOutcome,
     },
     rules::{
-        ContentMatcher, PreToolUseBashMatcher, PreToolUseEditMatcher, PreToolUseWebFetchMatcher,
+        FileContentTarget, PreToolUseBashMatcher, PreToolUseWebFetchMatcher,
         PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher, UserPromptSubmitMatcher,
+        evaluate_all_matched,
     },
     snippet::{Annotation, Match, Source},
 };
@@ -165,23 +166,41 @@ fn updated_tool_input(tool_input: &Value, command: &str) -> Value {
 }
 
 fn evaluate_pretooluse(payload: &PreToolUse, rules: &[Rule]) -> Vec<String> {
+    let mut file_annotations = Vec::<(String, Vec<Annotation>)>::new();
     let annotations = rules
         .iter()
         .filter(|rule| rule.action == RuleAction::Block)
         .flat_map(|rule| match &payload.tool {
-            ToolUse::Write(input) => annotate_write(rule, input),
-            ToolUse::Edit(input) => annotate_edit(rule, input),
+            ToolUse::Write(input) => {
+                push_file_annotations(
+                    &mut file_annotations,
+                    &input.content,
+                    annotate_write(rule, input),
+                );
+                Vec::new()
+            }
+            ToolUse::Edit(input) => {
+                for (source, annotations) in edit_annotation_groups(rule, input) {
+                    push_file_annotations(&mut file_annotations, source, annotations);
+                }
+                Vec::new()
+            }
             ToolUse::WebFetch(input) => annotate_webfetch(rule, input),
             ToolUse::Bash(input) => annotate_bash(rule, payload, input),
             ToolUse::Delete(_) | ToolUse::Other { .. } => Vec::new(),
         })
         .collect_vec();
 
-    if annotations.is_empty() {
-        return Vec::new();
+    let mut rendered = file_annotations
+        .into_iter()
+        .map(|(source, annotations)| Source::from(source).annotate(annotations))
+        .collect_vec();
+
+    if !annotations.is_empty() {
+        rendered.push(source_for_tool(&payload.tool).annotate(annotations));
     }
 
-    vec![source_for_tool(&payload.tool).annotate(annotations)]
+    rendered
 }
 
 fn evaluate_userpromptsubmit(payload: &UserPromptSubmit, rules: &[Rule]) -> Vec<String> {
@@ -215,10 +234,42 @@ fn annotate_write(rule: &Rule, input: &WriteInput) -> Vec<Annotation> {
         .pipe_matches(rule)
 }
 
-fn annotate_edit(rule: &Rule, input: &EditInput) -> Vec<Annotation> {
+fn push_file_annotations(
+    groups: &mut Vec<(String, Vec<Annotation>)>,
+    source: &str,
+    annotations: Vec<Annotation>,
+) {
+    if annotations.is_empty() {
+        return;
+    }
+
+    if let Some((_, existing_annotations)) = groups
+        .iter_mut()
+        .find(|(existing_source, _)| existing_source == source)
+    {
+        existing_annotations.extend(annotations);
+        return;
+    }
+
+    groups.push((source.to_string(), annotations));
+}
+
+fn edit_annotation_groups<'a>(
+    rule: &Rule,
+    input: &'a EditInput,
+) -> impl Iterator<Item = (&'a str, Vec<Annotation>)> {
     rule.hooks_pretooluse_edit()
-        .flat_map(|matcher| evaluate_edit(input, matcher))
-        .pipe_matches(rule)
+        .filter(|matcher| matcher.file.is_match_path(&input.file_path))
+        .filter_map(move |matcher| {
+            let source = source_for_edit(input, &matcher.target);
+            let annotations = matcher
+                .target
+                .evaluate(source, &matcher.new_content)
+                .into_iter()
+                .pipe_matches(rule);
+
+            (!annotations.is_empty()).then_some((source, annotations))
+        })
 }
 
 fn annotate_webfetch(rule: &Rule, input: &WebFetchInput) -> Vec<Annotation> {
@@ -235,17 +286,19 @@ fn annotate_bash(rule: &Rule, payload: &PreToolUse, input: &BashInput) -> Vec<An
 
 fn evaluate_write(input: &WriteInput, matcher: &PreToolUseWriteMatcher) -> Vec<Match> {
     if matcher.file.is_match_path(&input.file_path) {
-        evaluate_all_matched(&input.content, &matcher.content)
+        matcher.target.evaluate(&input.content, &matcher.content)
     } else {
         Vec::new()
     }
 }
 
-fn evaluate_edit(input: &EditInput, matcher: &PreToolUseEditMatcher) -> Vec<Match> {
-    if matcher.file.is_match_path(&input.file_path) {
-        evaluate_all_matched(&input.new_string, &matcher.new_content)
-    } else {
-        Vec::new()
+fn source_for_edit<'a>(input: &'a EditInput, target: &FileContentTarget) -> &'a str {
+    match target {
+        FileContentTarget::Content => &input.new_string,
+        FileContentTarget::MarkdownCodeBlock { .. } => input
+            .post_edit_content
+            .as_deref()
+            .unwrap_or(&input.new_string),
     }
 }
 
@@ -284,20 +337,6 @@ fn source_for_tool(tool: &ToolUse) -> Source {
         ToolUse::WebFetch(input) => Source::from(&input.url),
         ToolUse::Bash(input) => Source::from(&input.command),
     }
-}
-
-/// Evaluate all content matchers and return matches only if every matcher
-/// matched.
-fn evaluate_all_matched(content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
-    let mut matches = Vec::new();
-    for matcher in matchers {
-        let matcher_matches = matcher.matches_with_context(content);
-        if matcher_matches.is_empty() {
-            return Vec::new();
-        }
-        matches.extend(matcher_matches);
-    }
-    matches
 }
 
 /// Evaluate all URL matchers and return matches only if every matcher matched.

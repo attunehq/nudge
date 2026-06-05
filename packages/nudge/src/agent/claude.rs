@@ -1,6 +1,9 @@
 //! Claude Code hook adapter.
 
-use std::{env, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use color_eyre::eyre::{Context, OptionExt, Result};
 use serde_json::Value;
@@ -24,11 +27,11 @@ pub fn parse_hook(raw: Value) -> Result<Vec<NudgeHook>> {
     match event {
         "PreToolUse" => Ok(vec![NudgeHook::PreToolUse(PreToolUse {
             tool_input: raw.get("tool_input").cloned().unwrap_or(Value::Null),
-            tool: tool_use(&raw)?,
+            tool: tool_use(&raw, &context)?,
             context,
         })]),
         "PermissionRequest" => Ok(vec![NudgeHook::PermissionRequest(PermissionRequest {
-            tool: tool_use(&raw)?,
+            tool: tool_use(&raw, &context)?,
             context,
         })]),
         "UserPromptSubmit" => Ok(vec![NudgeHook::UserPromptSubmit(UserPromptSubmit {
@@ -59,7 +62,7 @@ fn context(raw: &Value, agent: AgentKind) -> Result<HookContext> {
     })
 }
 
-fn tool_use(raw: &Value) -> Result<ToolUse> {
+fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
     let tool_name = string_field(raw, "tool_name")?;
     let input = raw.get("tool_input").cloned().unwrap_or(Value::Null);
 
@@ -68,13 +71,22 @@ fn tool_use(raw: &Value) -> Result<ToolUse> {
             file_path: path_field(&input, "file_path")?,
             content: string_field(&input, "content")?.to_string(),
         })),
-        "Edit" => Ok(ToolUse::Edit(EditInput {
-            file_path: path_field(&input, "file_path")?,
-            old_string: string_field(&input, "old_string")
+        "Edit" => {
+            let file_path = path_field(&input, "file_path")?;
+            let old_string = string_field(&input, "old_string")
                 .unwrap_or_default()
-                .to_string(),
-            new_string: string_field(&input, "new_string")?.to_string(),
-        })),
+                .to_string();
+            let new_string = string_field(&input, "new_string")?.to_string();
+            let post_edit_content =
+                post_edit_content(&context.cwd, &file_path, &old_string, &new_string);
+
+            Ok(ToolUse::Edit(EditInput {
+                file_path,
+                old_string,
+                new_string,
+                post_edit_content,
+            }))
+        }
         "Delete" => Ok(ToolUse::Delete(DeleteInput {
             file_path: path_field(&input, "file_path")?,
         })),
@@ -91,6 +103,28 @@ fn tool_use(raw: &Value) -> Result<ToolUse> {
             input,
         }),
     }
+}
+
+fn post_edit_content(
+    cwd: &Path,
+    file_path: &Path,
+    old_string: &str,
+    new_string: &str,
+) -> Option<String> {
+    if old_string.is_empty() {
+        return None;
+    }
+
+    let path = if file_path.is_absolute() {
+        file_path.to_path_buf()
+    } else {
+        cwd.join(file_path)
+    };
+
+    let current = fs::read_to_string(path).ok()?;
+    current
+        .contains(old_string)
+        .then(|| current.replacen(old_string, new_string, 1))
 }
 
 fn string_field<'a>(value: &'a Value, field: &str) -> Result<&'a str> {
