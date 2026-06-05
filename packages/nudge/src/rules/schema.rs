@@ -13,12 +13,14 @@ pub use content::{ContentMatcher, RegexMatcher};
 pub use path::GlobMatcher;
 pub use project_state::ProjectStateMatcher;
 pub use syntax::{Language, TreeSitterQuery};
+pub use target::{FileContentTarget, evaluate_all_matched};
 pub use url::UrlMatcher;
 
 mod content;
 mod path;
 mod project_state;
 mod syntax;
+mod target;
 mod url;
 
 /// A rule configuration file.
@@ -268,6 +270,10 @@ pub struct PreToolUseWriteMatcher {
     #[serde(default)]
     pub file: GlobMatcher,
 
+    /// The part of the file content to evaluate.
+    #[serde(default)]
+    pub target: FileContentTarget,
+
     /// Regex patterns for content to match.
     ///
     /// When the content being written by the agent matches all of these
@@ -290,6 +296,10 @@ pub struct PreToolUseEditMatcher {
     /// pattern, the rule is triggered.
     #[serde(default)]
     pub file: GlobMatcher,
+
+    /// The part of the edited content to evaluate.
+    #[serde(default)]
+    pub target: FileContentTarget,
 
     /// Regex patterns for new content to match.
     ///

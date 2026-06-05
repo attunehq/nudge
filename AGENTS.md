@@ -90,6 +90,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
 - `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
+- `src/rules/schema/target.rs` - File content targets, including raw content and Markdown code-block extraction
 - `src/snippet.rs` - Code snippet rendering for rule violations (uses `annotate-snippets`)
 
 ### How Nudge Communicates
@@ -108,6 +109,12 @@ The response type is determined by the hook type:
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
 - `Delete` is normalized but not yet matchable from YAML rules
+
+Write/Edit file rules evaluate a file content `target` before applying content
+matchers. `target: { kind: Content }` is the default raw-content behavior.
+`target: { kind: MarkdownCodeBlock, language: rust }` evaluates matchers inside
+matching fenced Markdown code blocks and translates match spans back to the
+physical Markdown file for snippets and `nudge check` line numbers.
 
 ## Keeping Documentation in Sync
 

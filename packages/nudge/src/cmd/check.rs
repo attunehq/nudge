@@ -13,7 +13,9 @@ use color_eyre::eyre::{Context, Result, eyre};
 use glob::Pattern;
 use ignore::WalkBuilder;
 
-use nudge::rules::{self, ContentMatcher, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction};
+use nudge::rules::{
+    self, ContentMatcher, FileContentTarget, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction,
+};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -42,6 +44,8 @@ struct FileRule<'a> {
     pattern: &'a GlobMatcher,
     /// The content matchers to apply.
     matchers: ContentMatcherSet<'a>,
+    /// The part of the file content to evaluate.
+    target: &'a FileContentTarget,
     /// Reference to the parent rule.
     rule: &'a Rule,
 }
@@ -103,11 +107,13 @@ fn file_rules_for_rule(rule: &Rule) -> impl Iterator<Item = FileRule<'_>> {
             Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => Some(FileRule {
                 pattern: &matcher.file,
                 matchers: ContentMatcherSet::Write(&matcher.content),
+                target: &matcher.target,
                 rule,
             }),
             Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => Some(FileRule {
                 pattern: &matcher.file,
                 matchers: ContentMatcherSet::Edit(&matcher.new_content),
+                target: &matcher.target,
                 rule,
             }),
             _ => None,
@@ -163,13 +169,10 @@ fn check_file(file: &Path, file_rules: &[FileRule<'_>]) -> (Vec<Issue>, bool) {
 
 fn rule_issues(file: &Path, content: &str, file_rule: &FileRule<'_>) -> Vec<Issue> {
     let matchers = file_rule.matchers.as_slice();
-    if matchers.is_empty() || !matchers.iter().all(|m| m.is_match(content)) {
-        return Vec::new();
-    }
-
-    matchers
-        .iter()
-        .flat_map(|matcher| matcher.matches_with_context(content))
+    file_rule
+        .target
+        .evaluate(content, matchers)
+        .into_iter()
         .map(|m| {
             let line = byte_offset_to_line(content, m.span.start);
             let message = nudge::template::interpolate(file_rule.rule.message(), &m.captures);

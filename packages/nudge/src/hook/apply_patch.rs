@@ -54,6 +54,7 @@ pub fn parse(command: &str, cwd: &Path) -> Result<Vec<ToolUse>> {
             changes.push(ToolUse::Edit(EditInput {
                 file_path: update.move_to.unwrap_or_else(|| path.into()),
                 old_string: update.old_string,
+                post_edit_content: Some(new_string.clone()),
                 new_string,
             }));
             index = next;

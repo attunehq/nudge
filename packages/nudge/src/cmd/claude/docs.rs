@@ -52,6 +52,8 @@ const DOCS: &str = cstr!("\
         <yellow>- hook: PreToolUse</yellow>          <dim># PreToolUse or UserPromptSubmit</dim>
           <yellow>tool: Write</yellow>               <dim># Write, Edit, WebFetch, or Bash (PreToolUse only)</dim>
           <yellow>file: \"**/*.rs\"</yellow>           <dim># Glob pattern for file path</dim>
+          <yellow>target:</yellow>                    <dim># Optional. Default: kind: Content</dim>
+            <yellow>kind: Content</yellow>
           <yellow>content:</yellow>                   <dim># Patterns to match (Write tool)</dim>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"your-regex\"</yellow>
@@ -61,6 +63,8 @@ const DOCS: &str = cstr!("\
         <yellow>- hook: PreToolUse</yellow>          <dim># Same rule can match multiple scenarios</dim>
           <yellow>tool: Edit</yellow>
           <yellow>file: \"**/*.rs\"</yellow>
+          <yellow>target:</yellow>                    <dim># Optional. Also supports MarkdownCodeBlock</dim>
+            <yellow>kind: Content</yellow>
           <yellow>new_content:</yellow>              <dim># Patterns to match (Edit tool)</dim>
             <yellow>- kind: Regex</yellow>
               <yellow>pattern: \"your-regex\"</yellow>
@@ -92,6 +96,30 @@ const DOCS: &str = cstr!("\
 
   <green>Delete</green>     Normalized internally for file deletion, but not yet matchable
              in YAML rules.
+
+<bold>File Content Targets (Write/Edit only)</bold>
+
+  File rules evaluate <cyan>target:</cyan> before running <cyan>content:</cyan> or <cyan>new_content:</cyan>.
+
+  <green>Content</green>            Default. Match against the raw Write content or Edit replacement.
+  <green>MarkdownCodeBlock</green>  Match fenced Markdown code blocks for one language. All content
+                       matchers must match the same fenced block.
+
+  <white>Markdown Rust code-block example:</white>
+    <yellow>- hook: PreToolUse</yellow>
+      <yellow>tool: Write</yellow>
+      <yellow>file: \"**/*.md\"</yellow>
+      <yellow>target:</yellow>
+        <yellow>kind: MarkdownCodeBlock</yellow>
+        <yellow>language: rust</yellow>
+      <yellow>content:</yellow>
+        <yellow>- kind: SyntaxTree</yellow>
+          <yellow>language: rust</yellow>
+          <yellow>query: \"(let_declaration type: (_) @type)\"</yellow>
+
+  <dim>Markdown code-block snippets and check-mode line numbers point back to</dim>
+  <dim>the physical Markdown file. The language comes from the first code-fence</dim>
+  <dim>info-string word, such as ```rust or ```ts.</dim>
 
 <bold>Provider Support</bold>
 
@@ -386,6 +414,25 @@ const DOCS: &str = cstr!("\
                   <yellow>body: (block</yellow>
                     <yellow>(use_declaration</yellow>
                       <yellow>argument: (scoped_identifier) @path)))</yellow>
+
+  <cyan>Block Rust patterns inside Markdown code blocks</cyan>
+
+    <dim># The target limits matching to fenced Rust blocks in Markdown files.</dim>
+
+    <yellow>- name: no-rust-lhs-type-annotations-in-docs</yellow>
+      <yellow>description: Use inferred local types in Rust Markdown examples</yellow>
+      <yellow>message: \"Use type inference in this Rust code block, then retry.\"</yellow>
+      <yellow>on:</yellow>
+        <yellow>- hook: PreToolUse</yellow>
+          <yellow>tool: Write</yellow>
+          <yellow>file: \"**/*.md\"</yellow>
+          <yellow>target:</yellow>
+            <yellow>kind: MarkdownCodeBlock</yellow>
+            <yellow>language: rust</yellow>
+          <yellow>content:</yellow>
+            <yellow>- kind: SyntaxTree</yellow>
+              <yellow>language: rust</yellow>
+              <yellow>query: \"(let_declaration type: (_) @type)\"</yellow>
 
   <cyan>Enforce markdown table formatting (External)</cyan>
 
