@@ -62,6 +62,8 @@ Check mode evaluates provider-independent file rules:
 | `kind: Regex` content matchers | Yes | Capture groups and message interpolation work. |
 | `kind: SyntaxTree` content matchers | Yes | Uses the configured tree-sitter language. |
 | `kind: External` content matchers | Yes | The file body is piped to stdin. A non-zero command exit means the rule matched. |
+| `target: { kind: Content }` | Yes | Default behavior. Matchers evaluate the raw file body. |
+| `target: { kind: MarkdownCodeBlock }` | Yes | Matchers evaluate fenced Markdown code blocks for the configured language. |
 | `action: block` | Yes | Violations are printed and the command exits `1`. |
 | `action: substitute` | No | Substitutions need a live Bash hook payload and provider `updatedInput`. |
 | `PreToolUse` `Bash` | No | Bash rules inspect commands, not files. |
@@ -73,6 +75,35 @@ Check mode evaluates provider-independent file rules:
 
 Check mode scans files as UTF-8 text. Files that cannot be read as text are
 skipped at debug log level, so keep rules targeted with `file` globs.
+
+## File Content Targets
+
+Write/Edit file rules evaluate `target: { kind: Content }` by default. This
+checks the raw file body, which is the right target for ordinary source files.
+
+For Markdown files, `target: { kind: MarkdownCodeBlock, language: rust }`
+extracts fenced code blocks with a matching info string and evaluates all
+content matchers against each block body. A rule matches only when all content
+matchers match the same fenced block. Reported file paths and line numbers
+still refer to the physical Markdown file:
+
+```yaml
+version: 1
+rules:
+  - name: no-rust-lhs-type-annotations-in-docs
+    message: "Use inferred local types in this Rust example."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.md"
+        target:
+          kind: MarkdownCodeBlock
+          language: rust
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: "(let_declaration type: (_) @type)"
+```
 
 ## Supported Syntax Languages
 

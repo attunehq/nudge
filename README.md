@@ -108,6 +108,32 @@ content:
     timeout_ms: 10000
 ```
 
+### Markdown Code Blocks
+
+File rules can choose which part of a matched file is checked with `target`.
+The default is `target: { kind: Content }`, which evaluates matchers against
+the raw file content. For Markdown files, use `MarkdownCodeBlock` to evaluate
+the same Regex, SyntaxTree, or External matchers against fenced code blocks for
+a specific language:
+
+```yaml
+on:
+  - hook: PreToolUse
+    tool: Write
+    file: "**/*.md"
+    target:
+      kind: MarkdownCodeBlock
+      language: rust
+    content:
+      - kind: SyntaxTree
+        language: rust
+        query: "(let_declaration type: (_) @type)"
+```
+
+All content matchers in a Markdown code-block target must match the same fenced
+block. Snippets and `nudge check` line numbers point back to the physical
+Markdown file.
+
 For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
 
 ### Rule Writing Is Iterative
@@ -197,9 +223,10 @@ nudge check || exit 1
 `nudge check` evaluates file-based block rules for `PreToolUse` Write/Edit
 matchers, including Regex, SyntaxTree, and External content matchers. It
 supports SyntaxTree rules for Rust, TypeScript, JavaScript, Python, Go, Java,
-C#, Kotlin, and Haskell. Hook-only behavior such as Bash substitutions,
-WebFetch, UserPromptSubmit reminders, permissions, delete events, and
-workflows still belongs to live hook mode.
+C#, Kotlin, and Haskell. It also supports `target: { kind: MarkdownCodeBlock }`
+for fenced code blocks inside Markdown files. Hook-only behavior such as Bash
+substitutions, WebFetch, UserPromptSubmit reminders, permissions, delete
+events, and workflows still belongs to live hook mode.
 
 Example output when violations are found:
 

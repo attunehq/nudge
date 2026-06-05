@@ -142,8 +142,12 @@ pub struct EditInput {
     /// Replaced content or matched pre-patch content.
     pub old_string: String,
 
-    /// Full post-edit content.
+    /// Replacement content supplied by the provider.
     pub new_string: String,
+
+    /// Full post-edit file content, when the provider or adapter can recover
+    /// it.
+    pub post_edit_content: Option<String>,
 }
 
 /// Normalized delete input.

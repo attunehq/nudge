@@ -1,0 +1,48 @@
+# Nudge rules for Markdown files and embedded code examples.
+#
+# These rules demonstrate file content targets. The default target is
+# `kind: Content`, which checks the raw file body. `kind: MarkdownCodeBlock`
+# checks fenced code blocks for one language inside a Markdown file.
+
+version: 1
+
+rules:
+  - name: no-rust-lhs-type-annotations-in-docs
+    description: Use inferred local types in Rust Markdown examples
+    message: "Use type inference instead of left-hand type annotations in this Rust code block, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.md"
+        target:
+          kind: MarkdownCodeBlock
+          language: rust
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (let_declaration type: (_) @type)
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.md"
+        target:
+          kind: MarkdownCodeBlock
+          language: rust
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (let_declaration type: (_) @type)
+
+  - name: no-todo-in-markdown
+    description: Resolve TODO markers anywhere in Markdown prose or code
+    message: "Resolve this TODO before continuing."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.md"
+        target:
+          kind: Content
+        content:
+          - kind: Regex
+            pattern: "TODO"
