@@ -25,6 +25,11 @@ Exit behavior:
 - `1`: one or more checkable violations were found.
 - Other non-zero exits: configuration, argument, or runtime errors.
 
+With no path arguments, `nudge check` scans the whole project from the current
+directory. With explicit operands, each path or glob must resolve to at least
+one file. Missing paths, empty directories, and glob patterns that match no
+files fail before rule evaluation with a clear error naming the operand.
+
 Example failure output:
 
 ```text
