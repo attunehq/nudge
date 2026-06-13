@@ -1,6 +1,6 @@
 # Nudge Learnings With Local Embeddings
 
-Use this guide when `nudge learn embeddings status` reports enabled, or `.nudge.yaml` / `.nudge.yml` sets `learn.embeddings.enabled: true`.
+Use this guide when `nudge learn embeddings status` reports both `Embedding support: available` and `Embeddings: enabled`, or `.nudge.yaml` / `.nudge.yml` sets `learn.embeddings.enabled: true` and the current binary supports embeddings.
 
 ## Retrieval behavior
 

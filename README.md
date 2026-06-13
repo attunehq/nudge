@@ -31,6 +31,10 @@ Install:
 curl -sSfL https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.sh | bash
 ```
 
+Release binaries support macOS, Linux, and Windows x64. Alpine and other musl
+Linux builds include BM25 learned-note search, but not local semantic
+embeddings.
+
 Windows PowerShell:
 
 ```powershell

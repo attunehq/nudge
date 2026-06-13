@@ -121,7 +121,7 @@ pub fn main(config: Config) -> Result<()> {
 fn add(config: AddConfig) -> Result<()> {
     let body = learn::read_body(config.body, config.body_file)?;
     let path = learn::add(
-        std::path::Path::new("."),
+        Path::new("."),
         AddNote {
             title: config.title,
             body,
@@ -133,7 +133,7 @@ fn add(config: AddConfig) -> Result<()> {
 }
 
 fn list(_config: ListConfig) -> Result<()> {
-    let root = std::path::Path::new(".");
+    let root = Path::new(".");
     let notes = learn::load_all(root).context("load learned notes")?;
     if notes.is_empty() {
         println!("No learned notes found in {}.", learn::LEARNED_DIR);
@@ -153,7 +153,7 @@ fn list(_config: ListConfig) -> Result<()> {
 }
 
 fn search(config: SearchConfig) -> Result<()> {
-    let root = std::path::Path::new(".");
+    let root = Path::new(".");
     let notes = learn::load_all(root).context("load learned notes")?;
     if notes.is_empty() {
         println!("No learned notes found in {}.", learn::LEARNED_DIR);
@@ -193,6 +193,7 @@ fn embeddings(config: EmbeddingsConfig) -> Result<()> {
 }
 
 fn embeddings_enable(config: EnableEmbeddingsConfig) -> Result<()> {
+    learn::embeddings::ensure_available()?;
     let model = learn::embeddings::canonical_model(&config.model)?;
     let learn_config = LearnConfig {
         embeddings: learn::EmbeddingConfig {
@@ -214,6 +215,7 @@ fn embeddings_enable(config: EnableEmbeddingsConfig) -> Result<()> {
 }
 
 fn embeddings_reindex(_config: ReindexEmbeddingsConfig) -> Result<()> {
+    learn::embeddings::ensure_available()?;
     let config = learn::load_config().context("load learn config")?;
     if !config.embeddings.enabled {
         bail!("learn embeddings are not enabled. Run `nudge learn embeddings enable` first.");
@@ -228,6 +230,14 @@ fn embeddings_status(_config: StatusEmbeddingsConfig) -> Result<()> {
     let status = learn::embeddings::status(root, &config)?;
 
     println!(
+        "Embedding support: {}",
+        if status.available {
+            "available"
+        } else {
+            "unavailable in this binary"
+        }
+    );
+    println!(
         "Embeddings: {}",
         if status.enabled {
             "enabled"
@@ -240,6 +250,11 @@ fn embeddings_status(_config: StatusEmbeddingsConfig) -> Result<()> {
     println!("Model cache: {}", status.paths.model_dir.display());
     println!("Vector index: {}", status.paths.vector_index.display());
     println!("Vectors: {}", status.vector_count);
+    if status.enabled && !status.available {
+        println!(
+            "Semantic search is unavailable in this binary. BM25 learned-note search remains available."
+        );
+    }
 
     Ok(())
 }

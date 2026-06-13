@@ -8,7 +8,8 @@ description: Use when working in a repository that uses Nudge learned incident n
 Before using learned notes, choose the retrieval guide:
 
 1. Run `nudge learn embeddings status`, or inspect `.nudge.yaml` / `.nudge.yml` for `learn.embeddings.enabled`.
-2. If embeddings are enabled, read [references/embeddings.md](references/embeddings.md).
-3. Otherwise, read [references/bm25.md](references/bm25.md).
+2. If status reports `Embedding support: unavailable in this binary`, read [references/bm25.md](references/bm25.md), even when config enables embeddings.
+3. If embeddings are enabled and support is available, read [references/embeddings.md](references/embeddings.md).
+4. Otherwise, read [references/bm25.md](references/bm25.md).
 
 When Nudge surfaces learned context, treat it as repo memory from a previous debugging session. Read the cited note, decide whether it applies to the current situation, and reuse the fix or explain why the case differs.

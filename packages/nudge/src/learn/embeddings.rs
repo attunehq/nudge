@@ -1,24 +1,39 @@
 //! Local embedding support for learned notes.
 
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
 
-use color_eyre::eyre::{Context, OptionExt, Result};
+#[cfg(feature = "embeddings")]
+use std::collections::HashMap;
+
+#[cfg(feature = "embeddings")]
+use color_eyre::eyre::Context;
+use color_eyre::eyre::{OptionExt, Result, bail};
+#[cfg(feature = "embeddings")]
+use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(feature = "embeddings")]
+use std::str::FromStr;
 
+#[cfg(any(feature = "embeddings", test))]
+use crate::learn::display_path;
+#[cfg(feature = "embeddings")]
+use crate::learn::search;
 use crate::{
-    learn::{LearnConfig, LearnedNote, SearchResult, display_path, search},
+    learn::{LearnConfig, LearnedNote, SearchResult},
     rules,
 };
 
+#[cfg(feature = "embeddings")]
 const INDEX_VERSION: u32 = 1;
 const DEFAULT_MODEL: &str = "BGESmallENV15";
 const DEFAULT_MODEL_NAME: &str = "BAAI/bge-small-en-v1.5";
+#[cfg(feature = "embeddings")]
 const SEMANTIC_WEIGHT: f64 = 2.5;
+#[cfg(feature = "embeddings")]
 const BM25_PREFETCH_LIMIT: usize = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +45,7 @@ pub struct EmbeddingPaths {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmbeddingStatus {
+    pub available: bool,
     pub enabled: bool,
     pub model: String,
     pub paths: EmbeddingPaths,
@@ -44,6 +60,7 @@ pub struct EmbeddingBuildReport {
 }
 
 #[derive(Debug, Clone)]
+#[cfg(any(feature = "embeddings", test))]
 struct NoteChunk {
     note_path: PathBuf,
     title: String,
@@ -74,6 +91,22 @@ pub fn default_model() -> String {
     DEFAULT_MODEL_NAME.to_string()
 }
 
+pub fn is_available() -> bool {
+    cfg!(feature = "embeddings")
+}
+
+pub fn unavailable_message() -> &'static str {
+    "semantic embeddings are not available in this nudge binary; BM25 learned-note search remains available"
+}
+
+pub fn ensure_available() -> Result<()> {
+    if is_available() {
+        Ok(())
+    } else {
+        bail!("{}", unavailable_message())
+    }
+}
+
 pub fn status(root: &Path, config: &LearnConfig) -> Result<EmbeddingStatus> {
     let paths = paths(root)?;
     let vector_count = load_index(&paths.vector_index)
@@ -81,6 +114,7 @@ pub fn status(root: &Path, config: &LearnConfig) -> Result<EmbeddingStatus> {
         .unwrap_or(0);
 
     Ok(EmbeddingStatus {
+        available: is_available(),
         enabled: config.embeddings.enabled,
         model: config.embeddings.model.clone(),
         paths,
@@ -102,6 +136,7 @@ pub fn paths(root: &Path) -> Result<EmbeddingPaths> {
     })
 }
 
+#[cfg(feature = "embeddings")]
 pub fn build_index(
     root: &Path,
     notes: &[LearnedNote],
@@ -156,6 +191,16 @@ pub fn build_index(
     })
 }
 
+#[cfg(not(feature = "embeddings"))]
+pub fn build_index(
+    _root: &Path,
+    _notes: &[LearnedNote],
+    _config: &LearnConfig,
+) -> Result<EmbeddingBuildReport> {
+    bail!("{}", unavailable_message())
+}
+
+#[cfg(feature = "embeddings")]
 pub fn ensure_model(root: &Path, config: &LearnConfig) -> Result<EmbeddingPaths> {
     let paths = paths(root)?;
     fs::create_dir_all(&paths.model_dir)
@@ -166,6 +211,11 @@ pub fn ensure_model(root: &Path, config: &LearnConfig) -> Result<EmbeddingPaths>
         vec![String::from("query: nudge local embedding model warmup")],
     )?;
     Ok(paths)
+}
+
+#[cfg(not(feature = "embeddings"))]
+pub fn ensure_model(_root: &Path, _config: &LearnConfig) -> Result<EmbeddingPaths> {
+    bail!("{}", unavailable_message())
 }
 
 pub fn hybrid_search(
@@ -180,9 +230,25 @@ pub fn hybrid_search(
         return Ok(None);
     }
 
-    hybrid_search_enabled(root, notes, query, limit, min_score, config)
+    if !is_available() {
+        tracing::warn!(
+            "learned-note embeddings are enabled in config but unavailable in this binary; falling back to BM25"
+        );
+        return Ok(None);
+    }
+
+    #[cfg(feature = "embeddings")]
+    {
+        hybrid_search_enabled(root, notes, query, limit, min_score, config)
+    }
+    #[cfg(not(feature = "embeddings"))]
+    {
+        let _ = (root, notes, query, limit, min_score, config);
+        Ok(None)
+    }
 }
 
+#[cfg(feature = "embeddings")]
 fn hybrid_search_enabled(
     root: &Path,
     notes: &[LearnedNote],
@@ -206,7 +272,7 @@ fn hybrid_search_enabled(
     .next()
     .ok_or_eyre("embedding model returned no query vector")?;
 
-    let mut semantic_by_path: HashMap<String, f64> = HashMap::new();
+    let mut semantic_by_path = HashMap::<String, f64>::new();
     for chunk in &index.chunks {
         let similarity = cosine_similarity(&query_vector, &chunk.vector);
         semantic_by_path
@@ -252,6 +318,7 @@ fn hybrid_search_enabled(
     Ok(Some(results))
 }
 
+#[cfg(feature = "embeddings")]
 fn load_or_build_index(
     root: &Path,
     notes: &[LearnedNote],
@@ -273,6 +340,7 @@ fn load_index(path: &Path) -> Option<VectorIndex> {
     serde_json::from_str(&content).ok()
 }
 
+#[cfg(feature = "embeddings")]
 fn index_is_current(
     root: &Path,
     notes: &[LearnedNote],
@@ -311,10 +379,8 @@ fn index_is_current(
     expected == actual
 }
 
+#[cfg(feature = "embeddings")]
 fn embed_texts(model: &str, model_dir: &Path, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-    use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
-    use std::str::FromStr;
-
     if texts.is_empty() {
         return Ok(Vec::new());
     }
@@ -334,27 +400,38 @@ fn embed_texts(model: &str, model_dir: &Path, texts: Vec<String>) -> Result<Vec<
         .map_err(|error| color_eyre::eyre::eyre!("generate local embeddings: {error}"))
 }
 
+#[cfg(feature = "embeddings")]
 pub fn canonical_model(model: &str) -> Result<String> {
-    let trimmed = model.trim();
-    let canonical = match trimmed.to_ascii_lowercase().as_str() {
-        "baai/bge-small-en-v1.5" | "bge-small-en-v1.5" | "bgesmallenv15" => DEFAULT_MODEL,
-        "sentence-transformers/all-minilm-l6-v2" | "all-minilm-l6-v2" | "allminilml6v2" => {
-            "AllMiniLML6V2"
-        }
-        "sentence-transformers/all-minilm-l6-v2-q" | "all-minilm-l6-v2-q" | "allminilml6v2q" => {
-            "AllMiniLML6V2Q"
-        }
-        _ => trimmed,
-    };
+    let canonical = canonical_model_alias(model);
 
-    use fastembed::EmbeddingModel;
-    use std::str::FromStr;
-    EmbeddingModel::from_str(canonical)
+    EmbeddingModel::from_str(&canonical)
         .map_err(|error| color_eyre::eyre::eyre!("unknown embedding model `{model}`: {error}"))?;
 
-    Ok(canonical.to_string())
+    Ok(canonical)
 }
 
+#[cfg(not(feature = "embeddings"))]
+pub fn canonical_model(model: &str) -> Result<String> {
+    Ok(canonical_model_alias(model))
+}
+
+fn canonical_model_alias(model: &str) -> String {
+    let trimmed = model.trim();
+    match trimmed.to_ascii_lowercase().as_str() {
+        "baai/bge-small-en-v1.5" | "bge-small-en-v1.5" | "bgesmallenv15" => {
+            String::from(DEFAULT_MODEL)
+        }
+        "sentence-transformers/all-minilm-l6-v2" | "all-minilm-l6-v2" | "allminilml6v2" => {
+            String::from("AllMiniLML6V2")
+        }
+        "sentence-transformers/all-minilm-l6-v2-q" | "all-minilm-l6-v2-q" | "allminilml6v2q" => {
+            String::from("AllMiniLML6V2Q")
+        }
+        _ => trimmed.to_string(),
+    }
+}
+
+#[cfg(feature = "embeddings")]
 fn chunks_for_notes(root: &Path, notes: &[LearnedNote]) -> Vec<NoteChunk> {
     notes
         .iter()
@@ -362,6 +439,7 @@ fn chunks_for_notes(root: &Path, notes: &[LearnedNote]) -> Vec<NoteChunk> {
         .collect()
 }
 
+#[cfg(any(feature = "embeddings", test))]
 fn chunks_for_note(root: &Path, note: &LearnedNote) -> Vec<NoteChunk> {
     let body_without_title = note
         .body
@@ -399,6 +477,7 @@ fn chunks_for_note(root: &Path, note: &LearnedNote) -> Vec<NoteChunk> {
     chunks
 }
 
+#[cfg(any(feature = "embeddings", test))]
 fn push_section_chunk(
     root: &Path,
     note: &LearnedNote,
@@ -438,6 +517,7 @@ fn push_section_chunk(
     });
 }
 
+#[cfg(feature = "embeddings")]
 fn cosine_similarity(left: &[f32], right: &[f32]) -> f64 {
     if left.len() != right.len() || left.is_empty() {
         return 0.0;
@@ -503,7 +583,11 @@ mod tests {
         let chunks = chunks_for_note(root.path(), &note);
 
         pretty_assert_eq!(chunks.len(), 2);
+        pretty_assert_eq!(chunks[0].note_path, note.path);
+        pretty_assert_eq!(chunks[0].title, "Expo cache");
         assert!(chunks[0].text.contains("What went wrong"));
+        assert!(!chunks[0].note_hash.is_empty());
+        assert!(!chunks[0].chunk_id.is_empty());
         assert!(chunks[1].text.contains("Clear the cache"));
     }
 
@@ -513,6 +597,7 @@ mod tests {
         let config = LearnConfig::default();
         let status = status(root.path(), &config).expect("status");
 
+        pretty_assert_eq!(status.available, cfg!(feature = "embeddings"));
         pretty_assert_eq!(status.enabled, false);
         pretty_assert_eq!(status.model, DEFAULT_MODEL_NAME);
     }
