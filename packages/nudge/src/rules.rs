@@ -28,7 +28,8 @@ pub fn project_dirs() -> Option<ProjectDirs> {
 /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
 /// 2. `.nudge.yaml` if it exists
 /// 3. `.nudge.yml` if it exists
-/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml` files
+/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml`
+///    files
 #[tracing::instrument]
 pub fn load_all() -> Result<Vec<Rule>> {
     load_all_attributed()?
@@ -45,7 +46,8 @@ pub fn load_all() -> Result<Vec<Rule>> {
 /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
 /// 2. `.nudge.yaml` if it exists
 /// 3. `.nudge.yml` if it exists
-/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml` files
+/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml`
+///    files
 #[tracing::instrument]
 pub fn load_all_attributed() -> Result<Vec<(PathBuf, Vec<Rule>)>> {
     load_all_configs_attributed().map(|configs| {

@@ -258,10 +258,10 @@ fn load_or_build_index(
     config: &LearnConfig,
 ) -> Result<VectorIndex> {
     let paths = paths(root)?;
-    if let Some(index) = load_index(&paths.vector_index) {
-        if index_is_current(root, notes, config, &index) {
-            return Ok(index);
-        }
+    if let Some(index) =
+        load_index(&paths.vector_index).filter(|index| index_is_current(root, notes, config, index))
+    {
+        return Ok(index);
     }
 
     build_index(root, notes, config)?;

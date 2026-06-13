@@ -27,18 +27,10 @@ const HOOK_MIN_QUERY_TOKENS: usize = 3;
 const EXCERPT_LIMIT: usize = 420;
 
 /// Learned-note retrieval configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct LearnConfig {
     pub embeddings: EmbeddingConfig,
-}
-
-impl Default for LearnConfig {
-    fn default() -> Self {
-        Self {
-            embeddings: EmbeddingConfig::default(),
-        }
-    }
 }
 
 /// Local embedding configuration for learned notes.
@@ -216,10 +208,7 @@ pub fn search(
     }
 
     let query_terms = query_tokens.into_iter().collect::<HashSet<_>>();
-    let documents = notes
-        .iter()
-        .map(|note| IndexedDocument::new(note))
-        .collect_vec();
+    let documents = notes.iter().map(IndexedDocument::new).collect_vec();
     let average_length = documents
         .iter()
         .map(|document| document.length as f64)
