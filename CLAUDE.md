@@ -95,6 +95,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
+- `packages/nudge/skills/nudge/` - Source files for the bundled Nudge rules and hook-response skill compiled into the binary
 - `packages/nudge/skills/nudge-learnings/` - Source files for the bundled learnings skill compiled into the binary
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types

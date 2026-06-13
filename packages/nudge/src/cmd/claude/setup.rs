@@ -1,15 +1,11 @@
 //! Set up Nudge hooks for Claude Code.
 
 use std::fs;
-use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 
 use bon::Builder;
 use clap::Args;
-use color_eyre::{
-    Result,
-    eyre::{Context, OptionExt},
-};
+use color_eyre::{Result, eyre::Context};
 use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
@@ -22,25 +18,10 @@ pub struct Config {
     #[arg(long, default_value = ".claude")]
     claude_dir: PathBuf,
 
-    /// Skip the CLAUDE.md prompt (don't add Nudge context).
-    #[arg(long)]
-    skip_claude_md: bool,
-
     /// Skip installing bundled Nudge skills.
     #[arg(long)]
     skip_skills: bool,
 }
-
-/// The section we add to CLAUDE.md to help Claude understand Nudge's role.
-const CLAUDE_MD_SECTION: &str = r#"
-## Nudge
-
-This project uses [Nudge](https://github.com/attunehq/nudge), a collaborative partner that helps you remember coding conventions and learned debugging incidents. Nudge watches supported hook surfaces, reminds you about patterns and preferences that matter here, and surfaces relevant notes from `.nudge/learned`, so you can focus on the actual problem instead of rediscovering old fixes.
-
-**Nudge is on your side.** When it sends you a message, it's not a reprimand. It's a colleague tapping you on the shoulder. The messages are direct (sometimes blunt) because that's what cuts through when you're focused. Trust the feedback and adjust; if a rule feels wrong, mention it so we can fix the rule.
-
-**Writing new rules or notes:** If the user asks you to add or modify Nudge rules, run `nudge claude docs` to see the rule format, template variables, and guidelines for writing effective messages. If you resolve a repo-specific bug that future agents may hit again, record it with `nudge learn add`.
-"#;
 
 /// Configures a hook in Claude Code's settings.
 #[derive(Debug, Serialize, Clone, Builder)]
@@ -156,15 +137,8 @@ pub fn main(config: Config) -> Result<()> {
     println!();
 
     if !config.skip_skills {
-        skill_install::install_nudge_learnings("Claude", &dotclaude.join("skills"))?;
+        skill_install::install_bundled_skills("Claude", &dotclaude.join("skills"))?;
         println!();
-    }
-
-    if !config.skip_claude_md {
-        let project_root = dotclaude
-            .parent()
-            .ok_or_eyre("get parent directory of .claude")?;
-        offer_claude_md_section(project_root)?;
     }
 
     println!("Next steps:");
@@ -203,72 +177,4 @@ fn matcher_uses_command(matcher: &Value, command: &str) -> bool {
                     && hook.get("command").and_then(Value::as_str) == Some(command)
             })
         })
-}
-
-/// Offer to add a Nudge section to CLAUDE.md in the project root.
-fn offer_claude_md_section(project_root: &std::path::Path) -> Result<()> {
-    let claude_md_path = project_root.join("CLAUDE.md");
-    if claude_md_path.exists() {
-        let content = fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
-        if content.contains("## Nudge") {
-            println!("CLAUDE.md already has a Nudge section, skipping.");
-            println!();
-            return Ok(());
-        }
-    }
-
-    // Show the user what we'll add and why
-    println!("─────────────────────────────────────────────────────────────────────");
-    println!();
-    println!("Nudge works best when Claude understands it's a collaborative partner,");
-    println!("not a rule enforcer. Adding context to CLAUDE.md helps set the right tone.");
-    println!();
-    println!("This will be added to {}:", claude_md_path.display());
-    println!();
-    for line in CLAUDE_MD_SECTION.lines() {
-        println!("  {line}");
-    }
-    println!();
-    println!("─────────────────────────────────────────────────────────────────────");
-    println!();
-
-    // Prompt for confirmation
-    print!("Add this section to CLAUDE.md? [Y/n] ");
-    io::stdout().flush().context("flush stdout")?;
-
-    let stdin = io::stdin();
-    let mut line = String::new();
-    stdin
-        .lock()
-        .read_line(&mut line)
-        .context("read user input")?;
-    let response = line.trim().to_lowercase();
-
-    if response.is_empty() || response == "y" || response == "yes" {
-        let mut content = if claude_md_path.exists() {
-            let existing =
-                fs::read_to_string(&claude_md_path).context("read existing CLAUDE.md")?;
-
-            if existing.ends_with('\n') {
-                existing
-            } else {
-                format!("{existing}\n")
-            }
-        } else {
-            String::from(
-                "# CLAUDE.md\n\nThis file provides guidance to Claude Code when working with code in this repository.\n",
-            )
-        };
-
-        content.push_str(CLAUDE_MD_SECTION);
-
-        fs::write(&claude_md_path, content).context("write CLAUDE.md")?;
-        println!("✓ Added Nudge section to {}", claude_md_path.display());
-        println!();
-    } else {
-        println!("Skipped CLAUDE.md update.");
-        println!();
-    }
-
-    Ok(())
 }

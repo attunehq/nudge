@@ -139,8 +139,10 @@ nudge learn embeddings enable
 nudge learn embeddings status
 ```
 
-Setup installs the bundled `nudge-learnings` skill so agents know how to search,
-apply, and record repo-local learnings.
+Setup installs bundled `nudge` and `nudge-learnings` skills so agents know how
+to respond to hook messages, write or debug rules, and search, apply, or record
+repo-local learnings. Setup does not edit project `CLAUDE.md` or `AGENTS.md`
+files.
 
 ## Development
 

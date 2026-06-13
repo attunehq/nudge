@@ -57,6 +57,7 @@ Important entrypoints:
 | `packages/nudge/src/skills.rs` | Bundled skill assets and install helpers |
 | `packages/nudge/src/cmd/` | CLI subcommands |
 | `packages/nudge/tests/it/` | Integration tests |
+| `packages/nudge/skills/nudge/` | Source for the bundled Nudge rules and hook-response skill |
 | `packages/nudge/skills/nudge-learnings/` | Source for the bundled learned-notes skill |
 | `examples/rules/` | Copyable example rule files |
 
@@ -259,7 +260,7 @@ nudge learn embeddings status
 For setup changes:
 
 ```bash
-nudge claude setup --skip-claude-md
+nudge claude setup
 nudge codex setup
 ```
 
@@ -267,8 +268,13 @@ Verify generated files directly:
 
 - `.claude/settings.local.json`
 - `.codex/hooks.json`
+- `.claude/skills/nudge/SKILL.md`
 - `.claude/skills/nudge-learnings/SKILL.md`
+- `.agents/skills/nudge/SKILL.md`
 - `.agents/skills/nudge-learnings/SKILL.md`
+
+Setup should not create or edit project `CLAUDE.md` or `AGENTS.md`; Nudge
+bootstrap guidance lives in bundled skills.
 
 ### 5. Run Codex In The Disposable Repo
 

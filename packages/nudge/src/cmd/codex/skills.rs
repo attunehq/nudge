@@ -15,7 +15,7 @@ pub struct Config {
 
 #[derive(Subcommand, Clone, Debug)]
 enum Commands {
-    /// Install the bundled Nudge learnings skill.
+    /// Install the bundled Nudge skills.
     Install(InstallConfig),
 }
 
@@ -33,6 +33,6 @@ pub fn main(config: Config) -> Result<()> {
 }
 
 fn install(config: InstallConfig) -> Result<()> {
-    skill_install::install_nudge_learnings("Codex", &config.agents_dir.join("skills"))?;
+    skill_install::install_bundled_skills("Codex", &config.agents_dir.join("skills"))?;
     Ok(())
 }

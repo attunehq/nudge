@@ -39,16 +39,37 @@ fn learn_docs_prints_bundled_learnings_skill() {
 }
 
 #[test]
-fn claude_skills_install_writes_progressive_learnings_skill() {
+fn claude_skills_install_writes_bundled_skills() {
     let temp = TempDir::new().expect("temp dir");
 
     let (exit_code, stdout, stderr) = run_nudge_in(temp.path(), &["claude", "skills", "install"]);
 
     pretty_assert_eq!(exit_code, 0, "skill install failed: {stderr}");
     assert!(
+        stdout.contains("Installed nudge skill"),
+        "install should report destination, got: {stdout}"
+    );
+    assert!(
         stdout.contains("Installed nudge-learnings skill"),
         "install should report destination, got: {stdout}"
     );
+
+    let skill_dir = temp.path().join(".claude/skills/nudge");
+    let skill = fs::read_to_string(skill_dir.join("SKILL.md")).expect("read SKILL.md");
+    let hook_responses =
+        fs::read_to_string(skill_dir.join("references/hook-responses.md")).expect("read hooks");
+    let rule_writing =
+        fs::read_to_string(skill_dir.join("references/rule-writing.md")).expect("read rules");
+    let validation =
+        fs::read_to_string(skill_dir.join("references/validation.md")).expect("read validation");
+
+    assert!(skill.contains("name: nudge"));
+    assert!(skill.contains("references/hook-responses.md"));
+    assert!(skill.contains("references/rule-writing.md"));
+    assert!(skill.contains("references/validation.md"));
+    assert!(hook_responses.contains("Nudge Hook Responses"));
+    assert!(rule_writing.contains("Nudge Rule Writing"));
+    assert!(validation.contains("Nudge Validation"));
 
     let skill_dir = temp.path().join(".claude/skills/nudge-learnings");
     let skill = fs::read_to_string(skill_dir.join("SKILL.md")).expect("read SKILL.md");
@@ -63,16 +84,26 @@ fn claude_skills_install_writes_progressive_learnings_skill() {
 }
 
 #[test]
-fn codex_skills_install_writes_agents_learnings_skill() {
+fn codex_skills_install_writes_agents_bundled_skills() {
     let temp = TempDir::new().expect("temp dir");
 
     let (exit_code, stdout, stderr) = run_nudge_in(temp.path(), &["codex", "skills", "install"]);
 
     pretty_assert_eq!(exit_code, 0, "skill install failed: {stderr}");
     assert!(
+        stdout.contains("Installed nudge skill"),
+        "install should report destination, got: {stdout}"
+    );
+    assert!(
         stdout.contains("Installed nudge-learnings skill"),
         "install should report destination, got: {stdout}"
     );
+
+    let skill_dir = temp.path().join(".agents/skills/nudge");
+    assert!(skill_dir.join("SKILL.md").exists());
+    assert!(skill_dir.join("references/hook-responses.md").exists());
+    assert!(skill_dir.join("references/rule-writing.md").exists());
+    assert!(skill_dir.join("references/validation.md").exists());
 
     let skill_dir = temp.path().join(".agents/skills/nudge-learnings");
     assert!(skill_dir.join("SKILL.md").exists());
