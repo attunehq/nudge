@@ -4,6 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     io::{self, IsTerminal, Read},
+    mem::take,
     path::{Path, PathBuf},
 };
 
@@ -443,7 +444,7 @@ fn tokenize(text: &str) -> Vec<String> {
 
 fn push_token(tokens: &mut Vec<String>, current: &mut String) {
     if current.len() >= 2 && !is_stop_word(current) {
-        tokens.push(std::mem::take(current));
+        tokens.push(take(current));
     } else {
         current.clear();
     }
@@ -509,6 +510,7 @@ fn is_stop_word(token: &str) -> bool {
     )
 }
 
+#[cfg(any(feature = "embeddings", test))]
 pub(crate) fn query_terms(query: &str) -> HashSet<String> {
     tokenize(query).into_iter().collect()
 }

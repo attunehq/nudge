@@ -40,6 +40,11 @@ macOS or Linux:
 curl -sSfL https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.sh | bash
 ```
 
+Release binaries support macOS, Linux, and Windows x64. BM25 learned-note
+search is always available. Local semantic embeddings are included on Apple
+Silicon macOS and x64 GNU Linux; Intel macOS, musl Linux, arm64 GNU Linux, and
+Windows GNU builds omit local semantic embeddings.
+
 Windows PowerShell:
 
 ```powershell
@@ -246,6 +251,14 @@ nudge learn embeddings reindex
 
 This stores Markdown notes in the repo and generated model/vector artifacts in
 the user-level Nudge cache.
+
+Run `nudge learn embeddings status` before relying on semantic retrieval. If it
+prints `Embedding support: unavailable in this binary`, BM25 learned-note search
+still works, but `enable` and `reindex` are unavailable. This is expected for
+release targets where FastEmbed's ONNX Runtime backend does not publish usable
+artifacts, currently Intel macOS, musl Linux, and Windows GNU, or where those
+artifacts do not link cleanly in the release cross-toolchain, currently arm64
+GNU Linux.
 
 ## CI And Programmatic Checks
 

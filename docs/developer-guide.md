@@ -84,6 +84,25 @@ cargo clippy -p nudge --all-targets --all-features -- -D warnings
 cargo test -p nudge
 ```
 
+When a change touches release packaging, installer scripts, TLS/download
+dependencies, or learned embeddings, also run:
+
+```bash
+cargo build -p nudge --release
+cargo build -p nudge --no-default-features --release
+actionlint
+```
+
+The GitHub `Release` workflow runs as a dry-run matrix on pull requests,
+merge-queue checks, and pushes to `main`. Tag builds use the same matrix and
+cache keys, then sign/notarize macOS binaries and create the draft release.
+Supported release targets are macOS, Linux, and Windows x64. Targets whose ONNX
+Runtime artifacts are unavailable or do not link in the release cross-toolchain
+build with `--no-default-features`, which keeps BM25 learned-note search and
+omits local semantic embeddings. Keep that split for Intel macOS, musl Linux,
+arm64 GNU Linux, and Windows GNU unless `ort`/FastEmbed support changes or
+Nudge grows a different embedding backend.
+
 Useful focused commands:
 
 ```bash

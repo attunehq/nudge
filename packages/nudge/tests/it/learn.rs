@@ -134,6 +134,7 @@ fn user_prompt_hook_injects_relevant_learned_context() {
 }
 
 #[test]
+#[cfg(feature = "embeddings")]
 fn learn_embeddings_enable_writes_project_config_without_reindex() {
     let temp = TempDir::new().expect("temp dir");
 
@@ -177,6 +178,28 @@ fn learn_embeddings_enable_writes_project_config_without_reindex() {
 }
 
 #[test]
+#[cfg(not(feature = "embeddings"))]
+fn learn_embeddings_enable_reports_unavailable_without_feature() {
+    let temp = TempDir::new().expect("temp dir");
+
+    let (exit_code, _stdout, stderr) = run_nudge_in(
+        temp.path(),
+        &["learn", "embeddings", "enable", "--no-reindex"],
+        None,
+    );
+
+    assert_ne!(exit_code, 0, "enable should fail without embeddings");
+    assert!(
+        stderr.contains("semantic embeddings are not available"),
+        "enable should explain unavailable support, got: {stderr}"
+    );
+    assert!(
+        !temp.path().join(".nudge.yaml").exists(),
+        "unavailable embeddings should not write config"
+    );
+}
+
+#[test]
 fn learn_embeddings_status_reads_nudge_yml() {
     let temp = TempDir::new().expect("temp dir");
     fs::write(
@@ -200,4 +223,16 @@ learn:
         stdout.contains("Embeddings: enabled") && stdout.contains("all-MiniLM-L6-v2"),
         "status should read .nudge.yml learn config, got: {stdout}"
     );
+    if cfg!(feature = "embeddings") {
+        assert!(
+            stdout.contains("Embedding support: available"),
+            "status should report embedding support, got: {stdout}"
+        );
+    } else {
+        assert!(
+            stdout.contains("Embedding support: unavailable in this binary")
+                && stdout.contains("BM25 learned-note search remains available"),
+            "status should report feature-limited support, got: {stdout}"
+        );
+    }
 }
