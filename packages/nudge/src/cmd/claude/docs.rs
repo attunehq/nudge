@@ -31,12 +31,44 @@ const DOCS: &str = cstr!("\
 
     <cyan>$CONFIG_DIR/rules.yaml</cyan>        <dim>User-level rules</dim>
     <cyan>.nudge.yaml</cyan>                   <dim>Project root</dim>
-    <cyan>.nudge/**/*.yaml</cyan>              <dim>Project directory</dim>
+    <cyan>.nudge.yml</cyan>                    <dim>Project root</dim>
+    <cyan>.nudge/**/*.{yaml,yml}</cyan>        <dim>Project directory</dim>
 
   <dim>$CONFIG_DIR by platform:</dim>
     <dim>Linux:</dim>   <cyan>~/.config/nudge</cyan>
     <dim>macOS:</dim>   <cyan>~/Library/Application Support/com.attunehq.nudge</cyan>
     <dim>Windows:</dim> <cyan>%APPDATA%\\attunehq\\nudge</cyan>
+
+<bold>Learned Incident Notes</bold>
+
+  Rules are for deterministic conventions. Learned notes are for repo-local
+  debugging incidents: what went wrong, root cause, fix, and verification.
+
+  Store notes as plain Markdown in <cyan>.nudge/learned/*.md</cyan>:
+
+    <cyan>nudge learn add --title \"Expo Metro resolver cache\" --body \"What went wrong...\"</cyan>
+    <cyan>cat incident.md | nudge learn add</cyan>
+    <cyan>nudge learn search expo metro cannot resolve module</cyan>
+    <cyan>nudge learn list</cyan>
+    <cyan>nudge learn docs</cyan>              <dim># Print the bundled learnings skill</dim>
+    <cyan>nudge learn embeddings enable</cyan> <dim># Project opt-in semantic search</dim>
+    <cyan>nudge learn embeddings status</cyan>
+    <cyan>nudge claude skills install</cyan>   <dim># Install .claude/skills/nudge-learnings</dim>
+    <cyan>nudge codex skills install</cyan>    <dim># Install .agents/skills/nudge-learnings</dim>
+
+  <cyan>nudge claude setup</cyan> and <cyan>nudge codex setup</cyan> install the bundled
+  learnings skill by default. Use the skills commands directly when reinstalling
+  only the skill files.
+
+  Nudge indexes note titles and bodies dynamically with BM25 by default. When
+  <cyan>learn.embeddings.enabled: true</cyan> is set in <cyan>.nudge.yaml</cyan> or
+  <cyan>.nudge.yml</cyan>, Nudge also uses local FastEmbed embeddings and stores both
+  model files and vector indexes in the user-level Nudge cache directory.
+
+  During <green>UserPromptSubmit</green>, Nudge searches the prompt and injects the top
+  relevant incident notes as conversation context. For supported command surfaces
+  such as <green>Bash</green> and <green>WebFetch</green>, learned context can also surface
+  as an allow-with-context warning.
 
 <bold>Rule Format</bold>
 

@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::{
     fmap_match,
+    learn::LearnConfig,
     snippet::{Annotation, Match, Span},
     template,
 };
@@ -31,7 +32,12 @@ pub struct RuleConfig {
     pub version: MustBe!(1),
 
     /// The rules defined in this file.
+    #[serde(default)]
     pub rules: Vec<Rule>,
+
+    /// Learned-note retrieval configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learn: Option<LearnConfig>,
 }
 
 /// A single rule definition.
@@ -416,6 +422,25 @@ mod tests {
         let result = serde_yaml::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "unknown top-level fields must fail");
+    }
+
+    #[test]
+    fn rule_config_accepts_learn_only_config() {
+        let yaml = r#"
+            version: 1
+            learn:
+              embeddings:
+                enabled: true
+                model: BAAI/bge-small-en-v1.5
+        "#;
+
+        let config = serde_yaml::from_str::<RuleConfig>(yaml).expect("valid learn config");
+
+        assert!(config.rules.is_empty());
+        pretty_assert_eq!(
+            config.learn.expect("learn config").embeddings.model,
+            "BAAI/bge-small-en-v1.5"
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Nudge
 
-Nudge is a **collaborative memory layer** for agent hooks. It remembers the coding conventions, patterns, and preferences that matter to you so Claude Code or Codex CLI can focus on solving your actual problem instead of tracking a mental checklist of stylistic details.
+Nudge is a **collaborative memory layer** for agent hooks. It remembers the coding conventions, patterns, preferences, and hard-won debugging lessons that matter to you so Claude Code or Codex CLI can focus on solving your actual problem instead of tracking a mental checklist.
 
 Think of Nudge as a helpful tap on the shoulder: *"Hey, remember this codebase uses turbofish syntax"* rather than a guard checking badges at the door.
 
@@ -28,6 +28,7 @@ When something matches a rule you've defined:
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
 - **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
+- **Learned context**: Nudge searches `.nudge/learned/*.md` with BM25, or hybrid BM25 plus local embeddings when enabled, and proactively surfaces relevant incident notes
 - **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
@@ -44,6 +45,74 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 
 Other Attune codebases of course have other rules.
+
+## Learned Incident Notes
+
+Rules are best for deterministic conventions. Learned notes are for the repo-local "we have seen this before" moments: bugs, failed approaches, root causes, and fixes that future agents should not rediscover from scratch.
+
+Add a note after a debugging session:
+
+```bash
+nudge learn add --title "Expo Metro resolver cache" --body "
+What went wrong: Expo could not resolve modules after a dependency update.
+
+Fix: clear the Metro cache and restart the dev server.
+
+Verification: expo start completed and the app loaded.
+"
+```
+
+Or pipe a Markdown note:
+
+```bash
+cat incident.md | nudge learn add
+```
+
+Notes live in `.nudge/learned/*.md` as plain Markdown. They do not require tags, trigger phrases, or glob metadata. Nudge indexes the title and body dynamically with BM25, which works well for exact error strings, command names, file paths, package names, and stack trace fragments.
+
+Search manually:
+
+```bash
+nudge learn search expo metro cannot resolve module
+nudge learn list
+nudge learn docs
+```
+
+During `UserPromptSubmit`, Nudge searches the current prompt against learned notes and injects the top relevant matches as plain context. For supported command surfaces such as Bash and WebFetch, Nudge can also surface learned context as an allow-with-context warning when a tool input resembles a known incident.
+
+Install the bundled `nudge-learnings` skill so agents know how to use the learn command and how to record useful notes:
+
+```bash
+nudge claude skills install
+nudge codex skills install
+```
+
+Claude installs to `.claude/skills/nudge-learnings`. Codex installs to `.agents/skills/nudge-learnings`. The skill uses progressive disclosure: its `SKILL.md` tells the agent to read the BM25 or local-embeddings reference depending on project config.
+
+### Local Embeddings
+
+BM25 is always available and requires no model. For semantic matching across different wording, enable local embeddings in project config:
+
+```bash
+nudge learn embeddings enable
+nudge learn embeddings status
+nudge learn embeddings reindex
+```
+
+This writes config like:
+
+```yaml
+version: 1
+rules: []
+learn:
+  embeddings:
+    enabled: true
+    model: BGESmallENV15
+```
+
+Nudge also reads `.nudge.yml` if that is your project convention. The compiled Nudge binary includes local embedding support; config decides whether a project uses it.
+
+Model files and vector indexes are stored in the user-level Nudge cache directory selected by the OS through the `directories` crate. They are not stored in the repo because vectors are derived from repo notes, can reveal note content, and change when the model or chunking changes. Learned Markdown notes stay in the repo; generated embedding artifacts stay in user cache.
 
 ## Writing Effective Rules
 
@@ -168,7 +237,7 @@ cd nudge
 cargo install --path packages/nudge
 ```
 
-### 2. Install Hooks in Your Project
+### 2. Install Hooks and Skills in Your Project
 
 Navigate to any project where you use Claude Code or Codex CLI and run the setup for the agent you use:
 
@@ -177,10 +246,10 @@ nudge claude setup
 nudge codex setup
 ```
 
-Claude setup adds Nudge to `.claude/settings.local.json`. Codex setup adds Nudge to `.codex/hooks.json`. If the target file already exists, setup first writes a non-overwriting backup next to it, such as `settings.local.json.bak` or `hooks.json.bak.1`, and prints the backup path. You can verify with `/hooks` in the relevant agent.
+Claude setup adds Nudge to `.claude/settings.local.json` and installs the bundled learnings skill to `.claude/skills/nudge-learnings`. Codex setup adds Nudge to `.codex/hooks.json` and installs the skill to `.agents/skills/nudge-learnings`. If the target hook file already exists, setup first writes a non-overwriting backup next to it, such as `settings.local.json.bak` or `hooks.json.bak.1`, and prints the backup path. You can verify hooks with `/hooks` in the relevant agent.
 
 > [!NOTE]
-> Hook configuration is loaded when agent sessions start, so restart open Claude Code or Codex sessions after setup. Future changes to rules are internal to Nudge and therefore do not need an agent restart.
+> Hook and skill configuration is loaded when agent sessions start, so restart open Claude Code or Codex sessions after setup. Future changes to rules are internal to Nudge and therefore do not need an agent restart.
 
 ### 3. Use Your Agent Normally
 

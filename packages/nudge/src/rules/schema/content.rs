@@ -626,6 +626,75 @@ mod tests {
 
     use super::*;
 
+    fn success_command() -> Vec<String> {
+        #[cfg(windows)]
+        {
+            vec![
+                String::from("cmd"),
+                String::from("/C"),
+                String::from("exit 0"),
+            ]
+        }
+
+        #[cfg(not(windows))]
+        {
+            vec![String::from("true")]
+        }
+    }
+
+    fn failure_command() -> Vec<String> {
+        #[cfg(windows)]
+        {
+            vec![
+                String::from("cmd"),
+                String::from("/C"),
+                String::from("exit 1"),
+            ]
+        }
+
+        #[cfg(not(windows))]
+        {
+            vec![String::from("false")]
+        }
+    }
+
+    fn status_one_command() -> Vec<String> {
+        #[cfg(windows)]
+        {
+            vec![
+                String::from("cmd"),
+                String::from("/C"),
+                String::from("exit 1"),
+            ]
+        }
+
+        #[cfg(not(windows))]
+        {
+            vec![
+                String::from("test"),
+                String::from("1"),
+                String::from("-eq"),
+                String::from("0"),
+            ]
+        }
+    }
+
+    fn stdin_contains_needle_command() -> Vec<String> {
+        #[cfg(windows)]
+        {
+            vec![String::from("findstr"), String::from("needle")]
+        }
+
+        #[cfg(not(windows))]
+        {
+            vec![
+                String::from("grep"),
+                String::from("-q"),
+                String::from("needle"),
+            ]
+        }
+    }
+
     #[test]
     fn test_content_matcher_syntax_tree_deserialize() {
         let yaml = r#"
@@ -913,7 +982,7 @@ mod tests {
     #[test]
     fn test_external_is_match_when_command_fails() {
         let matcher = ContentMatcher::External {
-            command: vec![String::from("false")],
+            command: failure_command(),
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(matcher.is_match("any content"));
@@ -922,7 +991,7 @@ mod tests {
     #[test]
     fn test_external_is_not_match_when_command_succeeds() {
         let matcher = ContentMatcher::External {
-            command: vec![String::from("true")],
+            command: success_command(),
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("any content"));
@@ -930,45 +999,34 @@ mod tests {
 
     #[test]
     fn test_external_matches_with_context_sets_command_capture() {
+        let command = failure_command();
+        let formatted_command = shell_words::join(&command);
         let matcher = ContentMatcher::External {
-            command: vec![String::from("false")],
+            command,
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
-        pretty_assert_eq!(
-            matches[0].captures.get("command"),
-            Some(&String::from("false"))
-        );
+        pretty_assert_eq!(matches[0].captures.get("command"), Some(&formatted_command));
     }
 
     #[test]
     fn test_external_matches_with_context_formats_command_with_args() {
+        let command = status_one_command();
+        let formatted_command = shell_words::join(&command);
         let matcher = ContentMatcher::External {
-            command: vec![
-                String::from("test"),
-                String::from("1"),
-                String::from("-eq"),
-                String::from("0"),
-            ],
+            command,
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");
         pretty_assert_eq!(matches.len(), 1);
-        pretty_assert_eq!(
-            matches[0].captures.get("command"),
-            Some(&String::from("test 1 -eq 0"))
-        );
+        pretty_assert_eq!(matches[0].captures.get("command"), Some(&formatted_command));
     }
 
     #[test]
     fn test_external_passes_content_to_stdin() {
         let matcher = ContentMatcher::External {
-            command: vec![
-                String::from("grep"),
-                String::from("-q"),
-                String::from("needle"),
-            ],
+            command: stdin_contains_needle_command(),
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         assert!(!matcher.is_match("haystack with needle inside"));
@@ -978,7 +1036,7 @@ mod tests {
     #[test]
     fn test_external_zero_timeout_waits_without_bounding() {
         let matcher = ContentMatcher::External {
-            command: vec![String::from("true")],
+            command: success_command(),
             timeout_ms: 0,
         };
         assert!(!matcher.is_match("any content"));
@@ -987,7 +1045,7 @@ mod tests {
     #[test]
     fn test_external_matches_with_context_sets_status_capture() {
         let matcher = ContentMatcher::External {
-            command: vec![String::from("false")],
+            command: status_one_command(),
             timeout_ms: DEFAULT_EXTERNAL_COMMAND_TIMEOUT_MS,
         };
         let matches = matcher.matches_with_context("content");

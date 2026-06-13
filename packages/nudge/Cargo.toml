@@ -18,6 +18,7 @@ clap = { version = "4.5.53", features = ["env", "derive", "cargo"] }
 color-eyre = "0.6.5"
 color-print = "0.3.7"
 directories = "6.0.0"
+fastembed = { version = "5.16.1", default-features = false, features = ["hf-hub-native-tls", "ort-download-binaries-native-tls"] }
 glob = "0.3.3"
 monostate = "1.0.2"
 regex = "1.12.2"
@@ -25,6 +26,7 @@ pulldown-cmark = "0.13.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
+sha2 = "0.10.9"
 shell-words = "1.1"
 tap = "1.0.1"
 tracing = "0.1.41"

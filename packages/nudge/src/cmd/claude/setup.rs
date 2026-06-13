@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::{json_hooks, setup_command};
+use crate::cmd::{json_hooks, setup_command, skill_install};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -25,17 +25,21 @@ pub struct Config {
     /// Skip the CLAUDE.md prompt (don't add Nudge context).
     #[arg(long)]
     skip_claude_md: bool,
+
+    /// Skip installing bundled Nudge skills.
+    #[arg(long)]
+    skip_skills: bool,
 }
 
 /// The section we add to CLAUDE.md to help Claude understand Nudge's role.
 const CLAUDE_MD_SECTION: &str = r#"
 ## Nudge
 
-This project uses [Nudge](https://github.com/attunehq/nudge), a collaborative partner that helps you remember coding conventions. Nudge watches your `Write` and `Edit` operations and reminds you about patterns and preferences that matter here—so you can focus on the actual problem instead of tracking stylistic details.
+This project uses [Nudge](https://github.com/attunehq/nudge), a collaborative partner that helps you remember coding conventions and learned debugging incidents. Nudge watches supported hook surfaces, reminds you about patterns and preferences that matter here, and surfaces relevant notes from `.nudge/learned`, so you can focus on the actual problem instead of rediscovering old fixes.
 
-**Nudge is on your side.** When it sends you a message, it's not a reprimand—it's a colleague tapping you on the shoulder. The messages are direct (sometimes blunt) because that's what cuts through when you're focused. Trust the feedback and adjust; if a rule feels wrong, mention it so we can fix the rule.
+**Nudge is on your side.** When it sends you a message, it's not a reprimand. It's a colleague tapping you on the shoulder. The messages are direct (sometimes blunt) because that's what cuts through when you're focused. Trust the feedback and adjust; if a rule feels wrong, mention it so we can fix the rule.
 
-**Writing new rules:** If the user asks you to add or modify Nudge rules, run `nudge claude docs` to see the rule format, template variables, and guidelines for writing effective messages.
+**Writing new rules or notes:** If the user asks you to add or modify Nudge rules, run `nudge claude docs` to see the rule format, template variables, and guidelines for writing effective messages. If you resolve a repo-specific bug that future agents may hit again, record it with `nudge learn add`.
 "#;
 
 /// Configures a hook in Claude Code's settings.
@@ -151,6 +155,11 @@ pub fn main(config: Config) -> Result<()> {
     }
     println!();
 
+    if !config.skip_skills {
+        skill_install::install_nudge_learnings("Claude", &dotclaude.join("skills"))?;
+        println!();
+    }
+
     if !config.skip_claude_md {
         let project_root = dotclaude
             .parent()
@@ -161,6 +170,7 @@ pub fn main(config: Config) -> Result<()> {
     println!("Next steps:");
     println!("1. Run /hooks in Claude Code to verify hooks are registered");
     println!("2. Use claude --debug to see hook execution logs");
+    println!("3. Restart Claude Code so hooks and skills are loaded");
 
     Ok(())
 }
