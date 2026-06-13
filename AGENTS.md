@@ -33,11 +33,11 @@ cargo test -p nudge test_name
 
 # Run the CLI
 cargo run -p nudge -- claude hook      # Respond to Claude hook (reads JSON from stdin)
-cargo run -p nudge -- claude setup     # Install hooks into .claude/settings.local.json
+cargo run -p nudge -- claude setup     # Install hooks and bundled skills for Claude
 cargo run -p nudge -- claude docs      # Print rule writing documentation
 cargo run -p nudge -- claude skills install # Install bundled Claude skills
 cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from stdin)
-cargo run -p nudge -- codex setup      # Install hooks into .codex/hooks.json
+cargo run -p nudge -- codex setup      # Install hooks and bundled skills for Codex
 cargo run -p nudge -- codex docs       # Print rule writing documentation
 cargo run -p nudge -- codex skills install # Install bundled Codex skills
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
@@ -66,11 +66,11 @@ decides to publish crates.io artifacts.
 
 ```
 nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge claude setup  - Writes hook configuration to .claude/settings.local.json
+nudge claude setup  - Writes hook configuration and installs bundled skills for Claude
 nudge claude docs   - Prints documentation for writing rules
 nudge claude skills install - Installs bundled skills into .claude/skills
 nudge codex hook    - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge codex setup   - Writes hook configuration to .codex/hooks.json
+nudge codex setup   - Writes hook configuration and installs bundled skills for Codex
 nudge codex docs    - Prints documentation for writing rules
 nudge codex skills install - Installs bundled skills into .agents/skills
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned

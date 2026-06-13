@@ -62,6 +62,10 @@ fn claude_setup_help_mentions_settings_local_json() {
         !stdout.contains(".claude/hooks"),
         "help should not mention stale .claude/hooks path, got: {stdout}"
     );
+    assert!(
+        stdout.contains("--skip-skills"),
+        "help should mention skill install opt-out, got: {stdout}"
+    );
 }
 
 fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
@@ -81,6 +85,19 @@ fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
         String::from_utf8_lossy(&output.stdout).to_string(),
         String::from_utf8_lossy(&output.stderr).to_string(),
     )
+}
+
+fn assert_learnings_skill_installed(skill_dir: &Path) {
+    let skill = fs::read_to_string(skill_dir.join("SKILL.md")).expect("read SKILL.md");
+    let bm25 = fs::read_to_string(skill_dir.join("references/bm25.md")).expect("read bm25");
+    let embeddings =
+        fs::read_to_string(skill_dir.join("references/embeddings.md")).expect("read embeddings");
+
+    assert!(skill.contains("name: nudge-learnings"));
+    assert!(skill.contains("references/bm25.md"));
+    assert!(skill.contains("references/embeddings.md"));
+    assert!(bm25.contains("BM25 lexical search"));
+    assert!(embeddings.contains("hybrid retrieval"));
 }
 
 #[test]
@@ -106,6 +123,11 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
         !temp.path().join(".claude/settings.local.json.bak").exists(),
         "fresh setup should not create a backup"
     );
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled skills, got: {stdout}"
+    );
+    assert_learnings_skill_installed(&temp.path().join(".claude/skills/nudge-learnings"));
     let first =
         fs::read_to_string(temp.path().join(".claude/settings.local.json")).expect("read settings");
 
@@ -269,6 +291,11 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         !temp.path().join(".codex/hooks.json.bak").exists(),
         "fresh setup should not create a backup"
     );
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled skills, got: {stdout}"
+    );
+    assert_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
     let first = fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
 
     let (exit_code, _, stderr) = run_nudge(&args);
@@ -432,6 +459,7 @@ fn codex_setup_warns_and_skips_inline_toml_hooks() {
         !codex_dir.join("hooks.json").exists(),
         "setup should skip hooks.json when inline hooks exist"
     );
+    assert_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
 }
 
 #[test]

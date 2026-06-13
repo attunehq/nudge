@@ -14,7 +14,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::{json_hooks, setup_command};
+use crate::cmd::{json_hooks, setup_command, skill_install};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -25,6 +25,10 @@ pub struct Config {
     /// Skip the CLAUDE.md prompt (don't add Nudge context).
     #[arg(long)]
     skip_claude_md: bool,
+
+    /// Skip installing bundled Nudge skills.
+    #[arg(long)]
+    skip_skills: bool,
 }
 
 /// The section we add to CLAUDE.md to help Claude understand Nudge's role.
@@ -151,6 +155,11 @@ pub fn main(config: Config) -> Result<()> {
     }
     println!();
 
+    if !config.skip_skills {
+        skill_install::install_nudge_learnings("Claude", &dotclaude.join("skills"))?;
+        println!();
+    }
+
     if !config.skip_claude_md {
         let project_root = dotclaude
             .parent()
@@ -161,6 +170,7 @@ pub fn main(config: Config) -> Result<()> {
     println!("Next steps:");
     println!("1. Run /hooks in Claude Code to verify hooks are registered");
     println!("2. Use claude --debug to see hook execution logs");
+    println!("3. Restart Claude Code so hooks and skills are loaded");
 
     Ok(())
 }

@@ -56,6 +56,10 @@ const DOCS: &str = cstr!("\
     <cyan>nudge claude skills install</cyan>   <dim># Install .claude/skills/nudge-learnings</dim>
     <cyan>nudge codex skills install</cyan>    <dim># Install .agents/skills/nudge-learnings</dim>
 
+  <cyan>nudge claude setup</cyan> and <cyan>nudge codex setup</cyan> install the bundled
+  learnings skill by default. Use the skills commands directly when reinstalling
+  only the skill files.
+
   Nudge indexes note titles and bodies dynamically with BM25 by default. When
   <cyan>learn.embeddings.enabled: true</cyan> is set in <cyan>.nudge.yaml</cyan> or
   <cyan>.nudge.yml</cyan>, Nudge also uses local FastEmbed embeddings and stores both
