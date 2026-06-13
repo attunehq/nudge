@@ -22,6 +22,63 @@ fn setup_config(rules_yaml: &str) -> TempDir {
     dir
 }
 
+fn yaml_command(command: &[String]) -> String {
+    serde_json::to_string(command).expect("serialize command")
+}
+
+fn required_marker_command(marker: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        vec![String::from("findstr"), marker.to_string()]
+    }
+
+    #[cfg(not(windows))]
+    {
+        vec![String::from("grep"), String::from("-q"), marker.to_string()]
+    }
+}
+
+fn no_fixme_command() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        vec![
+            String::from("findstr"),
+            String::from("/V"),
+            String::from("FIXME"),
+        ]
+    }
+
+    #[cfg(not(windows))]
+    {
+        vec![
+            String::from("grep"),
+            String::from("-qv"),
+            String::from("FIXME"),
+        ]
+    }
+}
+
+fn slow_command() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        vec![
+            String::from("powershell.exe"),
+            String::from("-NoProfile"),
+            String::from("-Command"),
+            String::from("Start-Sleep -Seconds 20"),
+        ]
+    }
+
+    #[cfg(not(windows))]
+    {
+        vec![
+            String::from("sh"),
+            String::from("-c"),
+            String::from("sleep 20"),
+        ]
+    }
+}
+
 /// Run nudge claude hook with the given input JSON in the specified directory.
 fn run_hook_in_dir(dir: &TempDir, input: &str) -> (i32, String) {
     let mut child = Command::new(nudge_binary())
@@ -75,25 +132,28 @@ fn write_hook(file_path: &str, content: &str) -> String {
 
 #[test]
 fn test_external_triggers_when_command_fails() {
+    let command = yaml_command(&required_marker_command("REQUIRED"));
     // grep -q exits 1 when pattern is NOT found, 0 when found
     // So we want to trigger when "FORBIDDEN" is NOT in the content
     // i.e., we want to block content that doesn't contain "REQUIRED"
-    let config = r#"
+    let config = format!(
+        r#"
 version: 1
 rules:
   - name: require-header
     description: Require REQUIRED marker in file
-    message: "File must contain REQUIRED marker. Run `{{ $command }}` to verify."
+    message: "File must contain REQUIRED marker. Run `{{{{ $command }}}}` to verify."
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.txt"
         content:
           - kind: External
-            command: ["grep", "-q", "REQUIRED"]
-"#;
+            command: {command}
+"#
+    );
 
-    let dir = setup_config(config);
+    let dir = setup_config(&config);
 
     // Content WITHOUT "REQUIRED" - grep fails (exit 1), rule triggers
     let input = write_hook("test.txt", "This file has no marker");
@@ -112,7 +172,9 @@ rules:
 
 #[test]
 fn test_external_passes_when_command_succeeds() {
-    let config = r#"
+    let command = yaml_command(&required_marker_command("REQUIRED"));
+    let config = format!(
+        r#"
 version: 1
 rules:
   - name: require-header
@@ -124,10 +186,11 @@ rules:
         file: "**/*.txt"
         content:
           - kind: External
-            command: ["grep", "-q", "REQUIRED"]
-"#;
+            command: {command}
+"#
+    );
 
-    let dir = setup_config(config);
+    let dir = setup_config(&config);
 
     // Content WITH "REQUIRED" - grep succeeds (exit 0), rule passes
     let input = write_hook("test.txt", "This file has REQUIRED marker");
@@ -142,22 +205,27 @@ rules:
 
 #[test]
 fn test_external_command_capture_interpolation() {
-    let config = r#"
+    let command = no_fixme_command();
+    let expected_command = shell_words::join(&command);
+    let command = yaml_command(&command);
+    let config = format!(
+        r#"
 version: 1
 rules:
   - name: no-fixme
     description: Block FIXME comments
-    message: "Remove FIXME comments. Debug with: {{ $command }}"
+    message: "Remove FIXME comments. Debug with: {{{{ $command }}}}"
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.rs"
         content:
           - kind: External
-            command: ["grep", "-qv", "FIXME"]
-"#;
+            command: {command}
+"#
+    );
 
-    let dir = setup_config(config);
+    let dir = setup_config(&config);
 
     // grep -qv exits 1 if pattern IS found (inverted match)
     let input = write_hook("test.rs", "// FIXME: fix this later");
@@ -170,14 +238,16 @@ rules:
     );
     // Check that $command was interpolated
     assert!(
-        output.contains("grep -qv FIXME"),
+        output.contains(&expected_command),
         "expected command to be interpolated in message, got: {output}"
     );
 }
 
 #[test]
 fn test_external_file_pattern_filtering() {
-    let config = r#"
+    let command = yaml_command(&required_marker_command("HEADER"));
+    let config = format!(
+        r#"
 version: 1
 rules:
   - name: require-header
@@ -189,10 +259,11 @@ rules:
         file: "**/*.txt"
         content:
           - kind: External
-            command: ["grep", "-q", "HEADER"]
-"#;
+            command: {command}
+"#
+    );
 
-    let dir = setup_config(config);
+    let dir = setup_config(&config);
 
     // .rs file should not be checked (file pattern doesn't match)
     let input = write_hook("test.rs", "No header here");
@@ -244,23 +315,26 @@ rules:
 
 #[test]
 fn test_external_timeout_interrupts_promptly() {
-    let config = r#"
+    let command = yaml_command(&slow_command());
+    let config = format!(
+        r#"
 version: 1
 rules:
   - name: external-command-timeout
     description: External command must finish promptly
-    message: "External check failed: {{ $external_status }}. Command: {{ $command }}"
+    message: "External check failed: {{{{ $external_status }}}}. Command: {{{{ $command }}}}"
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.txt"
         content:
           - kind: External
-            command: ["sh", "-c", "sleep 20"]
+            command: {command}
             timeout_ms: 100
-"#;
+"#
+    );
 
-    let dir = setup_config(config);
+    let dir = setup_config(&config);
 
     let input = write_hook("test.txt", "Any content");
     let started = Instant::now();

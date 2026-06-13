@@ -6,8 +6,8 @@ use clap::Args;
 use color_eyre::{Result, eyre::Context};
 use nudge::{
     agent::{AgentKind, claude},
-    hook::{evaluate::evaluate_hooks, response},
-    rules,
+    hook::{NudgeHook, evaluate::evaluate_hooks_with_learnings, response},
+    learn, rules,
 };
 use tracing::instrument;
 
@@ -21,5 +21,22 @@ pub fn main(_config: Config) -> Result<()> {
     let hooks = claude::parse_hook(raw).context("parse Claude hook event")?;
 
     let rules = rules::load_all().context("load rules")?;
-    response::emit(AgentKind::Claude, evaluate_hooks(&hooks, &rules))
+    let root = hook_root(&hooks);
+    let learned_notes = learn::load_all(root).context("load learned notes")?;
+    response::emit(
+        AgentKind::Claude,
+        evaluate_hooks_with_learnings(root, &hooks, &rules, &learned_notes),
+    )
+}
+
+fn hook_root(hooks: &[NudgeHook]) -> &std::path::Path {
+    hooks
+        .iter()
+        .find_map(|hook| match hook {
+            NudgeHook::PreToolUse(payload) => Some(payload.context.cwd.as_path()),
+            NudgeHook::PermissionRequest(payload) => Some(payload.context.cwd.as_path()),
+            NudgeHook::UserPromptSubmit(payload) => Some(payload.context.cwd.as_path()),
+            _ => None,
+        })
+        .unwrap_or_else(|| std::path::Path::new("."))
 }

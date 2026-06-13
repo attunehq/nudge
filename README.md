@@ -1,6 +1,6 @@
 # Nudge
 
-Nudge is a **collaborative memory layer** for agent hooks. It remembers the coding conventions, patterns, and preferences that matter to you so Claude Code or Codex CLI can focus on solving your actual problem instead of tracking a mental checklist of stylistic details.
+Nudge is a **collaborative memory layer** for agent hooks. It remembers the coding conventions, patterns, preferences, and hard-won debugging lessons that matter to you so Claude Code or Codex CLI can focus on solving your actual problem instead of tracking a mental checklist.
 
 Think of Nudge as a helpful tap on the shoulder: *"Hey, remember this codebase uses turbofish syntax"* rather than a guard checking badges at the door.
 
@@ -28,6 +28,7 @@ When something matches a rule you've defined:
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
 - **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
+- **Learned context**: Nudge searches `.nudge/learned/*.md` with BM25 and proactively surfaces relevant incident notes
 - **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
@@ -44,6 +45,39 @@ These are the rules Nudge uses on its own codebase (yes, we dogfood):
 | No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
 
 Other Attune codebases of course have other rules.
+
+## Learned Incident Notes
+
+Rules are best for deterministic conventions. Learned notes are for the repo-local "we have seen this before" moments: bugs, failed approaches, root causes, and fixes that future agents should not rediscover from scratch.
+
+Add a note after a debugging session:
+
+```bash
+nudge learn add --title "Expo Metro resolver cache" --body "
+What went wrong: Expo could not resolve modules after a dependency update.
+
+Fix: clear the Metro cache and restart the dev server.
+
+Verification: expo start completed and the app loaded.
+"
+```
+
+Or pipe a Markdown note:
+
+```bash
+cat incident.md | nudge learn add
+```
+
+Notes live in `.nudge/learned/*.md` as plain Markdown. They do not require tags, trigger phrases, or glob metadata. Nudge indexes the title and body dynamically with BM25, which works well for exact error strings, command names, file paths, package names, and stack trace fragments.
+
+Search manually:
+
+```bash
+nudge learn search expo metro cannot resolve module
+nudge learn list
+```
+
+During `UserPromptSubmit`, Nudge searches the current prompt against learned notes and injects the top relevant matches as plain context. For supported command surfaces such as Bash and WebFetch, Nudge can also surface learned context as an allow-with-context warning when a tool input resembles a known incident.
 
 ## Writing Effective Rules
 

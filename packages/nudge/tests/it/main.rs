@@ -14,6 +14,7 @@ mod edit_tool;
 mod external;
 mod inline_imports;
 mod install_script;
+mod learn;
 mod markdown_target;
 mod message_content;
 mod multiple_rules;

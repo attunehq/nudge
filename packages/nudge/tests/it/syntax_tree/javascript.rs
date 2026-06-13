@@ -214,7 +214,8 @@ fn test_javascript_syntax_tree_check_scans_js_files() {
         "expected check to report JavaScript issue, stdout: {stdout}, stderr: {stderr}"
     );
     assert!(
-        stdout.contains("src/bad.js:2 [no-loose-equality-js]"),
+        stdout.contains("src/bad.js:2 [no-loose-equality-js]")
+            || stdout.contains("src\\bad.js:2 [no-loose-equality-js]"),
         "expected check to report bad.js line 2, got: {stdout}"
     );
     assert!(

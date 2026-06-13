@@ -24,17 +24,41 @@ fn run_nudge_in_dir(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
     (exit_code, stdout, stderr)
 }
 
+fn yaml_command(command: &[String]) -> String {
+    serde_json::to_string(command).expect("serialize command")
+}
+
+fn required_marker_command(marker: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        vec![String::from("findstr"), marker.to_string()]
+    }
+
+    #[cfg(not(windows))]
+    {
+        vec![String::from("grep"), String::from("-q"), marker.to_string()]
+    }
+}
+
+fn contains_path(output: &str, path: &str) -> bool {
+    output.contains(path) || output.contains(&path.replace('/', "\\"))
+}
+
 #[test]
 fn check_runs_file_rules_without_agent_provider() {
     let dir = TempDir::new().expect("create temp dir");
+    let approved_command = required_marker_command("APPROVED");
+    let approved_command_yaml = yaml_command(&approved_command);
+    let approved_command_display = shell_words::join(&approved_command);
     fs::write(
         dir.path().join(".nudge.yaml"),
-        r#"
+        format!(
+            r#"
 version: 1
 rules:
   - name: block-todo-write
     description: Block TODO markers in committed text files
-    message: "Resolve TODO `{{ $todo }}` before commit."
+    message: "Resolve TODO `{{{{ $todo }}}}` before commit."
     on:
       - hook: PreToolUse
         tool: Write
@@ -54,14 +78,14 @@ rules:
             pattern: "FIXME"
   - name: require-approved-marker
     description: Markdown release notes require an approval marker
-    message: "Add APPROVED marker. Verify with `{{ $command }}`."
+    message: "Add APPROVED marker. Verify with `{{{{ $command }}}}`."
     on:
       - hook: PreToolUse
         tool: Write
         file: "**/*.md"
         content:
           - kind: External
-            command: ["grep", "-q", "APPROVED"]
+            command: {approved_command_yaml}
   - name: ignored-bash-substitute
     action: substitute
     on:
@@ -86,7 +110,8 @@ rules:
         prompt:
           - kind: Regex
             pattern: "release"
-"#,
+"#
+        ),
     )
     .expect("write config");
 
@@ -121,7 +146,7 @@ rules:
         "check should fail for file-rule violations, stdout: {stdout}, stderr: {stderr}"
     );
     assert!(
-        stdout.contains("src/bad.txt:1 [block-todo-write]"),
+        contains_path(&stdout, "src/bad.txt:1 [block-todo-write]"),
         "expected Write regex issue with line number, got: {stdout}"
     );
     assert!(
@@ -129,15 +154,15 @@ rules:
         "expected regex capture interpolation, got: {stdout}"
     );
     assert!(
-        stdout.contains("src/bad.txt:2 [block-fixme-edit]"),
+        contains_path(&stdout, "src/bad.txt:2 [block-fixme-edit]"),
         "expected Edit regex issue with line number, got: {stdout}"
     );
     assert!(
-        stdout.contains("docs/bad.md:1 [require-approved-marker]"),
+        contains_path(&stdout, "docs/bad.md:1 [require-approved-marker]"),
         "expected External issue with line number, got: {stdout}"
     );
     assert!(
-        stdout.contains("Verify with `grep -q APPROVED`."),
+        stdout.contains(&format!("Verify with `{approved_command_display}`.")),
         "expected External command interpolation, got: {stdout}"
     );
     assert!(

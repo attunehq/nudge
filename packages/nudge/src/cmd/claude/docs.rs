@@ -38,6 +38,24 @@ const DOCS: &str = cstr!("\
     <dim>macOS:</dim>   <cyan>~/Library/Application Support/com.attunehq.nudge</cyan>
     <dim>Windows:</dim> <cyan>%APPDATA%\\attunehq\\nudge</cyan>
 
+<bold>Learned Incident Notes</bold>
+
+  Rules are for deterministic conventions. Learned notes are for repo-local
+  debugging incidents: what went wrong, root cause, fix, and verification.
+
+  Store notes as plain Markdown in <cyan>.nudge/learned/*.md</cyan>:
+
+    <cyan>nudge learn add --title \"Expo Metro resolver cache\" --body \"What went wrong...\"</cyan>
+    <cyan>cat incident.md | nudge learn add</cyan>
+    <cyan>nudge learn search expo metro cannot resolve module</cyan>
+    <cyan>nudge learn list</cyan>
+
+  Nudge indexes note titles and bodies dynamically with BM25. During
+  <green>UserPromptSubmit</green>, it searches the prompt and injects the top relevant
+  incident notes as conversation context. For supported command surfaces such as
+  <green>Bash</green> and <green>WebFetch</green>, learned context can also surface as an
+  allow-with-context warning.
+
 <bold>Rule Format</bold>
 
   <yellow>version: 1</yellow>
