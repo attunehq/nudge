@@ -115,7 +115,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 
 ### How Nudge Communicates
 
-When Nudge has something to share, it responds in one of three ways:
+When Nudge has something to share, it responds in one of several ways:
 
 - **Passthrough**: Nothing to note. Carry on!
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
@@ -139,18 +139,25 @@ physical Markdown file for snippets and `nudge check` line numbers.
 
 ## Keeping Documentation in Sync
 
-Nudge has three documentation sources that must stay aligned. When updating one, consider whether the others need updates too.
+Nudge has several documentation sources that must stay aligned. When updating one, consider whether the others need updates too.
 
 | Document | Audience | Purpose | Focus |
 |----------|----------|---------|-------|
-| **AGENTS.md** | You, developing Nudge | How Nudge works under the hood | Architecture, internals, testing patterns |
-| **README.md** | Humans evaluating or contributing | Why Nudge exists and what it believes | Philosophy, motivation, the collaborative framing |
+| **AGENTS.md** | Codex, developing Nudge | Repository guidance for Codex | Architecture, internals, testing patterns |
+| **CLAUDE.md** | Claude Code, developing Nudge | Repository guidance for Claude | Architecture, internals, testing patterns |
+| **README.md** | Humans evaluating or contributing | Landing page and quick orientation | What Nudge is, why it exists, where to start |
+| **docs/user-guide.md** | Users installing and configuring Nudge | How to install, configure, and use Nudge | Setup, expectations, examples, troubleshooting |
+| **docs/developer-guide.md** | Contributors changing Nudge | How to develop and dogfood Nudge | Architecture, tests, live-agent validation |
 | **`nudge claude docs` / `nudge codex docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, examples |
 
-**AGENTS.md** (this file) is for *developing* Nudge - understanding the module layout, how to add features, how tests work.
+**AGENTS.md** (this file) is Codex-facing bootstrap guidance for developing Nudge.
 
-**README.md** is for *understanding* Nudge - the philosophy that Nudge is a collaborative partner, why directness matters, how to write effective rules. This is the front door; it needs to convey the spirit.
+**CLAUDE.md** is Claude-facing bootstrap guidance for developing Nudge.
+
+**README.md** is the front door: a concise landing page that explains what Nudge is and points to the deeper guides.
+
+**docs/user-guide.md** and **docs/developer-guide.md** are the durable guides for users and contributors.
 
 **`nudge claude docs` / `nudge codex docs`** (`src/cmd/claude/docs.rs`, `src/cmd/codex/docs.rs`) is for *using* Nudge - a self-contained reference that future agents or humans can consult when writing rules. It should be scannable, copy-pasteable, and not assume any prior context.
 
-When you change something fundamental (like changing the rule format or refining the collaborative framing), update all three.
+When you change something fundamental, such as changing the rule format, setup flow, learned-note behavior, or collaborative framing, update every affected source.
