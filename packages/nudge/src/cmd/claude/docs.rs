@@ -37,7 +37,7 @@ const DOCS: &str = cstr!("\
   <dim>$CONFIG_DIR by platform:</dim>
     <dim>Linux:</dim>   <cyan>~/.config/nudge</cyan>
     <dim>macOS:</dim>   <cyan>~/Library/Application Support/com.attunehq.nudge</cyan>
-    <dim>Windows:</dim> <cyan>%APPDATA%\\attunehq\\nudge</cyan>
+    <dim>Windows:</dim> <cyan>%APPDATA%\\attunehq\\nudge\\config</cyan>
 
 <bold>Learned Incident Notes</bold>
 
