@@ -551,18 +551,32 @@ pub(crate) fn excerpt(note: &LearnedNote, query_terms: &HashSet<String>) -> Stri
     };
 
     let mut selected = vec![paragraphs[matching_index].clone()];
-    if let Some(fix) = paragraphs
-        .iter()
-        .enumerate()
-        .find(|(index, paragraph)| {
-            *index != matching_index && paragraph.to_lowercase().starts_with("fix")
-        })
-        .map(|(_, paragraph)| paragraph.clone())
-    {
+    if let Some(fix) = fix_excerpt(&paragraphs, matching_index) {
         selected.push(fix);
     }
 
     truncate_text(&selected.join(" "), EXCERPT_LIMIT)
+}
+
+fn fix_excerpt(paragraphs: &[String], matching_index: usize) -> Option<String> {
+    let (fix_index, fix) = paragraphs
+        .iter()
+        .enumerate()
+        .find(|(index, paragraph)| *index != matching_index && is_fix_paragraph(paragraph))?;
+
+    if fix.eq_ignore_ascii_case("fix") {
+        return paragraphs
+            .get(fix_index + 1)
+            .map(|body| format!("Fix: {body}"))
+            .or_else(|| Some(fix.clone()));
+    }
+
+    Some(fix.clone())
+}
+
+fn is_fix_paragraph(paragraph: &str) -> bool {
+    let lower = paragraph.to_lowercase();
+    lower == "fix" || lower.starts_with("fix:") || lower.starts_with("fix ")
 }
 
 fn clean_excerpt_text(text: &str) -> String {
@@ -733,5 +747,20 @@ mod tests {
             hook_context_for_query(Path::new("."), &notes, "expo", &LearnConfig::default());
 
         pretty_assert_eq!(context, None);
+    }
+
+    #[test]
+    fn excerpt_includes_fix_body_after_markdown_fix_heading() {
+        let note = note(
+            "Expo Metro Cache",
+            "## What went wrong\n\nExpo could not resolve modules after a dependency update.\n\n## Fix\n\nClear the Metro cache and restart the dev server.",
+        );
+
+        let excerpt = excerpt(&note, &query_terms("expo cannot resolve module"));
+
+        assert!(
+            excerpt.contains("Clear the Metro cache"),
+            "excerpt should include the body under the Fix heading, got: {excerpt}"
+        );
     }
 }
