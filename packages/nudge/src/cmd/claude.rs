@@ -7,6 +7,7 @@ use tracing::instrument;
 pub mod docs;
 pub mod hook;
 pub mod setup;
+pub mod skills;
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -25,6 +26,9 @@ enum Commands {
 
     /// Show documentation for writing Nudge rules.
     Docs(docs::Config),
+
+    /// Install bundled skills into .claude/skills.
+    Skills(skills::Config),
 }
 
 #[instrument]
@@ -33,5 +37,6 @@ pub fn main(config: Config) -> Result<()> {
         Commands::Hook(config) => hook::main(config),
         Commands::Setup(config) => setup::main(config),
         Commands::Docs(config) => docs::main(config),
+        Commands::Skills(config) => skills::main(config),
     }
 }

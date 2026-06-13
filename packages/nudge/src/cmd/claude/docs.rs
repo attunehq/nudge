@@ -50,8 +50,11 @@ const DOCS: &str = cstr!("\
     <cyan>cat incident.md | nudge learn add</cyan>
     <cyan>nudge learn search expo metro cannot resolve module</cyan>
     <cyan>nudge learn list</cyan>
+    <cyan>nudge learn docs</cyan>              <dim># Print the bundled learnings skill</dim>
     <cyan>nudge learn embeddings enable</cyan> <dim># Project opt-in semantic search</dim>
     <cyan>nudge learn embeddings status</cyan>
+    <cyan>nudge claude skills install</cyan>   <dim># Install .claude/skills/nudge-learnings</dim>
+    <cyan>nudge codex skills install</cyan>    <dim># Install .agents/skills/nudge-learnings</dim>
 
   Nudge indexes note titles and bodies dynamically with BM25 by default. When
   <cyan>learn.embeddings.enabled: true</cyan> is set in <cyan>.nudge.yaml</cyan> or

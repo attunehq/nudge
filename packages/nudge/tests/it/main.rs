@@ -20,6 +20,7 @@ mod message_content;
 mod multiple_rules;
 mod non_rust_files;
 mod setup;
+mod skills;
 mod syntax_tree;
 mod user_prompt;
 mod webfetch;

@@ -75,9 +75,19 @@ Search manually:
 ```bash
 nudge learn search expo metro cannot resolve module
 nudge learn list
+nudge learn docs
 ```
 
 During `UserPromptSubmit`, Nudge searches the current prompt against learned notes and injects the top relevant matches as plain context. For supported command surfaces such as Bash and WebFetch, Nudge can also surface learned context as an allow-with-context warning when a tool input resembles a known incident.
+
+Install the bundled `nudge-learnings` skill so agents know how to use the learn command and how to record useful notes:
+
+```bash
+nudge claude skills install
+nudge codex skills install
+```
+
+Claude installs to `.claude/skills/nudge-learnings`. Codex installs to `.agents/skills/nudge-learnings`. The skill uses progressive disclosure: its `SKILL.md` tells the agent to read the BM25 or local-embeddings reference depending on project config.
 
 ### Local Embeddings
 
