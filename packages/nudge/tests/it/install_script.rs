@@ -103,6 +103,39 @@ fn release_workflow_builds_ort_limited_targets_without_embeddings() {
     );
 }
 
+#[test]
+fn release_workflow_checks_out_repo_before_generating_release_notes() {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("packages dir")
+        .parent()
+        .expect("repo root");
+    let workflow_path = repo_root.join(".github/workflows/release.yml");
+    let workflow = fs::read_to_string(&workflow_path).expect("read release workflow");
+    let release_job = release_job(&workflow).expect("release job");
+
+    let checkout = release_job
+        .find("- uses: actions/checkout@v4")
+        .expect("release job should checkout the repository");
+    let generated_notes = release_job
+        .find("--generate-notes")
+        .expect("release job should create generated notes");
+
+    assert!(
+        checkout < generated_notes,
+        "gh release create --generate-notes needs a git checkout before release creation"
+    );
+    assert!(
+        release_job[checkout..generated_notes].contains("fetch-depth: 0"),
+        "generated notes should have full git history available"
+    );
+}
+
+fn release_job(workflow: &str) -> Option<&str> {
+    let start = workflow.find("\n    release:\n")? + 1;
+    Some(&workflow[start..])
+}
+
 fn target_embeddings(workflow: &str, target: &str) -> Option<bool> {
     let start = workflow.find(&format!("- target: {target}"))?;
     let rest = &workflow[start..];
