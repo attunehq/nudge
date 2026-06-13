@@ -132,3 +132,72 @@ fn user_prompt_hook_injects_relevant_learned_context() {
         "hook context should include the fix excerpt, got: {stdout}"
     );
 }
+
+#[test]
+fn learn_embeddings_enable_writes_project_config_without_reindex() {
+    let temp = TempDir::new().expect("temp dir");
+
+    let (exit_code, stdout, stderr) = run_nudge_in(
+        temp.path(),
+        &[
+            "learn",
+            "embeddings",
+            "enable",
+            "--model",
+            "BAAI/bge-small-en-v1.5",
+            "--no-reindex",
+        ],
+        None,
+    );
+
+    pretty_assert_eq!(exit_code, 0, "enable failed: {stderr}");
+    assert!(
+        stdout.contains("Enabled local learned-note embeddings"),
+        "enable should report config update, got: {stdout}"
+    );
+
+    let config = fs::read_to_string(temp.path().join(".nudge.yaml")).expect("read config");
+    assert!(
+        config.contains("learn:") && config.contains("enabled: true"),
+        "config should enable embeddings, got: {config}"
+    );
+    assert!(
+        config.contains("model: BGESmallENV15"),
+        "config should store the canonical model, got: {config}"
+    );
+
+    let (exit_code, stdout, stderr) =
+        run_nudge_in(temp.path(), &["learn", "embeddings", "status"], None);
+
+    pretty_assert_eq!(exit_code, 0, "status failed: {stderr}");
+    assert!(
+        stdout.contains("Embeddings: enabled") && stdout.contains("BGESmallENV15"),
+        "status should report enabled model, got: {stdout}"
+    );
+}
+
+#[test]
+fn learn_embeddings_status_reads_nudge_yml() {
+    let temp = TempDir::new().expect("temp dir");
+    fs::write(
+        temp.path().join(".nudge.yml"),
+        r#"
+version: 1
+rules: []
+learn:
+  embeddings:
+    enabled: true
+    model: all-MiniLM-L6-v2
+"#,
+    )
+    .expect("write config");
+
+    let (exit_code, stdout, stderr) =
+        run_nudge_in(temp.path(), &["learn", "embeddings", "status"], None);
+
+    pretty_assert_eq!(exit_code, 0, "status failed: {stderr}");
+    assert!(
+        stdout.contains("Embeddings: enabled") && stdout.contains("all-MiniLM-L6-v2"),
+        "status should read .nudge.yml learn config, got: {stdout}"
+    );
+}

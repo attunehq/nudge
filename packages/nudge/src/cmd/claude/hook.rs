@@ -23,9 +23,10 @@ pub fn main(_config: Config) -> Result<()> {
     let rules = rules::load_all().context("load rules")?;
     let root = hook_root(&hooks);
     let learned_notes = learn::load_all(root).context("load learned notes")?;
+    let learn_config = learn::load_config().context("load learn config")?;
     response::emit(
         AgentKind::Claude,
-        evaluate_hooks_with_learnings(root, &hooks, &rules, &learned_notes),
+        evaluate_hooks_with_learnings(root, &hooks, &rules, &learned_notes, &learn_config),
     )
 }
 

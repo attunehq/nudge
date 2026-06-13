@@ -27,7 +27,8 @@ pub fn project_dirs() -> Option<ProjectDirs> {
 /// Loading order (all additive):
 /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
 /// 2. `.nudge.yaml` if it exists
-/// 3. `.nudge/` directory walked recursively, loading all `*.yaml` files
+/// 3. `.nudge.yml` if it exists
+/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml` files
 #[tracing::instrument]
 pub fn load_all() -> Result<Vec<Rule>> {
     load_all_attributed()?
@@ -43,22 +44,39 @@ pub fn load_all() -> Result<Vec<Rule>> {
 /// Loading order (all additive):
 /// 1. User-level rules from `ProjectDirs::config_dir()/rules.yaml` if it exists
 /// 2. `.nudge.yaml` if it exists
-/// 3. `.nudge/` directory walked recursively, loading all `*.yaml` files
+/// 3. `.nudge.yml` if it exists
+/// 4. `.nudge/` directory walked recursively, loading all `*.yaml` and `*.yml` files
 #[tracing::instrument]
 pub fn load_all_attributed() -> Result<Vec<(PathBuf, Vec<Rule>)>> {
-    let mut rules = vec![];
+    load_all_configs_attributed().map(|configs| {
+        configs
+            .into_iter()
+            .map(|(path, config)| (path, config.rules))
+            .collect()
+    })
+}
+
+/// Load all Nudge configuration files from all sources.
+#[tracing::instrument]
+pub fn load_all_configs_attributed() -> Result<Vec<(PathBuf, RuleConfig)>> {
+    let mut configs = vec![];
 
     if let Some(dirs) = project_dirs() {
         let user_config = dirs.config_dir().join("rules.yaml");
-        let user_rules = load_from(&user_config)
-            .with_context(|| format!("load rules from user config: {user_config:?}"))?;
-        rules.push((user_config, user_rules));
+        if let Some(config) = load_config_from(&user_config)
+            .with_context(|| format!("load config from user config: {user_config:?}"))?
+        {
+            configs.push((user_config, config));
+        }
     }
 
-    let project_root_config = PathBuf::from(".nudge.yaml");
-    let project_root_rules = load_from(&project_root_config)
-        .with_context(|| format!("load rules from project root: {project_root_config:?}"))?;
-    rules.push((project_root_config, project_root_rules));
+    for project_root_config in [PathBuf::from(".nudge.yaml"), PathBuf::from(".nudge.yml")] {
+        if let Some(config) = load_config_from(&project_root_config)
+            .with_context(|| format!("load config from project root: {project_root_config:?}"))?
+        {
+            configs.push((project_root_config, config));
+        }
+    }
 
     let root = Path::new(".nudge");
     if root.is_dir() {
@@ -73,14 +91,16 @@ pub fn load_all_attributed() -> Result<Vec<(PathBuf, Vec<Rule>)>> {
 
             if entry.file_type().is_file() {
                 let config = entry.path().to_path_buf();
-                let config_rules = load_from(&config)
-                    .with_context(|| format!("load rules from file: {config:?}"))?;
-                rules.push((config, config_rules));
+                if let Some(config_content) = load_config_from(&config)
+                    .with_context(|| format!("load config from file: {config:?}"))?
+                {
+                    configs.push((config, config_content));
+                }
             }
         }
     }
 
-    Ok(rules)
+    Ok(configs)
 }
 
 /// Load rules from a single file.
@@ -88,14 +108,22 @@ pub fn load_all_attributed() -> Result<Vec<(PathBuf, Vec<Rule>)>> {
 // TODO: Support other file types.
 #[tracing::instrument]
 pub fn load_from(path: &Path) -> Result<Vec<Rule>> {
-    if path.extension() != Some(OsStr::new("yaml")) {
+    Ok(load_config_from(path)?
+        .map(|config| config.rules)
+        .unwrap_or_default())
+}
+
+/// Load a single Nudge config file.
+#[tracing::instrument]
+pub fn load_config_from(path: &Path) -> Result<Option<RuleConfig>> {
+    if !is_config_extension(path.extension()) {
         tracing::debug!("skipping non-yaml file");
-        return Ok(vec![]);
+        return Ok(None);
     }
 
     let content = match read_to_string(path) {
         Ok(content) => content,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e).context(format!("read config file: {path:?}")),
     };
 
@@ -103,7 +131,11 @@ pub fn load_from(path: &Path) -> Result<Vec<Rule>> {
         .with_context(|| format!("parse config file: {path:?}"))
         .with_context(|| content.header("File content:"))
         .tap(|config| tracing::debug!(?config, "parsed config file"))
-        .map(|config| config.rules)
+        .map(Some)
+}
+
+fn is_config_extension(extension: Option<&OsStr>) -> bool {
+    extension == Some(OsStr::new("yaml")) || extension == Some(OsStr::new("yml"))
 }
 
 #[cfg(test)]

@@ -9,9 +9,15 @@ use std::{
 
 use color_eyre::eyre::{Context, OptionExt, Result, bail};
 use itertools::Itertools;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::hook::{NudgeHook, ToolUse};
+use crate::{
+    hook::{NudgeHook, ToolUse},
+    rules,
+};
+
+pub mod embeddings;
 
 pub const LEARNED_DIR: &str = ".nudge/learned";
 const DEFAULT_SEARCH_LIMIT: usize = 5;
@@ -19,6 +25,38 @@ const HOOK_SEARCH_LIMIT: usize = 3;
 const HOOK_MIN_SCORE: f64 = 1.2;
 const HOOK_MIN_QUERY_TOKENS: usize = 3;
 const EXCERPT_LIMIT: usize = 420;
+
+/// Learned-note retrieval configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LearnConfig {
+    pub embeddings: EmbeddingConfig,
+}
+
+impl Default for LearnConfig {
+    fn default() -> Self {
+        Self {
+            embeddings: EmbeddingConfig::default(),
+        }
+    }
+}
+
+/// Local embedding configuration for learned notes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct EmbeddingConfig {
+    pub enabled: bool,
+    pub model: String,
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            model: embeddings::default_model(),
+        }
+    }
+}
 
 /// A Markdown incident note stored under `.nudge/learned`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +95,18 @@ pub fn learned_dir(root: &Path) -> PathBuf {
 
 pub fn default_search_limit() -> usize {
     DEFAULT_SEARCH_LIMIT
+}
+
+/// Load learned-note configuration from normal Nudge config files.
+pub fn load_config() -> Result<LearnConfig> {
+    let mut config = LearnConfig::default();
+    for (_, source) in rules::load_all_configs_attributed().context("load Nudge config")? {
+        if let Some(learn) = source.learn {
+            config = learn;
+        }
+    }
+
+    Ok(config)
 }
 
 /// Load all learned Markdown notes for a repo root.
@@ -207,11 +257,29 @@ pub fn search(
     results
 }
 
+/// Search learned notes using the configured retrieval strategy.
+pub fn search_with_config(
+    root: &Path,
+    notes: &[LearnedNote],
+    query: &str,
+    limit: usize,
+    min_score: f64,
+    config: &LearnConfig,
+) -> Result<Vec<SearchResult>> {
+    if let Some(results) = embeddings::hybrid_search(root, notes, query, limit, min_score, config)?
+    {
+        return Ok(results);
+    }
+
+    Ok(search(notes, query, limit, min_score))
+}
+
 /// Build learned context for hook responses.
 pub fn context_for_hooks(
     root: &Path,
     hooks: &[NudgeHook],
     notes: &[LearnedNote],
+    config: &LearnConfig,
 ) -> HookLearnedContext {
     if notes.is_empty() {
         return HookLearnedContext::default();
@@ -233,8 +301,8 @@ pub fn context_for_hooks(
         .join("\n\n");
 
     HookLearnedContext {
-        user_prompt: hook_context_for_query(root, notes, &user_prompt_query),
-        pre_tool_use: hook_context_for_query(root, notes, &pre_tool_query),
+        user_prompt: hook_context_for_query(root, notes, &user_prompt_query, config),
+        pre_tool_use: hook_context_for_query(root, notes, &pre_tool_query, config),
     }
 }
 
@@ -255,13 +323,32 @@ pub fn render_search_results(root: &Path, results: &[SearchResult]) -> String {
         .join("\n\n")
 }
 
-fn hook_context_for_query(root: &Path, notes: &[LearnedNote], query: &str) -> Option<String> {
+fn hook_context_for_query(
+    root: &Path,
+    notes: &[LearnedNote],
+    query: &str,
+    config: &LearnConfig,
+) -> Option<String> {
     let query_tokens = tokenize(query);
     if query_tokens.len() < HOOK_MIN_QUERY_TOKENS {
         return None;
     }
 
-    let results = search(notes, query, HOOK_SEARCH_LIMIT, HOOK_MIN_SCORE);
+    let results = search_with_config(
+        root,
+        notes,
+        query,
+        HOOK_SEARCH_LIMIT,
+        HOOK_MIN_SCORE,
+        config,
+    )
+    .unwrap_or_else(|error| {
+        tracing::warn!(
+            ?error,
+            "learned-note embedding search failed; falling back to BM25"
+        );
+        search(notes, query, HOOK_SEARCH_LIMIT, HOOK_MIN_SCORE)
+    });
     if results.is_empty() {
         return None;
     }
@@ -433,7 +520,11 @@ fn is_stop_word(token: &str) -> bool {
     )
 }
 
-fn excerpt(note: &LearnedNote, query_terms: &HashSet<String>) -> String {
+pub(crate) fn query_terms(query: &str) -> HashSet<String> {
+    tokenize(query).into_iter().collect()
+}
+
+pub(crate) fn excerpt(note: &LearnedNote, query_terms: &HashSet<String>) -> String {
     let body_without_title = note
         .body
         .lines()
@@ -564,7 +655,7 @@ fn next_available_path(dir: &Path, slug: &str) -> PathBuf {
     unreachable!("infinite iterator returns a path")
 }
 
-fn display_path(root: &Path, path: &Path) -> String {
+pub(crate) fn display_path(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
         .display()
@@ -638,7 +729,8 @@ mod tests {
     #[test]
     fn hook_context_skips_tiny_queries() {
         let notes = vec![note("Expo Metro Cache", "Clear Metro cache.")];
-        let context = hook_context_for_query(Path::new("."), &notes, "expo");
+        let context =
+            hook_context_for_query(Path::new("."), &notes, "expo", &LearnConfig::default());
 
         pretty_assert_eq!(context, None);
     }

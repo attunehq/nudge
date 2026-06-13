@@ -28,7 +28,7 @@ When something matches a rule you've defined:
 - **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
 - **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
 - **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
-- **Learned context**: Nudge searches `.nudge/learned/*.md` with BM25 and proactively surfaces relevant incident notes
+- **Learned context**: Nudge searches `.nudge/learned/*.md` with BM25, or hybrid BM25 plus local embeddings when enabled, and proactively surfaces relevant incident notes
 - **Passthrough**: No rules matched, everything proceeds normally
 
 ## Example Rules
@@ -78,6 +78,31 @@ nudge learn list
 ```
 
 During `UserPromptSubmit`, Nudge searches the current prompt against learned notes and injects the top relevant matches as plain context. For supported command surfaces such as Bash and WebFetch, Nudge can also surface learned context as an allow-with-context warning when a tool input resembles a known incident.
+
+### Local Embeddings
+
+BM25 is always available and requires no model. For semantic matching across different wording, enable local embeddings in project config:
+
+```bash
+nudge learn embeddings enable
+nudge learn embeddings status
+nudge learn embeddings reindex
+```
+
+This writes config like:
+
+```yaml
+version: 1
+rules: []
+learn:
+  embeddings:
+    enabled: true
+    model: BGESmallENV15
+```
+
+Nudge also reads `.nudge.yml` if that is your project convention. The compiled Nudge binary includes local embedding support; config decides whether a project uses it.
+
+Model files and vector indexes are stored in the user-level Nudge cache directory selected by the OS through the `directories` crate. They are not stored in the repo because vectors are derived from repo notes, can reveal note content, and change when the model or chunking changes. Learned Markdown notes stay in the repo; generated embedding artifacts stay in user cache.
 
 ## Writing Effective Rules
 

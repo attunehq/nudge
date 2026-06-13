@@ -9,7 +9,7 @@ use crate::{
         BashInput, EditInput, NudgeHook, PreToolUse, ToolUse, UserPromptSubmit, WebFetchInput,
         WriteInput, response::HookOutcome,
     },
-    learn::{self, HookLearnedContext, LearnedNote},
+    learn::{self, HookLearnedContext, LearnConfig, LearnedNote},
     rules::{
         FileContentTarget, PreToolUseBashMatcher, PreToolUseWebFetchMatcher,
         PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher, UserPromptSubmitMatcher,
@@ -23,7 +23,13 @@ use crate::{
 /// A raw provider hook can normalize into multiple Nudge events. This happens
 /// for Codex `apply_patch`, where one tool call can touch several files.
 pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
-    evaluate_hooks_with_learnings(std::path::Path::new("."), hooks, rules, &[])
+    evaluate_hooks_with_learnings(
+        std::path::Path::new("."),
+        hooks,
+        rules,
+        &[],
+        &LearnConfig::default(),
+    )
 }
 
 /// Evaluate hooks against configured rules and learned repo knowledge.
@@ -32,12 +38,13 @@ pub fn evaluate_hooks_with_learnings(
     hooks: &[NudgeHook],
     rules: &[Rule],
     learned_notes: &[LearnedNote],
+    learn_config: &LearnConfig,
 ) -> HookOutcome {
     let mut pretooluse_warnings = Vec::new();
     let mut pretooluse_matches = Vec::new();
     let mut pretooluse_update = None;
     let mut user_prompt_matches = Vec::new();
-    let learned_context = learn::context_for_hooks(root, hooks, learned_notes);
+    let learned_context = learn::context_for_hooks(root, hooks, learned_notes, learn_config);
 
     for hook in hooks {
         match hook {

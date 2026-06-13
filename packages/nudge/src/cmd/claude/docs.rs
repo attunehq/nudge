@@ -31,7 +31,8 @@ const DOCS: &str = cstr!("\
 
     <cyan>$CONFIG_DIR/rules.yaml</cyan>        <dim>User-level rules</dim>
     <cyan>.nudge.yaml</cyan>                   <dim>Project root</dim>
-    <cyan>.nudge/**/*.yaml</cyan>              <dim>Project directory</dim>
+    <cyan>.nudge.yml</cyan>                    <dim>Project root</dim>
+    <cyan>.nudge/**/*.{yaml,yml}</cyan>        <dim>Project directory</dim>
 
   <dim>$CONFIG_DIR by platform:</dim>
     <dim>Linux:</dim>   <cyan>~/.config/nudge</cyan>
@@ -49,12 +50,18 @@ const DOCS: &str = cstr!("\
     <cyan>cat incident.md | nudge learn add</cyan>
     <cyan>nudge learn search expo metro cannot resolve module</cyan>
     <cyan>nudge learn list</cyan>
+    <cyan>nudge learn embeddings enable</cyan> <dim># Project opt-in semantic search</dim>
+    <cyan>nudge learn embeddings status</cyan>
 
-  Nudge indexes note titles and bodies dynamically with BM25. During
-  <green>UserPromptSubmit</green>, it searches the prompt and injects the top relevant
-  incident notes as conversation context. For supported command surfaces such as
-  <green>Bash</green> and <green>WebFetch</green>, learned context can also surface as an
-  allow-with-context warning.
+  Nudge indexes note titles and bodies dynamically with BM25 by default. When
+  <cyan>learn.embeddings.enabled: true</cyan> is set in <cyan>.nudge.yaml</cyan> or
+  <cyan>.nudge.yml</cyan>, Nudge also uses local FastEmbed embeddings and stores both
+  model files and vector indexes in the user-level Nudge cache directory.
+
+  During <green>UserPromptSubmit</green>, Nudge searches the prompt and injects the top
+  relevant incident notes as conversation context. For supported command surfaces
+  such as <green>Bash</green> and <green>WebFetch</green>, learned context can also surface
+  as an allow-with-context warning.
 
 <bold>Rule Format</bold>
 

@@ -39,7 +39,8 @@ cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from 
 cargo run -p nudge -- codex setup      # Install hooks into .codex/hooks.json
 cargo run -p nudge -- codex docs       # Print rule writing documentation
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
-cargo run -p nudge -- learn search     # Search learned incident notes with BM25
+cargo run -p nudge -- learn search     # Search learned incident notes
+cargo run -p nudge -- learn embeddings # Manage local learned-note embeddings
 cargo run -p nudge -- test             # Test a rule against sample input
 cargo run -p nudge -- validate         # Validate rule config files
 cargo run -p nudge -- check            # Check project files against rules (for CI)
@@ -69,7 +70,8 @@ nudge codex setup   - Writes hook configuration to .codex/hooks.json
 nudge codex docs    - Prints documentation for writing rules
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
-nudge learn search  - Search learned incident notes with BM25
+nudge learn search  - Search learned incident notes with BM25 or configured local embeddings
+nudge learn embeddings - Enable, rebuild, or inspect local learned-note embeddings
 nudge test          - Test a specific rule against sample input
 nudge validate      - Validate and display parsed rule configs
 nudge check         - Check project files against rules (CI/linter mode)
@@ -84,6 +86,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/hook/response.rs` - Provider-specific response rendering
 - `src/hook/apply_patch.rs` - Codex apply_patch normalization
 - `src/learn.rs` - Repo-local learned incident notes and BM25 retrieval
+- `src/learn/embeddings.rs` - Local FastEmbed embedding cache and hybrid retrieval
 - `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
 - `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
@@ -106,7 +109,7 @@ When Nudge has something to share, it responds in one of three ways:
 
 - **Passthrough**: Nothing to note. Carry on!
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
-- **Learned context**: For UserPromptSubmit hooks, Nudge searches `.nudge/learned/*.md` with BM25 and injects the most relevant incident notes when the prompt resembles a known scenario. For supported PreToolUse command surfaces, learned context can be surfaced as an allow-with-context warning.
+- **Learned context**: For UserPromptSubmit hooks, Nudge searches `.nudge/learned/*.md` with BM25, or hybrid BM25 plus local embeddings when `learn.embeddings.enabled` is set in `.nudge.yaml` or `.nudge.yml`, and injects the most relevant incident notes when the prompt resembles a known scenario. For supported PreToolUse command surfaces, learned context can be surfaced as an allow-with-context warning.
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
 - **Warning**: For provider inputs that look like supported PreToolUse surfaces but cannot be inspected (currently Codex apply_patch parse failures), Nudge allows the operation and tells the model to report the warning to the user
 - **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
