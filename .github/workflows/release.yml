@@ -102,11 +102,14 @@ jobs:
             fail-fast: false
             matrix:
                 include:
-                    # macOS builds (both targets on macos-latest via --target)
+                    # macOS builds (both targets on macos-latest via --target).
+                    # ONNX Runtime does not publish binaries for x64 macOS in
+                    # the current feature set, so that artifact keeps BM25
+                    # learn search and omits semantic embeddings.
                     - target: x86_64-apple-darwin
                       runner: macos-latest
                       cross: false
-                      embeddings: true
+                      embeddings: false
                     - target: aarch64-apple-darwin
                       runner: macos-latest
                       cross: false

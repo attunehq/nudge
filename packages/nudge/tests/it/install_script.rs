@@ -63,6 +63,16 @@ fn release_workflow_builds_ort_limited_targets_without_embeddings() {
     let workflow = fs::read_to_string(&workflow_path).expect("read release workflow");
 
     pretty_assert_eq!(
+        target_embeddings(&workflow, "x86_64-apple-darwin"),
+        Some(false),
+        "Intel macOS should build without embedding support until ONNX Runtime publishes that target"
+    );
+    pretty_assert_eq!(
+        target_embeddings(&workflow, "aarch64-apple-darwin"),
+        Some(true),
+        "Apple Silicon macOS should keep local semantic embeddings"
+    );
+    pretty_assert_eq!(
         target_embeddings(&workflow, "x86_64-unknown-linux-gnu"),
         Some(true),
         "Linux x64 GNU should keep local semantic embeddings"
