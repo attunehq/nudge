@@ -10,7 +10,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::{json_hooks, setup_command, skill_install};
+use crate::cmd::{command_install, json_hooks, setup_command, skill_install};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -21,6 +21,10 @@ pub struct Config {
     /// Skip installing the bundled Nudge skill.
     #[arg(long)]
     skip_skills: bool,
+
+    /// Skip installing bundled Nudge slash commands.
+    #[arg(long)]
+    skip_commands: bool,
 }
 
 /// Configures a hook in Claude Code's settings.
@@ -141,10 +145,15 @@ pub fn main(config: Config) -> Result<()> {
         println!();
     }
 
+    if !config.skip_commands {
+        command_install::install_claude_commands(&dotclaude.join("commands"))?;
+        println!();
+    }
+
     println!("Next steps:");
     println!("1. Run /hooks in Claude Code to verify hooks are registered");
     println!("2. Use claude --debug to see hook execution logs");
-    println!("3. Restart Claude Code so hooks and skills are loaded");
+    println!("3. Restart Claude Code so hooks, skills, and slash commands are loaded");
 
     Ok(())
 }

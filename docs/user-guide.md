@@ -75,19 +75,21 @@ nudge claude setup
 nudge codex setup
 ```
 
-Claude setup writes `.claude/settings.local.json` and installs the bundled
-`nudge` skill under `.claude/skills/nudge`.
+Claude setup writes `.claude/settings.local.json`, installs the bundled `nudge`
+skill under `.claude/skills/nudge`, and installs a Nudge learning slash command
+at `.claude/commands/nudge/learn.md`.
 
-Codex setup writes `.codex/hooks.json` and installs the bundled `nudge` skill
-under `.agents/skills/nudge`.
+Codex setup writes `.codex/hooks.json`, installs the bundled `nudge` skill under
+`.agents/skills/nudge`, and installs a compatible prompt command at
+`.codex/prompts/nudge-learn.md`.
 
 Setup does not edit project `CLAUDE.md` or `AGENTS.md` files. Modern agents
 learn how to respond to Nudge by reading the bundled skill that setup installs.
 
 If an existing hook file is present, setup writes a non-overwriting backup next
-to it before modifying it. Restart open agent sessions after setup so hooks and
-skills load. Later rule changes are read by Nudge itself and do not require an
-agent restart.
+to it before modifying it. Restart open agent sessions after setup so hooks,
+skills, and commands load. Later rule changes are read by Nudge itself and do
+not require an agent restart.
 
 Verify hooks in the agent with `/hooks`.
 
@@ -208,6 +210,12 @@ record learned incident notes. Setup installs it by default.
 Agents use `nudge` when Nudge blocks, warns, substitutes, surfaces learned
 context, when the user asks to configure or update rules, or after fixing a
 repo-specific issue that future agents should not rediscover.
+
+Setup also installs an on-demand learning command. Use it near the end of a
+useful session to ask the agent to review the conversation and record durable
+repo-specific lessons with `nudge learn add`. Claude exposes the project command
+from `.claude/commands/nudge/learn.md`; Codex-compatible prompt installs to
+`.codex/prompts/nudge-learn.md`.
 
 Reinstall only the bundled skill files when needed:
 

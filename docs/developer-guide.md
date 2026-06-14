@@ -54,10 +54,11 @@ Important entrypoints:
 | `packages/nudge/src/rules/schema/` | Content, glob, syntax, target, URL, and project-state matchers |
 | `packages/nudge/src/learn.rs` | Learned incident notes and BM25 retrieval |
 | `packages/nudge/src/learn/embeddings.rs` | Local embedding cache and hybrid retrieval |
-| `packages/nudge/src/skills.rs` | Bundled skill assets and install helpers |
+| `packages/nudge/src/skills.rs` | Bundled skill and command assets plus install helpers |
 | `packages/nudge/src/cmd/` | CLI subcommands |
 | `packages/nudge/tests/it/` | Integration tests |
 | `packages/nudge/skills/nudge/` | Source for the bundled Nudge skill |
+| `packages/nudge/commands/` | Source for bundled Nudge slash/prompt commands |
 | `examples/rules/` | Copyable example rule files |
 
 Core shape:
@@ -356,6 +357,8 @@ Keep these sources aligned when behavior changes:
 - `packages/nudge/skills/nudge/`: bundled agent-facing Nudge skill and focused
   references for setup, rule writing, debugging, validation, CI, hook
   responses, and learned incident notes.
+- `packages/nudge/commands/`: bundled slash/prompt commands installed during
+  setup.
 - `examples/rules/`: copyable starter rules.
 
 When updating docs, preserve plain ASCII quotes and punctuation. The project

@@ -1,4 +1,4 @@
-//! Bundled Nudge skills.
+//! Bundled Nudge agent assets.
 
 use std::{
     fs,
@@ -16,6 +16,11 @@ pub struct BundledSkill {
 }
 
 pub struct BundledSkillFile {
+    pub path: &'static str,
+    pub content: &'static str,
+}
+
+pub struct BundledCommandFile {
     pub path: &'static str,
     pub content: &'static str,
 }
@@ -98,6 +103,22 @@ const BUNDLED_SKILLS: &[BundledSkill] = &[BundledSkill {
     files: NUDGE_FILES,
 }];
 
+const CLAUDE_COMMAND_FILES: &[BundledCommandFile] = &[BundledCommandFile {
+    path: "nudge/learn.md",
+    content: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/commands/claude/nudge/learn.md"
+    )),
+}];
+
+const CODEX_PROMPT_FILES: &[BundledCommandFile] = &[BundledCommandFile {
+    path: "nudge-learn.md",
+    content: include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/commands/codex/nudge-learn.md"
+    )),
+}];
+
 pub fn bundled_skills() -> &'static [BundledSkill] {
     BUNDLED_SKILLS
 }
@@ -120,6 +141,23 @@ fn install_skill(skills_dir: &Path, skill: &BundledSkill) -> Result<PathBuf> {
     Ok(skill_dir)
 }
 
+fn install_command_files(
+    commands_dir: &Path,
+    files: &'static [BundledCommandFile],
+) -> Result<Vec<PathBuf>> {
+    let mut installed = Vec::new();
+    for file in files {
+        let path = commands_dir.join(file.path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("create command directory: {}", parent.display()))?;
+        }
+        fs::write(&path, file.content).with_context(|| format!("write {}", path.display()))?;
+        installed.push(path);
+    }
+    Ok(installed)
+}
+
 pub fn install_bundled_skills(skills_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut installed = Vec::new();
     for skill in bundled_skills() {
@@ -130,6 +168,14 @@ pub fn install_bundled_skills(skills_dir: &Path) -> Result<Vec<PathBuf>> {
 
 pub fn install_nudge_skill(skills_dir: &Path) -> Result<PathBuf> {
     install_skill(skills_dir, &BUNDLED_SKILLS[0])
+}
+
+pub fn install_claude_commands(commands_dir: &Path) -> Result<Vec<PathBuf>> {
+    install_command_files(commands_dir, CLAUDE_COMMAND_FILES)
+}
+
+pub fn install_codex_prompts(prompts_dir: &Path) -> Result<Vec<PathBuf>> {
+    install_command_files(prompts_dir, CODEX_PROMPT_FILES)
 }
 
 pub fn remove_obsolete_nudge_learnings_skill(skills_dir: &Path) -> Result<Option<PathBuf>> {

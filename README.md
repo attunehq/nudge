@@ -73,7 +73,9 @@ rules:
 ```
 
 Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
-`/hooks` in the agent to verify setup.
+`/hooks` in the agent to verify setup. After a useful debugging session, use the
+installed Nudge learning command to ask the agent to record durable repo-local
+learnings for future work.
 
 ## Guides
 

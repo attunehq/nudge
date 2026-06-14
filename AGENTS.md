@@ -33,10 +33,10 @@ cargo test -p nudge test_name
 
 # Run the CLI
 cargo run -p nudge -- claude hook      # Respond to Claude hook (reads JSON from stdin)
-cargo run -p nudge -- claude setup     # Install hooks and the bundled skill for Claude
+cargo run -p nudge -- claude setup     # Install hooks, bundled skill, and commands for Claude
 cargo run -p nudge -- claude skills install # Install the bundled Claude skill
 cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from stdin)
-cargo run -p nudge -- codex setup      # Install hooks and the bundled skill for Codex
+cargo run -p nudge -- codex setup      # Install hooks, bundled skill, and commands for Codex
 cargo run -p nudge -- codex skills install # Install the bundled Codex skill
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
 cargo run -p nudge -- learn search     # Search learned incident notes
@@ -63,10 +63,10 @@ decides to publish crates.io artifacts.
 
 ```
 nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge claude setup  - Writes hook configuration and installs the bundled skill for Claude
+nudge claude setup  - Writes hook configuration and installs the bundled skill and commands for Claude
 nudge claude skills install - Installs the bundled skill into .claude/skills
 nudge codex hook    - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge codex setup   - Writes hook configuration and installs the bundled skill for Codex
+nudge codex setup   - Writes hook configuration and installs the bundled skill and commands for Codex
 nudge codex skills install - Installs the bundled skill into .agents/skills
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
@@ -87,7 +87,8 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/hook/apply_patch.rs` - Codex apply_patch normalization
 - `src/learn.rs` - Repo-local learned incident notes and BM25 retrieval
 - `src/learn/embeddings.rs` - Local FastEmbed embedding cache and hybrid retrieval
-- `src/skills.rs` - Bundled skill assets and installation helpers
+- `src/skills.rs` - Bundled skill and command assets plus installation helpers
+- `src/cmd/command_install.rs` - Shared command/prompt install reporting
 - `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
 - `src/cmd/claude/skills.rs` - Skills command: installs the bundled skill into .claude/skills
@@ -99,6 +100,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
 - `packages/nudge/skills/nudge/` - Source files for the bundled Nudge skill compiled into the binary
+- `packages/nudge/commands/` - Source files for bundled Nudge slash/prompt commands compiled into the binary
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
 - `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
