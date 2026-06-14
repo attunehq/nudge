@@ -1,4 +1,4 @@
-//! Install bundled Nudge skills for Codex.
+//! Install the bundled Nudge skill for Codex.
 
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ pub struct Config {
 
 #[derive(Subcommand, Clone, Debug)]
 enum Commands {
-    /// Install the bundled Nudge skills.
+    /// Install the bundled Nudge skill.
     Install(InstallConfig),
 }
 

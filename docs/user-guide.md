@@ -76,13 +76,13 @@ nudge codex setup
 ```
 
 Claude setup writes `.claude/settings.local.json` and installs the bundled
-`nudge` and `nudge-learnings` skills under `.claude/skills/`.
+`nudge` skill under `.claude/skills/nudge`.
 
-Codex setup writes `.codex/hooks.json` and installs the bundled `nudge` and
-`nudge-learnings` skills under `.agents/skills/`.
+Codex setup writes `.codex/hooks.json` and installs the bundled `nudge` skill
+under `.agents/skills/nudge`.
 
 Setup does not edit project `CLAUDE.md` or `AGENTS.md` files. Modern agents
-learn how to respond to Nudge by reading the bundled skills that setup installs.
+learn how to respond to Nudge by reading the bundled skill that setup installs.
 
 If an existing hook file is present, setup writes a non-overwriting backup next
 to it before modifying it. Restart open agent sessions after setup so hooks and
@@ -204,15 +204,13 @@ Hook responses are automatic. The agent tries to write, edit, fetch, run a
 command, or start a turn. Nudge evaluates rules and learned notes, then returns a
 provider-specific response.
 
-The bundled `nudge` skill teaches agents how to respond to hook messages and
-write, debug, or validate rules. The bundled `nudge-learnings` skill teaches
-agents how to search and record learned incident notes. Setup installs both by
-default.
+The bundled `nudge` skill teaches agents how to respond to hook messages, write
+or debug rules, validate changes, wire `nudge check` into CI, and search or
+record learned incident notes. Setup installs it by default.
 
-Agents use `nudge` when Nudge blocks, warns, substitutes, or when the user asks
-to configure or update rules. Agents use `nudge-learnings` when Nudge surfaces
-learned context, when the user asks to search or record learnings, or after
-fixing a repo-specific issue that future agents should not rediscover.
+Agents use `nudge` when Nudge blocks, warns, substitutes, surfaces learned
+context, when the user asks to configure or update rules, or after fixing a
+repo-specific issue that future agents should not rediscover.
 
 Reinstall only the bundled skill files when needed:
 

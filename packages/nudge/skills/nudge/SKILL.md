@@ -1,48 +1,43 @@
 ---
 name: nudge
-description: Explains Nudge hook responses and rule-writing. Use when Nudge appears in hook output, blocks, warns, or substitutes a command, surfaces rule guidance, or when the user asks to configure, validate, check, write, debug, or update Nudge rules. Do not use for repo-local learned incident notes; use nudge-learnings.
+description: Routes Nudge work to focused guidance for hook responses, rules, CI checks, rule debugging, validation, and learned incident notes. Use when Nudge appears in hook output, blocks, warns, substitutes a command, surfaces learned context, or when the user asks to configure, validate, check, write, debug, or update Nudge rules or learnings.
 ---
 
 # Nudge
 
 ## Purpose
 
-Nudge is a collaborative memory layer for agent hooks. It reminds agents about
-repo conventions, blocks or rewrites supported operations when rules match, and
-surfaces relevant repo-local learned incidents. Treat Nudge messages as useful
-context from the project, not as an error to route around.
+Nudge is a collaborative memory layer for agent hooks. This skill is the router:
+pick the focused reference for the Nudge situation, follow it, then return to
+the user's task.
 
 ## When to use
 
 - Nudge blocks, warns about, or substitutes a tool command.
+- Nudge surfaces learned repo context.
 - The user asks what Nudge is or why it interrupted.
 - The user asks to configure, validate, check, write, debug, or update Nudge
-  rules.
+  rules or learned incident notes.
+- The user asks to add Nudge to CI, pre-commit, or another scripted gate.
 - You find `.nudge.yaml`, `.nudge.yml`, or `.nudge/` while working.
-
-## Do not use when
-
-- The task is specifically about searching, applying, or recording learned
-  incident notes. Use the `nudge-learnings` skill for that workflow.
-- The user is asking about unrelated agent skills or general hook systems.
 
 ## Workflow
 
-1. If Nudge interrupted a command, read the whole message and any snippet. Fix
-   the attempted operation, then retry the corrected operation.
-2. If Nudge allowed the operation with a warning, report the warning when it is
-   user-visible or affects confidence, then continue with the warning in mind.
-3. If Nudge substituted a Bash command, treat the rewritten command as the one
-   that ran and preserve that fact in any summary.
-4. If the message mentions learned context or `.nudge/learned`, switch to the
-   `nudge-learnings` skill before using those notes.
-5. If you are writing or debugging rules, read
-   [references/rule-writing.md](references/rule-writing.md), then use
-   [references/validation.md](references/validation.md) for the check sequence.
-6. If the task is specifically about validating Nudge config or checking files,
-   read [references/validation.md](references/validation.md).
-7. If you need to explain hook behavior, response types, or provider support,
-   read [references/hook-responses.md](references/hook-responses.md).
+1. Read the Nudge output or user request closely.
+2. Choose the most specific reference:
+   - Hook responses, interrupts, warnings, substitutions, provider support:
+     [references/hook-responses.md](references/hook-responses.md)
+   - Writing new rules:
+     [references/rule-writing.md](references/rule-writing.md)
+   - Noisy, silent, or surprising rules:
+     [references/rule-debugging.md](references/rule-debugging.md)
+   - Validation commands and check selection:
+     [references/validation.md](references/validation.md)
+   - CI, pre-commit, release gates, or scripts:
+     [references/ci.md](references/ci.md)
+   - Learned incident notes:
+     [references/learnings.md](references/learnings.md)
+3. Follow that reference, then continue the user's task.
 
 ## Examples
 
@@ -71,7 +66,7 @@ Expected behavior:
 Nudge surfaces learned context from `.nudge/learned`.
 
 Expected behavior:
-1. Switch to the `nudge-learnings` skill.
+1. Read `references/learnings.md`.
 2. Inspect the cited note.
 3. Apply it only if it matches the current situation.
 
@@ -85,8 +80,32 @@ Expected behavior:
 3. Explain the original command, the rewritten command, and why the rule prefers
    the rewrite.
 
+### Example 5
+
+User says: "This Nudge rule keeps blocking the wrong thing."
+
+Expected behavior:
+1. Read `references/rule-debugging.md`.
+2. Reproduce the noisy match with `nudge test`, `nudge check`, or the smallest
+   relevant hook payload.
+3. Tighten the matcher or message, then rerun the proof command.
+
+### Example 6
+
+User says: "Add Nudge to CI."
+
+Expected behavior:
+1. Read `references/ci.md`.
+2. Add a scripted `nudge check` gate without depending on live agent hooks.
+3. Run the CI command locally when practical.
+
 ## Supporting Files
 
+- `references/ci.md`: `nudge check` in CI, pre-commit, and scripted gates.
 - `references/hook-responses.md`: provider surfaces and response types.
+- `references/learnings.md`: using and recording learned incident notes.
+- `references/learnings-bm25.md`: learned-note retrieval without embeddings.
+- `references/learnings-embeddings.md`: learned-note retrieval with embeddings.
 - `references/rule-writing.md`: rule locations, schema, and examples.
+- `references/rule-debugging.md`: diagnosing noisy, silent, or surprising rules.
 - `references/validation.md`: choosing `validate`, `test`, and `check`.

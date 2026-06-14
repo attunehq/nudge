@@ -9,7 +9,7 @@ use color_eyre::eyre::{Context, Result};
 use itertools::Itertools;
 
 pub const NUDGE_SKILL_NAME: &str = "nudge";
-pub const NUDGE_LEARNINGS_SKILL_NAME: &str = "nudge-learnings";
+const OBSOLETE_NUDGE_LEARNINGS_SKILL_NAME: &str = "nudge-learnings";
 
 pub struct BundledSkill {
     pub name: &'static str,
@@ -37,10 +37,45 @@ const NUDGE_FILES: &[BundledSkillFile] = &[
         )),
     },
     BundledSkillFile {
+        path: "references/learnings.md",
+        content: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/skills/nudge/references/learnings.md"
+        )),
+    },
+    BundledSkillFile {
+        path: "references/learnings-bm25.md",
+        content: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/skills/nudge/references/learnings-bm25.md"
+        )),
+    },
+    BundledSkillFile {
+        path: "references/learnings-embeddings.md",
+        content: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/skills/nudge/references/learnings-embeddings.md"
+        )),
+    },
+    BundledSkillFile {
+        path: "references/ci.md",
+        content: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/skills/nudge/references/ci.md"
+        )),
+    },
+    BundledSkillFile {
         path: "references/rule-writing.md",
         content: include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/skills/nudge/references/rule-writing.md"
+        )),
+    },
+    BundledSkillFile {
+        path: "references/rule-debugging.md",
+        content: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/skills/nudge/references/rule-debugging.md"
         )),
     },
     BundledSkillFile {
@@ -52,40 +87,34 @@ const NUDGE_FILES: &[BundledSkillFile] = &[
     },
 ];
 
-const NUDGE_LEARNINGS_FILES: &[BundledSkillFile] = &[
+const NUDGE_LEARNINGS_DOC_FILES: &[BundledSkillFile] = &[
     BundledSkillFile {
-        path: "SKILL.md",
+        path: "references/learnings.md",
         content: include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/skills/nudge-learnings/SKILL.md"
+            "/skills/nudge/references/learnings.md"
         )),
     },
     BundledSkillFile {
-        path: "references/bm25.md",
+        path: "references/learnings-bm25.md",
         content: include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/skills/nudge-learnings/references/bm25.md"
+            "/skills/nudge/references/learnings-bm25.md"
         )),
     },
     BundledSkillFile {
-        path: "references/embeddings.md",
+        path: "references/learnings-embeddings.md",
         content: include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/skills/nudge-learnings/references/embeddings.md"
+            "/skills/nudge/references/learnings-embeddings.md"
         )),
     },
 ];
 
-const BUNDLED_SKILLS: &[BundledSkill] = &[
-    BundledSkill {
-        name: NUDGE_SKILL_NAME,
-        files: NUDGE_FILES,
-    },
-    BundledSkill {
-        name: NUDGE_LEARNINGS_SKILL_NAME,
-        files: NUDGE_LEARNINGS_FILES,
-    },
-];
+const BUNDLED_SKILLS: &[BundledSkill] = &[BundledSkill {
+    name: NUDGE_SKILL_NAME,
+    files: NUDGE_FILES,
+}];
 
 pub fn bundled_skills() -> &'static [BundledSkill] {
     BUNDLED_SKILLS
@@ -95,8 +124,8 @@ pub fn nudge_files() -> &'static [BundledSkillFile] {
     NUDGE_FILES
 }
 
-pub fn nudge_learnings_files() -> &'static [BundledSkillFile] {
-    NUDGE_LEARNINGS_FILES
+pub fn nudge_learnings_docs_files() -> &'static [BundledSkillFile] {
+    NUDGE_LEARNINGS_DOC_FILES
 }
 
 fn install_skill(skills_dir: &Path, skill: &BundledSkill) -> Result<PathBuf> {
@@ -125,12 +154,27 @@ pub fn install_nudge_skill(skills_dir: &Path) -> Result<PathBuf> {
     install_skill(skills_dir, &BUNDLED_SKILLS[0])
 }
 
-pub fn install_nudge_learnings_skill(skills_dir: &Path) -> Result<PathBuf> {
-    install_skill(skills_dir, &BUNDLED_SKILLS[1])
+pub fn remove_obsolete_nudge_learnings_skill(skills_dir: &Path) -> Result<Option<PathBuf>> {
+    let skill_dir = skills_dir.join(OBSOLETE_NUDGE_LEARNINGS_SKILL_NAME);
+    if !skill_dir.exists() {
+        return Ok(None);
+    }
+
+    let skill_file = skill_dir.join("SKILL.md");
+    let is_nudge_learnings = fs::read_to_string(&skill_file)
+        .map(|content| content.contains("name: nudge-learnings"))
+        .unwrap_or(false);
+    if !is_nudge_learnings {
+        return Ok(None);
+    }
+
+    fs::remove_dir_all(&skill_dir)
+        .with_context(|| format!("remove obsolete skill directory: {}", skill_dir.display()))?;
+    Ok(Some(skill_dir))
 }
 
 pub fn render_nudge_learnings_docs() -> String {
-    nudge_learnings_files()
+    nudge_learnings_docs_files()
         .iter()
         .map(|file| format!("# {}\n\n{}", file.path, file.content.trim_end_matches('\n')))
         .join("\n\n")

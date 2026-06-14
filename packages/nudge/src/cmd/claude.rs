@@ -27,7 +27,7 @@ enum Commands {
     /// Show documentation for writing Nudge rules.
     Docs(docs::Config),
 
-    /// Install bundled skills into .claude/skills.
+    /// Install the bundled Nudge skill into .claude/skills.
     Skills(skills::Config),
 }
 

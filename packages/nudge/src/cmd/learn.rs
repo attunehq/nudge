@@ -30,7 +30,7 @@ enum Commands {
     /// Search learned incident notes.
     Search(SearchConfig),
 
-    /// Print the bundled Nudge learnings skill.
+    /// Print the bundled Nudge learned-note guidance.
     Docs(DocsConfig),
 
     /// Manage local semantic embeddings for learned notes.
