@@ -1,2 +1,17 @@
 target/
 .scratch/
+
+# Keep shareable agent skills and commands visible even when a developer has
+# broad personal ignores for agent config directories.
+!.agents/
+!.agents/**
+!.claude/
+!.claude/**
+!.codex/
+!.codex/**
+
+# Local hook/trust config belongs to each developer's machine.
+.claude/settings.local.json
+.claude/settings.local.json.bak*
+.codex/hooks.json
+.codex/hooks.json.bak*
