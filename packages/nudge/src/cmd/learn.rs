@@ -7,10 +7,7 @@ use std::{
 
 use clap::{Args, Subcommand};
 use color_eyre::eyre::{Context, OptionExt, Result, bail};
-use nudge::{
-    learn::{self, AddNote, LearnConfig},
-    skills,
-};
+use nudge::learn::{self, AddNote, LearnConfig};
 use serde_yaml::{Mapping, Value};
 
 #[derive(Args, Clone, Debug)]
@@ -29,9 +26,6 @@ enum Commands {
 
     /// Search learned incident notes.
     Search(SearchConfig),
-
-    /// Print the bundled Nudge learned-note guidance.
-    Docs(DocsConfig),
 
     /// Manage local semantic embeddings for learned notes.
     Embeddings(EmbeddingsConfig),
@@ -69,9 +63,6 @@ struct SearchConfig {
     #[arg(long, default_value_t = 0.0)]
     min_score: f64,
 }
-
-#[derive(Args, Clone, Debug)]
-struct DocsConfig {}
 
 #[derive(Args, Clone, Debug)]
 struct EmbeddingsConfig {
@@ -113,7 +104,6 @@ pub fn main(config: Config) -> Result<()> {
         Commands::Add(config) => add(config),
         Commands::List(config) => list(config),
         Commands::Search(config) => search(config),
-        Commands::Docs(config) => docs(config),
         Commands::Embeddings(config) => embeddings(config),
     }
 }
@@ -176,11 +166,6 @@ fn search(config: SearchConfig) -> Result<()> {
     }
 
     println!("{}", learn::render_search_results(root, &results));
-    Ok(())
-}
-
-fn docs(_config: DocsConfig) -> Result<()> {
-    println!("{}", skills::render_nudge_learnings_docs());
     Ok(())
 }
 

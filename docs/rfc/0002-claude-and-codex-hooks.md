@@ -181,7 +181,7 @@ Before this RFC, the public CLI was Claude-shaped:
 
 - `nudge claude hook`
 - `nudge claude setup`
-- `nudge claude docs`
+- generated rule docs were exposed through the Claude namespace at the time
 
 The Rust model was also Claude-shaped:
 
@@ -238,11 +238,11 @@ Add a Codex namespace alongside the existing Claude namespace:
 ```bash
 nudge claude hook
 nudge claude setup
-nudge claude docs
+nudge claude skills install
 
 nudge codex hook
 nudge codex setup
-nudge codex docs
+nudge codex skills install
 ```
 
 ### Internal Modules
@@ -579,8 +579,7 @@ Update these together:
 - `README.md`
 - `AGENTS.md`
 - `CLAUDE.md`
-- `nudge claude docs`
-- new `nudge codex docs`
+- `packages/nudge/skills/nudge/`
 
 README should describe Nudge as supporting "agent hooks" and then name the
 current integrations:
@@ -683,8 +682,8 @@ Add integration tests:
 ```bash
 cargo fmt --all
 cargo test -p nudge
-cargo run -p nudge -- claude docs
-cargo run -p nudge -- codex docs
+cargo run -p nudge -- validate
+cargo run -p nudge -- check README.md docs/ AGENTS.md CLAUDE.md packages/nudge/skills/
 ```
 
 ## Breaking Changes

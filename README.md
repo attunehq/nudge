@@ -84,12 +84,9 @@ Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
 - [CI and Programmatic Checks](docs/ci.md): using `nudge check` in CI,
   pre-commit hooks, and scripts.
 
-For the generated rule-writing reference:
-
-```bash
-nudge claude docs
-nudge codex docs
-```
+The bundled `nudge` skill is the agent-facing rule reference. It includes the
+former CLI docs content as focused references for rule writing, debugging,
+validation, CI, local setup, hook responses, and learned incident notes.
 
 Copyable starter rules live in [examples/rules](examples/rules).
 

@@ -113,12 +113,9 @@ cargo test -p nudge codex
 cargo test -p nudge markdown
 ```
 
-Run generated docs and examples when touching rule syntax or user guidance:
+Run bundled skill checks and examples when touching rule syntax or user guidance:
 
 ```bash
-cargo run -p nudge -- claude docs
-cargo run -p nudge -- codex docs
-cargo run -p nudge -- learn docs
 nudge validate
 nudge check docs/ README.md
 ```
@@ -356,8 +353,9 @@ Keep these sources aligned when behavior changes:
 - `docs/ci.md`: `nudge check` contract.
 - `AGENTS.md`: Codex-facing repository guidance.
 - `CLAUDE.md`: Claude-facing repository guidance.
-- `packages/nudge/src/cmd/claude/docs.rs` and
-  `packages/nudge/src/cmd/codex/docs.rs`: generated rule-writing reference.
+- `packages/nudge/skills/nudge/`: bundled agent-facing Nudge skill and focused
+  references for setup, rule writing, debugging, validation, CI, hook
+  responses, and learned incident notes.
 - `examples/rules/`: copyable starter rules.
 
 When updating docs, preserve plain ASCII quotes and punctuation. The project

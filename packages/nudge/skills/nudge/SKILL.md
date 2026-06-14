@@ -1,6 +1,6 @@
 ---
 name: nudge
-description: Routes Nudge work to focused guidance for hook responses, rules, CI checks, rule debugging, validation, and learned incident notes. Use when Nudge appears in hook output, blocks, warns, substitutes a command, surfaces learned context, or when the user asks to configure, validate, check, write, debug, or update Nudge rules or learnings.
+description: Routes Nudge work to focused guidance for hook responses, local setup, rules, CI checks, rule debugging, validation, and learned incident notes. Use when Nudge appears in hook output, blocks, warns, substitutes a command, surfaces learned context, a repo has Nudge rules but local hooks are not set up, or when the user asks to install, configure, validate, check, write, debug, or update Nudge rules or learnings.
 ---
 
 # Nudge
@@ -16,6 +16,8 @@ the user's task.
 - Nudge blocks, warns about, or substitutes a tool command.
 - Nudge surfaces learned repo context.
 - The user asks what Nudge is or why it interrupted.
+- The user asks to install Nudge locally or set up hooks for a repo with Nudge
+  rules.
 - The user asks to configure, validate, check, write, debug, or update Nudge
   rules or learned incident notes.
 - The user asks to add Nudge to CI, pre-commit, or another scripted gate.
@@ -26,17 +28,19 @@ the user's task.
 1. Read the Nudge output or user request closely.
 2. Choose the most specific reference:
    - Hook responses, interrupts, warnings, substitutions, provider support:
-     [references/hook-responses.md](references/hook-responses.md)
+     `references/hook-responses.md`
+   - Local installation, hook setup, teammate cloned repo bootstrap:
+     `references/setup.md`
    - Writing new rules:
-     [references/rule-writing.md](references/rule-writing.md)
+     `references/rule-writing.md`
    - Noisy, silent, or surprising rules:
-     [references/rule-debugging.md](references/rule-debugging.md)
+     `references/rule-debugging.md`
    - Validation commands and check selection:
-     [references/validation.md](references/validation.md)
+     `references/validation.md`
    - CI, pre-commit, release gates, or scripts:
-     [references/ci.md](references/ci.md)
+     `references/ci.md`
    - Learned incident notes:
-     [references/learnings.md](references/learnings.md)
+     `references/learnings.md`
 3. Follow that reference, then continue the user's task.
 
 ## Examples
@@ -72,6 +76,17 @@ Expected behavior:
 
 ### Example 4
 
+After debugging, the agent fixes a repo-specific issue that future agents are
+likely to hit again.
+
+Expected behavior:
+1. Read `references/learnings.md`.
+2. Record a concise learned incident note under `.nudge/learned` with the
+   symptom, root cause, fix, and verification.
+3. Keep the note repo-specific; do not record generic programming advice.
+
+### Example 5
+
 User asks: "Why did Nudge rewrite my command?"
 
 Expected behavior:
@@ -80,7 +95,7 @@ Expected behavior:
 3. Explain the original command, the rewritten command, and why the rule prefers
    the rewrite.
 
-### Example 5
+### Example 6
 
 User says: "This Nudge rule keeps blocking the wrong thing."
 
@@ -90,7 +105,7 @@ Expected behavior:
    relevant hook payload.
 3. Tighten the matcher or message, then rerun the proof command.
 
-### Example 6
+### Example 7
 
 User says: "Add Nudge to CI."
 
@@ -99,6 +114,17 @@ Expected behavior:
 2. Add a scripted `nudge check` gate without depending on live agent hooks.
 3. Run the CI command locally when practical.
 
+### Example 8
+
+User says: "I cloned this repo and it has `.nudge.yaml`, but Nudge isn't doing
+anything."
+
+Expected behavior:
+1. Read `references/setup.md`.
+2. Check whether `nudge` is installed and which agent hooks are needed.
+3. Run the relevant setup command from the project root.
+4. Verify hooks and skills after restarting the agent session.
+
 ## Supporting Files
 
 - `references/ci.md`: `nudge check` in CI, pre-commit, and scripted gates.
@@ -106,6 +132,8 @@ Expected behavior:
 - `references/learnings.md`: using and recording learned incident notes.
 - `references/learnings-bm25.md`: learned-note retrieval without embeddings.
 - `references/learnings-embeddings.md`: learned-note retrieval with embeddings.
+- `references/setup.md`: local binary install, hook setup, skill install, and
+  verification.
 - `references/rule-writing.md`: rule locations, schema, and examples.
 - `references/rule-debugging.md`: diagnosing noisy, silent, or surprising rules.
 - `references/validation.md`: choosing `validate`, `test`, and `check`.

@@ -16,17 +16,24 @@ Nudge returns provider-specific hook responses, but the working model is simple:
 
 ## Provider Surfaces
 
-Claude Code currently exposes Nudge-relevant `PreToolUse` surfaces for `Write`,
-`Edit`, `WebFetch`, and `Bash`, plus `UserPromptSubmit`.
+| Surface | Claude Code | Codex CLI |
+| --- | --- | --- |
+| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing |
+| `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing |
+| `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing |
+| `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch |
+| `PreToolUse Bash` | yes | partial; Codex hook coverage is incomplete for some shell paths |
+| `PermissionRequest` | parsed only | parsed only |
+| `UserPromptSubmit` | yes | yes |
 
-Codex CLI currently exposes file edits through `apply_patch` normalization,
-partial Bash coverage depending on the hook event, and `UserPromptSubmit`.
-Codex users should still write file rules in terms of `Write` and `Edit`;
-Nudge adapts `apply_patch` internally.
+Write YAML rules in terms of `Write`, `Edit`, `WebFetch`, `Bash`, and
+`UserPromptSubmit`. Codex `apply_patch` is an adapter detail. `Delete` and
+`PermissionRequest` are parsed so Nudge can name them precisely, but they do not
+have YAML rule matchers yet.
 
-`PermissionRequest` and `Delete` are normalized internally where possible, but
-YAML rule matching is intentionally narrower than the internal model until those
-surfaces have stable rule semantics.
+If Codex file-edit input cannot be parsed safely, Nudge allows the operation
+with a model-visible warning. Treat that as "the operation was not fully
+inspected", not as proof that the edit satisfied every rule.
 
 ## How To Respond
 
@@ -49,9 +56,21 @@ For substitutions:
 1. Treat the substituted command as the command that ran.
 2. Preserve the original-to-new mapping when summarizing work.
 3. Do not rerun the original command unless the user explicitly asks for it.
+4. Remember that `nudge check` does not evaluate substitute rules; they require
+   a live Bash hook payload.
 
 For learned context:
 
 1. Read [learnings.md](learnings.md).
 2. Read the cited note before relying on it.
 3. Reuse the prior fix only when the situation matches.
+
+## When Nudge Blocks You
+
+Nudge is a collaborator, not a punishment mechanism. Do not route around it by
+renaming files, changing commands, or splitting edits purely to avoid the
+matcher. Either satisfy the rule or, when the rule is wrong, fix the rule as
+part of the work.
+
+For noisy, silent, or surprising rules, read
+[rule-debugging.md](rule-debugging.md).
