@@ -76,6 +76,21 @@ fn claude_setup_help_mentions_settings_local_json() {
     );
 }
 
+#[test]
+fn codex_setup_help_does_not_mention_command_install() {
+    let (exit_code, stdout, stderr) = run_nudge(&["codex", "setup", "--help"]);
+
+    pretty_assert_eq!(exit_code, 0, "help failed: {stderr}");
+    assert!(
+        stdout.contains("--skip-skills"),
+        "help should mention skill install opt-out, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--skip-commands"),
+        "Codex setup should not advertise unsupported project prompt commands, got: {stdout}"
+    );
+}
+
 fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
     let output = Command::new(nudge_binary())
         .args(args)
@@ -142,18 +157,6 @@ fn assert_claude_nudge_learn_command_installed(project_root: &Path) {
     assert!(command.contains("## What went wrong"));
     assert!(command.contains("## Verification"));
     assert!(command.contains("$ARGUMENTS"));
-}
-
-fn assert_codex_nudge_learn_prompt_installed(project_root: &Path) {
-    let prompt_path = project_root.join(".codex/prompts/nudge-learn.md");
-    let prompt = fs::read_to_string(&prompt_path).expect("read Codex nudge learn prompt");
-
-    assert!(prompt.contains("description: Review this session"));
-    assert!(prompt.contains("argument-hint"));
-    assert!(prompt.contains("Review the current session history"));
-    assert!(prompt.contains("nudge learn add"));
-    assert!(prompt.contains("## What went wrong"));
-    assert!(prompt.contains("## Verification"));
 }
 
 #[test]
@@ -412,15 +415,18 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "fresh setup should install bundled skill, got: {stdout}"
     );
     assert!(
-        stdout.contains("Installed nudge-learn prompt command"),
-        "fresh setup should install bundled prompt command, got: {stdout}"
+        !stdout.contains("prompt command"),
+        "Codex setup should not report unsupported prompt command install, got: {stdout}"
     );
     assert!(
         !stdout.contains("Installed nudge-learnings skill"),
         "fresh setup should not install obsolete standalone learnings skill, got: {stdout}"
     );
     assert_nudge_skill_installed(&temp.path().join(".agents/skills/nudge"));
-    assert_codex_nudge_learn_prompt_installed(temp.path());
+    assert!(
+        !temp.path().join(".codex/prompts/nudge-learn.md").exists(),
+        "Codex setup should not install unsupported project prompt commands"
+    );
     assert!(
         !temp.path().join(".agents/skills/nudge-learnings").exists(),
         "fresh setup should not install obsolete standalone learnings skill"
@@ -439,31 +445,6 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "Bash|apply_patch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
-}
-
-#[test]
-fn codex_setup_can_skip_bundled_commands() {
-    let temp = TempDir::new().expect("temp dir");
-    let codex_dir = temp.path().join(".codex");
-    let args = [
-        "codex",
-        "setup",
-        "--codex-dir",
-        codex_dir.to_str().expect("utf-8 path"),
-        "--skip-commands",
-    ];
-
-    let (exit_code, stdout, stderr) = run_nudge(&args);
-
-    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
-    assert!(
-        !stdout.contains("Installed nudge-learn prompt command"),
-        "setup should not report prompt command install when skipped, got: {stdout}"
-    );
-    assert!(
-        !codex_dir.join("prompts/nudge-learn.md").exists(),
-        "setup should not install bundled prompt command when skipped"
-    );
 }
 
 #[test]
@@ -614,7 +595,10 @@ fn codex_setup_warns_and_skips_inline_toml_hooks() {
         "setup should skip hooks.json when inline hooks exist"
     );
     assert_nudge_skill_installed(&temp.path().join(".agents/skills/nudge"));
-    assert_codex_nudge_learn_prompt_installed(temp.path());
+    assert!(
+        !codex_dir.join("prompts/nudge-learn.md").exists(),
+        "Codex setup should not install unsupported project prompt commands"
+    );
     assert!(
         !temp.path().join(".agents/skills/nudge-learnings").exists(),
         "setup should not install obsolete standalone learnings skill"

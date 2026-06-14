@@ -18,17 +18,3 @@ pub fn install_claude_commands(commands_dir: &Path) -> Result<Vec<PathBuf>> {
 
     Ok(command_paths)
 }
-
-pub fn install_codex_prompts(prompts_dir: &Path) -> Result<Vec<PathBuf>> {
-    let prompt_paths = skills::install_codex_prompts(prompts_dir)
-        .with_context(|| "install Codex bundled Nudge prompt commands")?;
-
-    for prompt_path in &prompt_paths {
-        println!(
-            "Installed nudge-learn prompt command to {}.",
-            prompt_path.display()
-        );
-    }
-
-    Ok(prompt_paths)
-}

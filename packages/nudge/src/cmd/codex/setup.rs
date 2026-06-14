@@ -11,7 +11,7 @@ use color_eyre::eyre::{Context, OptionExt, Result};
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::{command_install, json_hooks, setup_command, skill_install};
+use crate::cmd::{json_hooks, setup_command, skill_install};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -22,10 +22,6 @@ pub struct Config {
     /// Skip installing the bundled Nudge skill.
     #[arg(long)]
     skip_skills: bool,
-
-    /// Skip installing bundled Nudge prompt commands.
-    #[arg(long)]
-    skip_commands: bool,
 }
 
 #[instrument]
@@ -45,11 +41,6 @@ pub fn main(config: Config) -> Result<()> {
             "Codex",
             &project_root.join(".agents").join("skills"),
         )?;
-        println!();
-    }
-
-    if !config.skip_commands {
-        command_install::install_codex_prompts(&dotcodex.join("prompts"))?;
         println!();
     }
 
@@ -121,7 +112,7 @@ pub fn main(config: Config) -> Result<()> {
     println!(
         "4. If hooks do not appear, check that the project .codex/ layer is trusted and [features].hooks has not been disabled."
     );
-    println!("5. The bundled Nudge skill and prompt command will load in new Codex sessions.");
+    println!("5. The bundled Nudge skill will load in new Codex sessions.");
 
     Ok(())
 }

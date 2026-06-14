@@ -73,9 +73,9 @@ rules:
 ```
 
 Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
-`/hooks` in the agent to verify setup. After a useful debugging session, use the
-installed Nudge learning command to ask the agent to record durable repo-local
-learnings for future work.
+`/hooks` in the agent to verify setup. After a useful debugging session, ask the
+agent to use Nudge to record durable repo-local learnings for future work; Claude
+setup also installs a `nudge:learn` slash command for this workflow.
 
 ## Guides
 

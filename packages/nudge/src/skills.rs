@@ -111,14 +111,6 @@ const CLAUDE_COMMAND_FILES: &[BundledCommandFile] = &[BundledCommandFile {
     )),
 }];
 
-const CODEX_PROMPT_FILES: &[BundledCommandFile] = &[BundledCommandFile {
-    path: "nudge-learn.md",
-    content: include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/commands/codex/nudge-learn.md"
-    )),
-}];
-
 pub fn bundled_skills() -> &'static [BundledSkill] {
     BUNDLED_SKILLS
 }
@@ -172,10 +164,6 @@ pub fn install_nudge_skill(skills_dir: &Path) -> Result<PathBuf> {
 
 pub fn install_claude_commands(commands_dir: &Path) -> Result<Vec<PathBuf>> {
     install_command_files(commands_dir, CLAUDE_COMMAND_FILES)
-}
-
-pub fn install_codex_prompts(prompts_dir: &Path) -> Result<Vec<PathBuf>> {
-    install_command_files(prompts_dir, CODEX_PROMPT_FILES)
 }
 
 pub fn remove_obsolete_nudge_learnings_skill(skills_dir: &Path) -> Result<Option<PathBuf>> {
