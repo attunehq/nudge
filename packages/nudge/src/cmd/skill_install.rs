@@ -5,18 +5,16 @@ use std::path::{Path, PathBuf};
 use color_eyre::eyre::{Context, Result};
 use nudge::skills;
 
-pub fn install_nudge_learnings(provider: &str, skills_dir: &Path) -> Result<PathBuf> {
-    let skill_dir = skills::install_nudge_learnings_skill(skills_dir)
-        .with_context(|| format!("install {provider} Nudge learnings skill"))?;
+pub fn install_bundled_skills(provider: &str, skills_dir: &Path) -> Result<Vec<PathBuf>> {
+    let skill_dirs = skills::install_bundled_skills(skills_dir)
+        .with_context(|| format!("install {provider} bundled Nudge skills"))?;
 
+    for (skill, skill_dir) in skills::bundled_skills().iter().zip(&skill_dirs) {
+        println!("Installed {} skill to {}.", skill.name, skill_dir.display());
+    }
     println!(
-        "Installed {} skill to {}.",
-        skills::NUDGE_LEARNINGS_SKILL_NAME,
-        skill_dir.display()
-    );
-    println!(
-        "Use this skill when Nudge surfaces learned repo knowledge or after fixing a repo-specific issue worth recording."
+        "Use these skills when Nudge hook messages appear, when writing rules, or when working with learned repo knowledge."
     );
 
-    Ok(skill_dir)
+    Ok(skill_dirs)
 }

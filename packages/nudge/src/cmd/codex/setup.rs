@@ -19,7 +19,7 @@ pub struct Config {
     #[arg(long, default_value = ".codex")]
     codex_dir: PathBuf,
 
-    /// Skip installing bundled Nudge skills.
+    /// Skip installing the bundled Nudge skills.
     #[arg(long)]
     skip_skills: bool,
 }
@@ -37,7 +37,7 @@ pub fn main(config: Config) -> Result<()> {
         .ok_or_eyre("get parent directory of .codex")?;
 
     if !config.skip_skills {
-        skill_install::install_nudge_learnings(
+        skill_install::install_bundled_skills(
             "Codex",
             &project_root.join(".agents").join("skills"),
         )?;
@@ -112,7 +112,7 @@ pub fn main(config: Config) -> Result<()> {
     println!(
         "4. If hooks do not appear, check that the project .codex/ layer is trusted and [features].hooks has not been disabled."
     );
-    println!("5. The bundled Nudge learnings skill will load in new Codex sessions.");
+    println!("5. The bundled Nudge skills will load in new Codex sessions.");
 
     Ok(())
 }

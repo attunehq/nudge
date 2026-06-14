@@ -33,16 +33,13 @@ cargo test -p nudge test_name
 
 # Run the CLI
 cargo run -p nudge -- claude hook      # Respond to Claude hook (reads JSON from stdin)
-cargo run -p nudge -- claude setup     # Install hooks and bundled skills for Claude
-cargo run -p nudge -- claude docs      # Print rule writing documentation
-cargo run -p nudge -- claude skills install # Install bundled Claude skills
+cargo run -p nudge -- claude setup     # Install hooks, bundled skills, and commands for Claude
+cargo run -p nudge -- claude skills install # Install the bundled Claude skills
 cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from stdin)
 cargo run -p nudge -- codex setup      # Install hooks and bundled skills for Codex
-cargo run -p nudge -- codex docs       # Print rule writing documentation
-cargo run -p nudge -- codex skills install # Install bundled Codex skills
+cargo run -p nudge -- codex skills install # Install the bundled Codex skills
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
 cargo run -p nudge -- learn search     # Search learned incident notes
-cargo run -p nudge -- learn docs       # Print the bundled learnings skill
 cargo run -p nudge -- learn embeddings # Manage local learned-note embeddings
 cargo run -p nudge -- test             # Test a rule against sample input
 cargo run -p nudge -- validate         # Validate rule config files
@@ -55,17 +52,14 @@ cargo run -p nudge -- check            # Check project files against rules (for 
 
 ```
 nudge claude hook   - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge claude setup  - Writes hook configuration and installs bundled skills for Claude
-nudge claude docs   - Prints documentation for writing rules
-nudge claude skills install - Installs bundled skills into .claude/skills
+nudge claude setup  - Writes hook configuration and installs the bundled skills and commands for Claude
+nudge claude skills install - Installs the bundled skills into .claude/skills
 nudge codex hook    - Receives hook JSON on stdin, evaluates rules, outputs response
-nudge codex setup   - Writes hook configuration and installs bundled skills for Codex
-nudge codex docs    - Prints documentation for writing rules
-nudge codex skills install - Installs bundled skills into .agents/skills
+nudge codex setup   - Writes hook configuration and installs the bundled skills for Codex
+nudge codex skills install - Installs the bundled skills into .agents/skills
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
 nudge learn search  - Search learned incident notes with BM25 or configured local embeddings
-nudge learn docs    - Print the bundled learnings skill contents
 nudge learn embeddings - Enable, rebuild, or inspect local learned-note embeddings
 nudge test          - Test a specific rule against sample input
 nudge validate      - Validate and display parsed rule configs
@@ -82,20 +76,21 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/hook/apply_patch.rs` - Codex apply_patch normalization
 - `src/learn.rs` - Repo-local learned incident notes and BM25 retrieval
 - `src/learn/embeddings.rs` - Local FastEmbed embedding cache and hybrid retrieval
-- `src/skills.rs` - Bundled skill assets and installation helpers
+- `src/skills.rs` - Bundled skill and Claude command assets plus installation helpers
+- `src/cmd/command_install.rs` - Shared command/prompt install reporting
 - `src/cmd/claude/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/claude/setup.rs` - Setup command: configures hooks in settings.local.json
-- `src/cmd/claude/docs.rs` - Docs command: prints rule writing guide
-- `src/cmd/claude/skills.rs` - Skills command: installs bundled skills into .claude/skills
+- `src/cmd/claude/skills.rs` - Skills command: installs the bundled skills into .claude/skills
 - `src/cmd/codex/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/codex/setup.rs` - Setup command: configures hooks in hooks.json
-- `src/cmd/codex/docs.rs` - Docs command: prints rule writing guide
-- `src/cmd/codex/skills.rs` - Skills command: installs bundled skills into .agents/skills
+- `src/cmd/codex/skills.rs` - Skills command: installs the bundled skills into .agents/skills
 - `src/cmd/learn.rs` - CLI for adding, listing, and searching learned notes
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
 - `src/cmd/check.rs` - Check command: validate project files against rules for CI
-- `packages/nudge/skills/nudge-learnings/` - Source files for the bundled learnings skill compiled into the binary
+- `packages/nudge/skills/nudge/` - Source files for the bundled Nudge router skill compiled into the binary
+- `packages/nudge/skills/nudge-learnings/` - Source files for the bundled Nudge learnings skill compiled into the binary
+- `packages/nudge/commands/` - Source files for bundled Claude Nudge slash commands compiled into the binary
 - `src/rules.rs` - Rule loading from config files
 - `src/rules/schema.rs` - Rule schema facade and hook matcher types
 - `src/rules/schema/` - Focused matcher implementations for content, glob paths, project state, tree-sitter syntax, and URLs
@@ -136,7 +131,8 @@ Nudge has several documentation sources that must stay aligned. When updating on
 | **README.md** | Humans evaluating or contributing | Landing page and quick orientation | What Nudge is, why it exists, where to start |
 | **docs/user-guide.md** | Users installing and configuring Nudge | How to install, configure, and use Nudge | Setup, expectations, examples, troubleshooting |
 | **docs/developer-guide.md** | Contributors changing Nudge | How to develop and dogfood Nudge | Architecture, tests, live-agent validation |
-| **`nudge claude docs` / `nudge codex docs`** | You or humans writing rules elsewhere | How to write rules (reference card) | Rule syntax, examples |
+| **packages/nudge/skills/nudge/** | Agents using Nudge | How to respond to Nudge, set it up locally, and write/debug rules | Setup, rule syntax, hook responses, validation, CI |
+| **packages/nudge/skills/nudge-learnings/** | Agents debugging repo-specific issues | How to search, apply, and record learned incident notes | Proactive debugging memory, BM25/embeddings, recording learnings |
 
 **AGENTS.md** is Codex-facing bootstrap guidance for developing Nudge.
 
@@ -146,6 +142,8 @@ Nudge has several documentation sources that must stay aligned. When updating on
 
 **docs/user-guide.md** and **docs/developer-guide.md** are the durable guides for users and contributors.
 
-**`nudge claude docs` / `nudge codex docs`** (`src/cmd/claude/docs.rs`, `src/cmd/codex/docs.rs`) is for *using* Nudge - a self-contained reference that future agents or humans can consult when writing rules. It should be scannable, copy-pasteable, and not assume any prior context.
+**packages/nudge/skills/nudge/** is the self-contained agent-facing Nudge router. It should stay scannable, copy-pasteable, and complete enough for modern agents to set up local hooks when needed, understand hook responses, write rules, debug rules, validate changes, and add CI gates without relying on CLI docs subcommands.
+
+**packages/nudge/skills/nudge-learnings/** is the focused agent-facing learnings workflow. It should stay proactive about searching `.nudge/learned` during repo debugging and recording durable repo-specific fixes after the issue is solved.
 
 When you change something fundamental, such as changing the rule format, setup flow, learned-note behavior, or collaborative framing, update every affected source.

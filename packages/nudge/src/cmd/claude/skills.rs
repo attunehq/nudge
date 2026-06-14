@@ -1,4 +1,4 @@
-//! Install bundled Nudge skills for Claude Code.
+//! Install the bundled Nudge skills for Claude Code.
 
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ pub struct Config {
 
 #[derive(Subcommand, Clone, Debug)]
 enum Commands {
-    /// Install the bundled Nudge learnings skill.
+    /// Install the bundled Nudge skills.
     Install(InstallConfig),
 }
 
@@ -33,6 +33,6 @@ pub fn main(config: Config) -> Result<()> {
 }
 
 fn install(config: InstallConfig) -> Result<()> {
-    skill_install::install_nudge_learnings("Claude", &config.claude_dir.join("skills"))?;
+    skill_install::install_bundled_skills("Claude", &config.claude_dir.join("skills"))?;
     Ok(())
 }

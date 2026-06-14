@@ -73,7 +73,10 @@ rules:
 ```
 
 Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
-`/hooks` in the agent to verify setup.
+`/hooks` in the agent to verify setup. After a useful debugging session, ask the
+agent to use `nudge-learnings` to record durable repo-local learnings for future
+work; Claude setup also installs a `nudge:learn` slash command for this
+workflow.
 
 ## Guides
 
@@ -84,12 +87,9 @@ Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
 - [CI and Programmatic Checks](docs/ci.md): using `nudge check` in CI,
   pre-commit hooks, and scripts.
 
-For the generated rule-writing reference:
-
-```bash
-nudge claude docs
-nudge codex docs
-```
+The bundled `nudge` skill is the agent-facing rule reference. The bundled
+`nudge-learnings` skill is the proactive debugging-memory workflow for searching,
+applying, and recording repo-local learned incident notes.
 
 Copyable starter rules live in [examples/rules](examples/rules).
 
@@ -139,8 +139,10 @@ nudge learn embeddings enable
 nudge learn embeddings status
 ```
 
-Setup installs the bundled `nudge-learnings` skill so agents know how to search,
-apply, and record repo-local learnings.
+Setup installs the bundled `nudge` and `nudge-learnings` skills so agents know
+how to respond to hook messages, write or debug rules, wire CI checks, and
+search, apply, or record repo-local learnings. Setup does not edit project
+`CLAUDE.md` or `AGENTS.md` files.
 
 ## Development
 

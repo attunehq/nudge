@@ -66,6 +66,29 @@ fn claude_setup_help_mentions_settings_local_json() {
         stdout.contains("--skip-skills"),
         "help should mention skill install opt-out, got: {stdout}"
     );
+    assert!(
+        stdout.contains("--skip-commands"),
+        "help should mention slash command install opt-out, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--skip-claude-md"),
+        "help should not mention removed CLAUDE.md mutation opt-out, got: {stdout}"
+    );
+}
+
+#[test]
+fn codex_setup_help_does_not_mention_command_install() {
+    let (exit_code, stdout, stderr) = run_nudge(&["codex", "setup", "--help"]);
+
+    pretty_assert_eq!(exit_code, 0, "help failed: {stderr}");
+    assert!(
+        stdout.contains("--skip-skills"),
+        "help should mention skill install opt-out, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--skip-commands"),
+        "Codex setup should not advertise unsupported project prompt commands, got: {stdout}"
+    );
 }
 
 fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
@@ -87,17 +110,82 @@ fn run_built_nudge_in(dir: &TempDir, args: &[&str]) -> (i32, String, String) {
     )
 }
 
-fn assert_learnings_skill_installed(skill_dir: &Path) {
+fn assert_nudge_skill_installed(skill_dir: &Path) {
     let skill = fs::read_to_string(skill_dir.join("SKILL.md")).expect("read SKILL.md");
-    let bm25 = fs::read_to_string(skill_dir.join("references/bm25.md")).expect("read bm25");
-    let embeddings =
-        fs::read_to_string(skill_dir.join("references/embeddings.md")).expect("read embeddings");
+    let ci = fs::read_to_string(skill_dir.join("references/ci.md")).expect("read ci");
+    let hook_responses =
+        fs::read_to_string(skill_dir.join("references/hook-responses.md")).expect("read hooks");
+    let rule_debugging = fs::read_to_string(skill_dir.join("references/rule-debugging.md"))
+        .expect("read rule debugging");
+    let rule_writing =
+        fs::read_to_string(skill_dir.join("references/rule-writing.md")).expect("read rules");
+    let validation =
+        fs::read_to_string(skill_dir.join("references/validation.md")).expect("read validation");
+
+    assert!(skill.contains("name: nudge"));
+    assert!(skill.contains("nudge-learnings"));
+    assert!(skill.contains("references/ci.md"));
+    assert!(skill.contains("references/hook-responses.md"));
+    assert!(skill.contains("references/rule-debugging.md"));
+    assert!(skill.contains("references/rule-writing.md"));
+    assert!(skill.contains("references/validation.md"));
+    assert!(ci.contains("Nudge CI"));
+    assert!(hook_responses.contains("Nudge Hook Responses"));
+    assert!(rule_debugging.contains("Nudge Rule Debugging"));
+    assert!(rule_writing.contains("Nudge Rule Writing"));
+    assert!(validation.contains("Nudge Validation"));
+}
+
+fn assert_nudge_learnings_skill_installed(skill_dir: &Path) {
+    let skill = fs::read_to_string(skill_dir.join("SKILL.md")).expect("read learnings SKILL.md");
+    let learnings =
+        fs::read_to_string(skill_dir.join("references/learnings.md")).expect("read learnings");
+    let learnings_bm25 = fs::read_to_string(skill_dir.join("references/learnings-bm25.md"))
+        .expect("read learnings bm25");
+    let learnings_embeddings =
+        fs::read_to_string(skill_dir.join("references/learnings-embeddings.md"))
+            .expect("read learnings embeddings");
 
     assert!(skill.contains("name: nudge-learnings"));
-    assert!(skill.contains("references/bm25.md"));
-    assert!(skill.contains("references/embeddings.md"));
-    assert!(bm25.contains("BM25 lexical search"));
-    assert!(embeddings.contains("hybrid retrieval"));
+    assert!(skill.contains("search before deep investigation"));
+    assert!(skill.contains("nudge learn add"));
+    assert!(learnings.contains("Nudge Learnings"));
+    assert!(learnings_bm25.contains("Nudge Learnings Without Embeddings"));
+    assert!(learnings_embeddings.contains("Nudge Learnings With Local Embeddings"));
+}
+
+fn assert_claude_nudge_learn_command_installed(project_root: &Path) {
+    let command_path = project_root.join(".claude/commands/nudge/learn.md");
+    let command = fs::read_to_string(&command_path).expect("read Claude nudge learn command");
+
+    assert!(command.contains("Review the current session history"));
+    assert!(command.contains("nudge learn add"));
+    assert!(command.contains("## What went wrong"));
+    assert!(command.contains("## Verification"));
+    assert!(command.contains("$ARGUMENTS"));
+}
+
+#[test]
+fn claude_setup_does_not_modify_claude_md() {
+    let temp = TempDir::new().expect("temp dir");
+    let claude_md = temp.path().join("CLAUDE.md");
+    let original = "# CLAUDE.md\n\nExisting project guidance.\n";
+    fs::write(&claude_md, original).expect("write CLAUDE.md");
+
+    let (exit_code, stdout, stderr) = run_built_nudge_in(&temp, &["claude", "setup"]);
+
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Add this section to CLAUDE.md"),
+        "setup should not prompt to edit CLAUDE.md, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&claude_md).expect("read CLAUDE.md"),
+        original
+    );
+    assert_nudge_skill_installed(&temp.path().join(".claude/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".claude/skills/nudge-learnings"));
+    assert_claude_nudge_learn_command_installed(temp.path());
 }
 
 #[test]
@@ -106,13 +194,7 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     let claude_dir = temp.path().join(".claude");
     let claude_dir = claude_dir.to_str().expect("utf-8 path");
 
-    let args = [
-        "claude",
-        "setup",
-        "--claude-dir",
-        claude_dir,
-        "--skip-claude-md",
-    ];
+    let args = ["claude", "setup", "--claude-dir", claude_dir];
     let (exit_code, stdout, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
     assert!(
@@ -124,10 +206,24 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
         "fresh setup should not create a backup"
     );
     assert!(
-        stdout.contains("Installed nudge-learnings skill"),
-        "fresh setup should install bundled skills, got: {stdout}"
+        stdout.contains("Installed nudge skill"),
+        "fresh setup should install bundled router skill, got: {stdout}"
     );
-    assert_learnings_skill_installed(&temp.path().join(".claude/skills/nudge-learnings"));
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled learnings skill, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Installed nudge:learn command"),
+        "fresh setup should install bundled slash command, got: {stdout}"
+    );
+    assert_nudge_skill_installed(&temp.path().join(".claude/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".claude/skills/nudge-learnings"));
+    assert_claude_nudge_learn_command_installed(temp.path());
+    assert!(
+        !temp.path().join("CLAUDE.md").exists(),
+        "fresh setup should not create CLAUDE.md"
+    );
     let first =
         fs::read_to_string(temp.path().join(".claude/settings.local.json")).expect("read settings");
 
@@ -182,6 +278,31 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
 }
 
 #[test]
+fn claude_setup_can_skip_bundled_commands() {
+    let temp = TempDir::new().expect("temp dir");
+    let claude_dir = temp.path().join(".claude");
+    let args = [
+        "claude",
+        "setup",
+        "--claude-dir",
+        claude_dir.to_str().expect("utf-8 path"),
+        "--skip-commands",
+    ];
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Installed nudge:learn command"),
+        "setup should not report command install when skipped, got: {stdout}"
+    );
+    assert!(
+        !claude_dir.join("commands/nudge/learn.md").exists(),
+        "setup should not install bundled slash command when skipped"
+    );
+}
+
+#[test]
 fn claude_setup_backs_up_existing_settings_without_overwriting_backups() {
     let temp = TempDir::new().expect("temp dir");
     let claude_dir = temp.path().join(".claude");
@@ -199,7 +320,6 @@ fn claude_setup_backs_up_existing_settings_without_overwriting_backups() {
         "setup",
         "--claude-dir",
         claude_dir.to_str().expect("utf-8 path"),
-        "--skip-claude-md",
     ];
     let (exit_code, stdout, stderr) = run_nudge(&args);
     pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
@@ -246,7 +366,6 @@ fn claude_setup_quotes_binary_path_with_spaces() {
         "setup",
         "--claude-dir",
         claude_dir.to_str().expect("utf-8 path"),
-        "--skip-claude-md",
     ];
 
     let (exit_code, _stdout, stderr) = run_nudge_binary(&binary, &args);
@@ -292,10 +411,23 @@ fn codex_setup_creates_hooks_json_and_is_idempotent() {
         "fresh setup should not create a backup"
     );
     assert!(
-        stdout.contains("Installed nudge-learnings skill"),
-        "fresh setup should install bundled skills, got: {stdout}"
+        stdout.contains("Installed nudge skill"),
+        "fresh setup should install bundled router skill, got: {stdout}"
     );
-    assert_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled learnings skill, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("prompt command"),
+        "Codex setup should not report unsupported prompt command install, got: {stdout}"
+    );
+    assert_nudge_skill_installed(&temp.path().join(".agents/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
+    assert!(
+        !temp.path().join(".codex/prompts/nudge-learn.md").exists(),
+        "Codex setup should not install unsupported project prompt commands"
+    );
     let first = fs::read_to_string(temp.path().join(".codex/hooks.json")).expect("read hooks");
 
     let (exit_code, _, stderr) = run_nudge(&args);
@@ -459,7 +591,12 @@ fn codex_setup_warns_and_skips_inline_toml_hooks() {
         !codex_dir.join("hooks.json").exists(),
         "setup should skip hooks.json when inline hooks exist"
     );
-    assert_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
+    assert_nudge_skill_installed(&temp.path().join(".agents/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".agents/skills/nudge-learnings"));
+    assert!(
+        !codex_dir.join("prompts/nudge-learn.md").exists(),
+        "Codex setup should not install unsupported project prompt commands"
+    );
 }
 
 #[test]
