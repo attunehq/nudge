@@ -61,7 +61,7 @@ For substitutions:
 
 For learned context:
 
-1. Read [learnings.md](learnings.md).
+1. Use `nudge-learnings`.
 2. Read the cited note before relying on it.
 3. Reuse the prior fix only when the situation matches.
 

@@ -2,7 +2,7 @@
 
 Use this reference when writing or changing `.nudge.yaml`, `.nudge.yml`, or
 `.nudge/**/*.yaml`. Rules are deterministic conventions. Learned incident notes
-are repo memory; use [learnings.md](learnings.md) for those.
+are repo memory; use `nudge-learnings` for those.
 
 ## Rule Locations
 

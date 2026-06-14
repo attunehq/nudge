@@ -22,7 +22,7 @@ enum Commands {
     /// Set up Nudge hooks in .codex/hooks.json, backing up existing hooks.
     Setup(setup::Config),
 
-    /// Install the bundled Nudge skill into .agents/skills.
+    /// Install the bundled Nudge skills into .agents/skills.
     Skills(skills::Config),
 }
 

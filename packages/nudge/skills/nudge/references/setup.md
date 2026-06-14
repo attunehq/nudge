@@ -1,7 +1,7 @@
 # Nudge Setup
 
 Use this reference when a local machine or freshly cloned repo has Nudge rules
-but the agent hooks, bundled skill, or Claude Nudge slash commands are not set
+but the agent hooks, bundled skills, or Claude Nudge slash commands are not set
 up yet.
 When Nudge has already blocked, warned, substituted, or surfaced learned context, read
 [hook-responses.md](hook-responses.md) first.
@@ -15,11 +15,12 @@ Setup is appropriate when:
   is firing.
 - A teammate cloned the repo and needs Claude Code or Codex CLI to honor the
   repo's Nudge rules.
-- The bundled `nudge` skill or Claude learning command is missing or stale.
+- The bundled `nudge` / `nudge-learnings` skills or Claude learning command are
+  missing or stale.
 
 Do not edit `CLAUDE.md`, `AGENTS.md`, or other project instruction files to
 teach agents about Nudge. Modern agents should learn Nudge behavior from the
-bundled skill and hook responses.
+bundled skills and hook responses.
 
 ## Install The Binary
 
@@ -71,13 +72,15 @@ Claude setup:
 - backs up an existing settings file before writing
 - registers `PreToolUse` for `Write|Edit|WebFetch|Bash`
 - registers `UserPromptSubmit`
-- installs the bundled skill to `.claude/skills/nudge`
+- installs the bundled skills to `.claude/skills/nudge` and
+  `.claude/skills/nudge-learnings`
 - installs the Nudge learning slash command to `.claude/commands/nudge/learn.md`
 
 Codex setup:
 
 - creates `.codex/` when needed
-- installs the bundled skill to `.agents/skills/nudge`
+- installs the bundled skills to `.agents/skills/nudge` and
+  `.agents/skills/nudge-learnings`
 - writes or merges `.codex/hooks.json`
 - backs up an existing hooks file before writing
 - registers `PreToolUse` for `Bash|apply_patch`
@@ -97,7 +100,7 @@ nudge claude setup --claude-dir path/to/.claude
 nudge codex setup --codex-dir path/to/.codex
 ```
 
-Use `--skip-skills` only when hook setup is wanted but the bundled skill is
+Use `--skip-skills` only when hook setup is wanted but the bundled skills are
 managed separately:
 
 ```bash
@@ -139,6 +142,7 @@ Claude-specific checks:
 
 - `claude --debug` shows hook execution logs.
 - The Nudge skill should exist at `.claude/skills/nudge`.
+- The Nudge learnings skill should exist at `.claude/skills/nudge-learnings`.
 - The Nudge learning command should exist at `.claude/commands/nudge/learn.md`.
 
 Codex-specific checks:
@@ -146,8 +150,9 @@ Codex-specific checks:
 - Trust the project `.codex/` layer when prompted.
 - Confirm hooks have not been disabled in Codex config.
 - The Nudge skill should exist at `.agents/skills/nudge`.
-- Codex users can explicitly invoke `$nudge` when they want help recording
-  learnings from a session.
+- The Nudge learnings skill should exist at `.agents/skills/nudge-learnings`.
+- Codex users can explicitly invoke `nudge-learnings` when they want help
+  recording learnings from a session.
 
 If hooks still do not appear, inspect the generated hook file and verify the
 recorded command points to the intended `nudge` binary.

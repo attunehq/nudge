@@ -57,7 +57,8 @@ Important entrypoints:
 | `packages/nudge/src/skills.rs` | Bundled skill and Claude command assets plus install helpers |
 | `packages/nudge/src/cmd/` | CLI subcommands |
 | `packages/nudge/tests/it/` | Integration tests |
-| `packages/nudge/skills/nudge/` | Source for the bundled Nudge skill |
+| `packages/nudge/skills/nudge/` | Source for the bundled Nudge router skill |
+| `packages/nudge/skills/nudge-learnings/` | Source for the bundled Nudge learnings skill |
 | `packages/nudge/commands/` | Source for bundled Claude Nudge slash commands |
 | `examples/rules/` | Copyable example rule files |
 
@@ -266,10 +267,12 @@ Verify generated files directly:
 - `.claude/settings.local.json`
 - `.codex/hooks.json`
 - `.claude/skills/nudge/SKILL.md`
+- `.claude/skills/nudge-learnings/SKILL.md`
 - `.agents/skills/nudge/SKILL.md`
+- `.agents/skills/nudge-learnings/SKILL.md`
 
 Setup should not create or edit project `CLAUDE.md` or `AGENTS.md`; Nudge
-bootstrap guidance lives in the bundled skill.
+bootstrap guidance lives in the bundled skills.
 
 ### 5. Run Codex In The Disposable Repo
 
@@ -354,9 +357,11 @@ Keep these sources aligned when behavior changes:
 - `docs/ci.md`: `nudge check` contract.
 - `AGENTS.md`: Codex-facing repository guidance.
 - `CLAUDE.md`: Claude-facing repository guidance.
-- `packages/nudge/skills/nudge/`: bundled agent-facing Nudge skill and focused
-  references for setup, rule writing, debugging, validation, CI, hook
+- `packages/nudge/skills/nudge/`: bundled agent-facing Nudge router skill and
+  focused references for setup, rule writing, debugging, validation, CI, hook
   responses, and learned incident notes.
+- `packages/nudge/skills/nudge-learnings/`: bundled proactive debugging-memory
+  skill for learned incident notes.
 - `packages/nudge/commands/`: bundled Claude slash commands installed during
   setup.
 - `examples/rules/`: copyable starter rules.

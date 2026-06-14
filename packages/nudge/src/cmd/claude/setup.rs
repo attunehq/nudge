@@ -18,7 +18,7 @@ pub struct Config {
     #[arg(long, default_value = ".claude")]
     claude_dir: PathBuf,
 
-    /// Skip installing the bundled Nudge skill.
+    /// Skip installing the bundled Nudge skills.
     #[arg(long)]
     skip_skills: bool,
 

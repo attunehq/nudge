@@ -1,6 +1,6 @@
 ---
 name: nudge
-description: Routes Nudge work to focused guidance for hook responses, local setup, rules, CI checks, rule debugging, validation, and learned incident notes. Use when Nudge appears in hook output, blocks, warns, substitutes a command, surfaces learned context, a repo has Nudge rules but local hooks are not set up, or when the user asks to install, configure, validate, check, write, debug, or update Nudge rules or learnings.
+description: Use for Nudge hook feedback and repo Nudge setup, `.nudge` rules, validation, CI, and rule debugging.
 ---
 
 # Nudge
@@ -14,7 +14,8 @@ the user's task.
 ## When to use
 
 - Nudge blocks, warns about, or substitutes a tool command.
-- Nudge surfaces learned repo context.
+- Nudge surfaces learned repo context; use `nudge-learnings` for the focused
+  debugging-memory workflow.
 - The user asks what Nudge is or why it interrupted.
 - The user asks to install Nudge locally or set up hooks for a repo with Nudge
   rules.
@@ -39,8 +40,8 @@ the user's task.
      `references/validation.md`
    - CI, pre-commit, release gates, or scripts:
      `references/ci.md`
-   - Learned incident notes:
-     `references/learnings.md`
+   - Learned incident notes and proactive debugging memory:
+     use `nudge-learnings`
 3. Follow that reference, then continue the user's task.
 
 ## Examples
@@ -70,7 +71,7 @@ Expected behavior:
 Nudge surfaces learned context from `.nudge/learned`.
 
 Expected behavior:
-1. Read `references/learnings.md`.
+1. Use `nudge-learnings`.
 2. Inspect the cited note.
 3. Apply it only if it matches the current situation.
 
@@ -80,7 +81,7 @@ After debugging, the agent fixes a repo-specific issue that future agents are
 likely to hit again.
 
 Expected behavior:
-1. Read `references/learnings.md`.
+1. Use `nudge-learnings`.
 2. Record a concise learned incident note under `.nudge/learned` with the
    symptom, root cause, fix, and verification.
 3. Keep the note repo-specific; do not record generic programming advice.
@@ -129,9 +130,6 @@ Expected behavior:
 
 - `references/ci.md`: `nudge check` in CI, pre-commit, and scripted gates.
 - `references/hook-responses.md`: provider surfaces and response types.
-- `references/learnings.md`: using and recording learned incident notes.
-- `references/learnings-bm25.md`: learned-note retrieval without embeddings.
-- `references/learnings-embeddings.md`: learned-note retrieval with embeddings.
 - `references/setup.md`: local binary install, hook setup, skill install, and
   verification.
 - `references/rule-writing.md`: rule locations, schema, and examples.

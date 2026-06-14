@@ -23,7 +23,7 @@ enum Commands {
     /// settings.
     Setup(setup::Config),
 
-    /// Install the bundled Nudge skill into .claude/skills.
+    /// Install the bundled Nudge skills into .claude/skills.
     Skills(skills::Config),
 }
 
