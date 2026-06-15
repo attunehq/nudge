@@ -121,6 +121,18 @@ files under `.nudge/`. Learned notes are plain Markdown files under
 Rules are best for deterministic conventions. Learned notes are for incidents:
 what went wrong, how it was fixed, and how the fix was verified.
 
+This is intentionally narrower than built-in agent memory. Built-in Claude or
+Codex memory can be useful for broad personal preferences, but it can also
+follow an agent across repos, branches, or worktrees before the
+checked-out code supports the remembered fact. `nudge learn` stores Markdown
+notes in Git, so each checkout only sees the learnings present with that code. A
+note added on an unmerged branch does not appear in another worktree.
+
+The incident shape matters too. Notes are written as problem, fix, and
+verification instead of "anything about this project", which gives retrieval
+concrete symptoms and commands to match. That keeps learned context quieter and
+less likely to pollute unrelated tasks.
+
 ```bash
 nudge learn add --title "Expo Metro resolver cache" --body "What went wrong: Expo could not resolve modules after a dependency update.
 

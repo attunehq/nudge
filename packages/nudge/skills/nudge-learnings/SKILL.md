@@ -7,9 +7,11 @@ description: Use during repo debugging to search `.nudge/learned` before investi
 
 ## Purpose
 
-Nudge learnings are repo-local debugging memory. Use this skill proactively
-when a repo-specific failure might already have a recorded fix, and after
-solving a durable repo-specific issue that future agents should not rediscover.
+Nudge learnings are repo-local debugging memory, not broad agent memory. They
+live in Git with the repo, so each branch or worktree only sees the notes present
+in that checkout. Use this skill proactively when a repo-specific failure might
+already have a recorded fix, and after solving a durable repo-specific issue
+that future agents should not rediscover.
 
 ## When to use
 
@@ -19,8 +21,8 @@ solving a durable repo-specific issue that future agents should not rediscover.
 - The user asks to search, list, record, or update Nudge learnings.
 - You fixed a repo-specific issue that another agent could plausibly hit again.
 
-Do not record generic programming advice, secrets, credentials, or one-off
-observations that are unlikely to recur.
+Do not record generic programming advice, broad personal preferences, secrets,
+credentials, or one-off observations that are unlikely to recur.
 
 ## Workflow
 

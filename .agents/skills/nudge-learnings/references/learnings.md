@@ -7,6 +7,13 @@ bug that future agents should not rediscover.
 Learned notes live in `.nudge/learned/*.md`. They are repo memory from previous
 debugging sessions, not generic advice.
 
+This is intentionally narrower than built-in agent memory. Built-in agent memory
+can help with broad user preferences, but it can also activate across unrelated
+repos, branches, or worktrees. Nudge learnings are checked into Git, so a note
+from an unmerged branch is absent from another checkout. They are also shaped as
+problem, fix, and verification, which gives retrieval concrete symptoms to match
+instead of broad project affinity.
+
 ## Choose Retrieval Guide
 
 1. Run `nudge learn embeddings status`, or inspect `.nudge.yaml` / `.nudge.yml`
@@ -41,7 +48,8 @@ spent time there.
 ## Recording A Learning
 
 Record a note after fixing a repo-specific issue another agent could plausibly
-hit again. Use this structure:
+hit again. The note should describe a recurring incident, not a broad project
+journal entry. Use this structure:
 
 ```markdown
 # Short specific title

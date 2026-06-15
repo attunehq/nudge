@@ -21,6 +21,18 @@ Learned incident notes are repo-local debugging memory. Use them for "we saw
 this failure before, here is what happened, here is the fix, and here is how we
 verified it". Notes live as plain Markdown under `.nudge/learned/*.md`.
 
+Learned incident notes are deliberately narrower than built-in agent memory.
+Built-in Claude or Codex memory is useful for facts that should follow you
+everywhere, but it can activate in the wrong repo, branch, or worktree. Nudge
+learnings live in Git with the code, so a checkout only sees the notes present in
+that checkout. If a learning was added on a branch that has not merged, another
+worktree will not see it.
+
+The note format is also part of the design. A learning should name a concrete
+problem, the fix, and the verification, not every interesting fact about a
+project. That focused shape gives retrieval sharper terms and keeps unrelated
+sessions from receiving stale context.
+
 When a match happens, Nudge can:
 
 - Interrupt a risky or convention-breaking tool call before it runs.
@@ -235,6 +247,15 @@ nudge codex skills install
 ## Learned Incident Notes
 
 Record a learning when a debugging session produces knowledge worth reusing.
+Use `learn` for repo-specific incidents whose truth should move with the code
+history: failing commands, local setup traps, dependency quirks, build
+surprises, or toolchain behavior that another agent could hit again.
+
+Do not use learned notes as a broad project journal. If the information is a
+personal preference that should apply everywhere, built-in agent memory or an
+agent profile may be the better home. If the information only makes sense for
+this repo, and especially for this version of this repo, put it under
+`.nudge/learned` so Git controls when agents can see it.
 
 ```bash
 nudge learn add --title "Expo Metro resolver cache" --body "What went wrong: Expo could not resolve modules after a dependency update.
