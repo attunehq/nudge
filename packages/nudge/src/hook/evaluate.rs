@@ -9,6 +9,7 @@ use crate::{
         BashInput, EditInput, NudgeHook, PreToolUse, ToolUse, UserPromptSubmit, WebFetchInput,
         WriteInput, response::HookOutcome,
     },
+    learn::{self, HookLearnedContext, LearnConfig, LearnedNote},
     rules::{
         FileContentTarget, PreToolUseBashMatcher, PreToolUseWebFetchMatcher,
         PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher, UserPromptSubmitMatcher,
@@ -22,10 +23,28 @@ use crate::{
 /// A raw provider hook can normalize into multiple Nudge events. This happens
 /// for Codex `apply_patch`, where one tool call can touch several files.
 pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
+    evaluate_hooks_with_learnings(
+        std::path::Path::new("."),
+        hooks,
+        rules,
+        &[],
+        &LearnConfig::default(),
+    )
+}
+
+/// Evaluate hooks against configured rules and learned repo knowledge.
+pub fn evaluate_hooks_with_learnings(
+    root: &std::path::Path,
+    hooks: &[NudgeHook],
+    rules: &[Rule],
+    learned_notes: &[LearnedNote],
+    learn_config: &LearnConfig,
+) -> HookOutcome {
     let mut pretooluse_warnings = Vec::new();
     let mut pretooluse_matches = Vec::new();
     let mut pretooluse_update = None;
     let mut user_prompt_matches = Vec::new();
+    let learned_context = learn::context_for_hooks(root, hooks, learned_notes, learn_config);
 
     for hook in hooks {
         match hook {
@@ -57,27 +76,61 @@ pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
     }
 
     if !pretooluse_warnings.is_empty() {
+        let additional_context = join_context(
+            pretooluse_warnings.join("\n\n"),
+            learned_context.pre_tool_use.clone(),
+        );
         return HookOutcome::AllowPreToolUseWithContext {
             system_message: String::from("Nudge allowed the operation with a warning."),
-            additional_context: pretooluse_warnings.join("\n\n"),
+            additional_context,
         };
     }
 
     if !user_prompt_matches.is_empty() {
-        return HookOutcome::AddContext {
-            context: user_prompt_matches.join("\n\n"),
-        };
+        let context = join_context(
+            user_prompt_matches.join("\n\n"),
+            learned_context.user_prompt.clone(),
+        );
+        return HookOutcome::AddContext { context };
     }
 
     if let Some(update) = pretooluse_update {
+        let additional_context =
+            join_context(update.model_context, learned_context.pre_tool_use.clone());
         return HookOutcome::UpdatePreToolUse {
             system_message: update.user_message,
-            additional_context: update.model_context,
+            additional_context,
             updated_input: update.updated_input,
         };
     }
 
+    if let HookLearnedContext {
+        user_prompt: Some(context),
+        ..
+    } = learned_context
+    {
+        return HookOutcome::AddContext { context };
+    }
+
+    if let HookLearnedContext {
+        pre_tool_use: Some(additional_context),
+        ..
+    } = learned_context
+    {
+        return HookOutcome::AllowPreToolUseWithContext {
+            system_message: String::from("Nudge found learned repo knowledge."),
+            additional_context,
+        };
+    }
+
     HookOutcome::Passthrough
+}
+
+fn join_context(primary: String, secondary: Option<String>) -> String {
+    match secondary {
+        Some(secondary) if !secondary.trim().is_empty() => format!("{primary}\n\n{secondary}"),
+        _ => primary,
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

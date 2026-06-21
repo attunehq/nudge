@@ -3,7 +3,9 @@
 pub mod agent;
 pub mod git;
 pub mod hook;
+pub mod learn;
 pub mod rules;
+pub mod skills;
 pub mod snippet;
 pub mod template;
 

@@ -1,307 +1,170 @@
 # Nudge
 
-Nudge is a **collaborative memory layer** for agent hooks. It remembers the coding conventions, patterns, and preferences that matter to you so Claude Code or Codex CLI can focus on solving your actual problem instead of tracking a mental checklist of stylistic details.
+Nudge is a collaborative memory layer for Claude Code and Codex CLI hooks. It
+remembers the coding conventions, workflow preferences, and repo-local debugging
+lessons that agents should use while they work.
 
-Think of Nudge as a helpful tap on the shoulder: *"Hey, remember this codebase uses turbofish syntax"* rather than a guard checking badges at the door.
+Write the reminder once. Let Nudge deliver it at the moment an agent is about to
+write a file, run a command, fetch a URL, or start a turn.
 
-For current rule syntax, run `nudge claude docs` or `nudge codex docs`. Copyable starter rules live in [examples/rules](examples/rules).
+## Why Use It
 
-## The Problem Nudge Solves
+Agents do better work when they can focus on the actual task instead of holding
+every project preference in working memory. Nudge moves those preferences into
+small, testable rules and learned notes:
 
-Human engineers are (rightfully!) particular about code style. But asking an agent to keep dozens of project-specific preferences in working memory competes with focusing on what you actually want to accomplish.
+- Rules catch deterministic conventions before an operation lands.
+- Bash substitutions rewrite simple command mistakes automatically.
+- Prompt reminders add project context when a user asks for something specific.
+- Learned incident notes keep future agents from rediscovering old debugging
+  fixes.
+- `nudge check` brings the same file-rule enforcement to CI and scripts.
 
-Nudge offloads those details. You encode your preferences once, and Nudge catches the slips, freeing both you and the agent to think at the level of *"implement this feature"* rather than *"implement this feature, and remember the 47 things I care about."*
+Nudge is direct by design. A good message says what is wrong, how to fix it, and
+that the agent should retry.
 
-## How It Works
+## Quick Start
 
-Nudge uses agent hook systems to watch supported operations:
-
-- [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks)
-- [Codex CLI hooks](https://developers.openai.com/codex/hooks)
-
-For provider-free usage, `nudge check` runs file rules as a one-shot project
-checker for CI, pre-commit hooks, and other scripts. See
-[CI and programmatic checks](docs/ci.md).
-
-When something matches a rule you've defined:
-
-- **Interrupt** (PreToolUse rules): Nudge catches the issue *before* it's written and explains what to fix
-- **Substitute** (PreToolUse Bash rules): Nudge rewrites simple deterministic commands, lets the tool proceed, and tells the model what changed
-- **Continue** (UserPromptSubmit rules): Nudge injects context into the conversation to guide the agent
-- **Passthrough**: No rules matched, everything proceeds normally
-
-## Example Rules
-
-These are the rules Nudge uses on its own codebase (yes, we dogfood):
-
-| Preference           | What Nudge reminds agents about                            |
-|----------------------|-------------------------------------------------------------|
-| No inline imports    | Move `use` statements to the top of the file                |
-| LHS type annotations | Prefer turbofish (`::<T>`) over `let x: T = ...`            |
-| String literals      | Use `String::from("...")` instead of `"...".to_string()`    |
-| Qualified paths      | Import and use shorter names instead of long paths          |
-| Pretty assertions    | Use `pretty_assertions` in tests for better diff output     |
-| No `.unwrap()`       | Use `.expect("...")` with a descriptive message             |
-
-Other Attune codebases of course have other rules.
-
-## Writing Effective Rules
-
-Nudge is a collaborative partner, but **trusted partners can be blunt**.
-
-When an agent is deep in implementation, gentle suggestions get lost in the noise. A soft *"you might want to consider..."* will likely be ignored. A direct *"Stop. Move this import to the top of the file."* gets attention.
-
-This isn't about being harsh, it's about being effective. Think of a rally copilot: they say "HARD LEFT NOW" not because they're angry, but because that's what cuts through when the driver is focused. The trust is what *allows* the directness.
-
-**Guidelines for rule messages:**
-
-- **Be specific**: "Move this import to the top of the file" not "Consider reorganizing imports"
-- **Be direct**: "Stop. Fix this first." not "You might want to think about..."
-- **Explain why** (briefly): "Use turbofish; LHS annotations clutter the variable name"
-- **Give the fix**: Don't just say what's wrong; say what to do instead
-- **Use suggestions**: Capture groups let you generate context-aware fixes (see `nudge claude docs` or `nudge codex docs`)
-- **End with "then retry"**: Tell the agent to retry the operation after fixing
-- **Write for one match**: Your message appears at each match location in a code snippet
-
-Nudge displays violations like Rust compiler errors. Your message appears directly at the matched code:
-
-```
-error: rule violation
-  |
-2 |     use std::io;
-  | ^^^^^^^^ Move this import to the top of the file, then retry.
-3 |     use std::fs;
-  | ^^^^^^^^ Move this import to the top of the file, then retry.
-  |
-```
-
-The pattern: **what's wrong** -> **how to fix** -> **retry**.
-
-For simple mechanical Bash command rewrites, use `action: substitute` with a regex `replace:` template instead of a blocking message:
-
-```yaml
-version: 1
-rules:
-  - name: use-yarn-add
-    action: substitute
-    on:
-      - hook: PreToolUse
-        tool: Bash
-        command:
-          - kind: Regex
-            pattern: "^npm install(?: (?P<args>.*))?$"
-            replace: "yarn add {{ $args }}"
-```
-
-Substitutions work for Claude Code and Codex CLI. Nudge returns the provider's full updated tool input with only `command` changed, and adds `hookSpecificOutput.additionalContext` so the model sees what was rewritten.
-
-### External Matcher Trust Model
-
-`kind: External` runs a command from your rule YAML with the file content piped to stdin. Treat rule files as trusted local code: do not install or run Nudge rules from a source you would not trust to execute shell commands on your machine.
-
-External commands fail closed. By default, each command has 5000ms to finish; set `timeout_ms` on the matcher when a legitimate checker needs a different bound. If you set `timeout_ms: 0`, Nudge waits indefinitely for that command. A non-zero exit status, missing command, spawn failure, wait failure, or timeout all count as a match so a broken external checker does not silently make a rule inert. Use `{{ $command }}` and `{{ $external_status }}` in the rule message to show the command and what happened.
-
-```yaml
-content:
-  - kind: External
-    command: ["markdownlint", "--stdin"]
-    timeout_ms: 10000
-```
-
-### Markdown Code Blocks
-
-File rules can choose which part of a matched file is checked with `target`.
-The default is `target: { kind: Content }`, which evaluates matchers against
-the raw file content. For Markdown files, use `MarkdownCodeBlock` to evaluate
-the same Regex, SyntaxTree, or External matchers against fenced code blocks for
-a specific language:
-
-```yaml
-on:
-  - hook: PreToolUse
-    tool: Write
-    file: "**/*.md"
-    target:
-      kind: MarkdownCodeBlock
-      language: rust
-    content:
-      - kind: SyntaxTree
-        language: rust
-        query: "(let_declaration type: (_) @type)"
-```
-
-All content matchers in a Markdown code-block target must match the same fenced
-block. Snippets and `nudge check` line numbers point back to the physical
-Markdown file.
-
-For the full rule syntax and copy-pasteable examples, run `nudge claude docs` or `nudge codex docs`.
-
-### Rule Writing Is Iterative
-
-If an agent ignores a rule, **the fix is usually to make the message more direct**, not to give up on the rule.
-
-Attune dogfoods Nudge on its own codebase and on other codebases we manage. When we notice an agent routing around a rule or missing the point, we tune the message until it lands. Treat ignored rules as feedback on clarity, not evidence that rules don't work.
-
-The collaborative spirit lives in *why* Nudge exists (to help the agent focus on your real problem), not in tiptoeing around feedback.
-
-## Setup
-
-### 1. Install Nudge
-
-**macOS / Linux:**
+Install:
 
 ```bash
 curl -sSfL https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.sh | bash
 ```
 
-**Windows (PowerShell):**
+Release binaries support macOS, Linux, and Windows x64. BM25 learned-note
+search is always available. Local semantic embeddings are included on Apple
+Silicon macOS and x64 GNU Linux; Intel macOS, musl Linux, arm64 GNU Linux, and
+Windows GNU builds omit local semantic embeddings.
+
+Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.ps1 | iex
 ```
 
-**From source:**
-
-```bash
-git clone https://github.com/attunehq/nudge
-cd nudge
-cargo install --path packages/nudge
-```
-
-### 2. Install Hooks in Your Project
-
-Navigate to any project where you use Claude Code or Codex CLI and run the setup for the agent you use:
+Set up hooks in a project. Run the setup command for the agent you use, or both
+commands if you use both agents:
 
 ```bash
 nudge claude setup
 nudge codex setup
 ```
 
-Claude setup adds Nudge to `.claude/settings.local.json`. Codex setup adds Nudge to `.codex/hooks.json`. If the target file already exists, setup first writes a non-overwriting backup next to it, such as `settings.local.json.bak` or `hooks.json.bak.1`, and prints the backup path. You can verify with `/hooks` in the relevant agent.
+Add a `.nudge.yaml`:
 
-> [!NOTE]
-> Hook configuration is loaded when agent sessions start, so restart open Claude Code or Codex sessions after setup. Future changes to rules are internal to Nudge and therefore do not need an agent restart.
+```yaml
+version: 1
+rules:
+  - name: no-unwrap
+    message: 'Use `.expect("descriptive error message")` instead of `.unwrap()`, then retry.'
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: Regex
+            pattern: "\\.unwrap\\(\\)"
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: Regex
+            pattern: "\\.unwrap\\(\\)"
+```
 
-### 3. Use Your Agent Normally
+Restart open agent sessions, then use Claude Code or Codex CLI normally. Run
+`/hooks` in the agent to verify setup. After a useful debugging session, ask the
+agent to use `nudge-learnings` to record durable repo-local learnings for future
+work; Claude setup also installs a `nudge:learn` slash command for this
+workflow.
 
-Nudge runs automatically as you use Claude Code or Codex CLI. No changes to your workflow required.
+## Guides
 
-## Seeing It Work
+- [User Guide](docs/user-guide.md): install, setup, rule examples, learned
+  notes, agent behavior, and troubleshooting.
+- [Developer Guide](docs/developer-guide.md): architecture, local development,
+  tests, dogfooding, live-agent testing, and PR expectations.
+- [CI and Programmatic Checks](docs/ci.md): using `nudge check` in CI,
+  pre-commit hooks, and scripts.
 
-### In Practice
+The bundled `nudge` skill is the agent-facing rule reference. The bundled
+`nudge-learnings` skill is the proactive debugging-memory workflow for searching,
+applying, and recording repo-local learned incident notes.
 
-Write some rules for things that you want to be enforced, and then just use your agent normally. You should see Nudge interject when the rules are violated and help the agent stay on track.
+Copyable starter rules live in [examples/rules](examples/rules).
 
-### Debug Mode
+## How It Works
 
-Run your agent with debug logging to see hook execution. For Claude Code:
+Nudge watches supported hook surfaces:
+
+- `PreToolUse` for file writes/edits, Bash, and WebFetch where the provider
+  exposes them.
+- `UserPromptSubmit` for prompt-time context.
+- Codex `apply_patch` inputs, normalized into Write/Edit/Delete where possible.
+
+When a rule or learned note matches, Nudge returns one of these outcomes:
+
+| Outcome | Meaning |
+| --- | --- |
+| Passthrough | Nothing matched, so the agent continues silently. |
+| Continue | Prompt-time context is injected into the conversation, including prompt-matched learned notes. |
+| Interrupt | A tool call is blocked with a rule message and snippet. |
+| Substitute | A deterministic Bash command is rewritten and allowed. |
+| Warning | An operation is allowed with model-visible context, such as PreToolUse learned-note context or an uninspectable Codex patch warning. |
+
+Rules are loaded from user-level config, `.nudge.yaml`, `.nudge.yml`, and YAML
+files under `.nudge/`. Learned notes are plain Markdown files under
+`.nudge/learned/`.
+
+## Learned Notes
+
+Rules are best for deterministic conventions. Learned notes are for incidents:
+what went wrong, how it was fixed, and how the fix was verified.
+
+This is intentionally narrower than built-in agent memory. Built-in Claude or
+Codex memory can be useful for broad personal preferences, but it can also
+follow an agent across repos, branches, or worktrees before the
+checked-out code supports the remembered fact. `nudge learn` stores Markdown
+notes in Git, so each checkout only sees the learnings present with that code. A
+note added on an unmerged branch does not appear in another worktree.
+
+The incident shape matters too. Notes are written as problem, fix, and
+verification instead of "anything about this project", which gives retrieval
+concrete symptoms and commands to match. That keeps learned context quieter and
+less likely to pollute unrelated tasks.
 
 ```bash
-claude --debug
+nudge learn add --title "Expo Metro resolver cache" --body "What went wrong: Expo could not resolve modules after a dependency update.
+
+Fix: clear the Metro cache and restart the dev server.
+
+Verification: expo start completed and the app loaded."
+
+nudge learn search expo metro cannot resolve module
+nudge learn list
 ```
 
-You'll see Nudge's hook being called and its response in the logs.
-
-### CI / Linting Mode
-
-Use `nudge check` to validate your project against file rules without Claude
-Code, Codex CLI, or installed hooks. This is the right mode for CI pipelines,
-pre-commit checks, release gates, and other programmatic usage.
+BM25 search is always available. Projects can opt into local semantic retrieval:
 
 ```bash
-# Check entire project
-nudge check
-
-# Check specific paths or patterns
-nudge check src/
-nudge check "**/*.rs"
-
-# Use in CI (fails build on violations)
-nudge check || exit 1
+nudge learn embeddings enable
+nudge learn embeddings status
 ```
 
-When you pass explicit paths or globs, each one must resolve to at least one
-file. Missing paths, empty directories, and glob patterns that match no files
-fail with a non-zero exit so CI scripts do not silently check nothing.
-
-`nudge check` evaluates file-based block rules for `PreToolUse` Write/Edit
-matchers, including Regex, SyntaxTree, and External content matchers. It
-supports SyntaxTree rules for Rust, TypeScript, JavaScript, Python, Go, Java,
-C#, Kotlin, and Haskell. It also supports `target: { kind: MarkdownCodeBlock }`
-for fenced code blocks inside Markdown files. Hook-only behavior such as Bash
-substitutions, WebFetch, UserPromptSubmit reminders, permissions, delete
-events, and workflows still belongs to live hook mode.
-
-Example output when violations are found:
-
-```
-x Found 3 issues in 2 files
-
-./src/main.rs:42 [no-unwrap]
-  Use `.expect("descriptive error message")` instead of `.unwrap()`, then retry.
-
-./src/lib.rs:15 [no-inline-imports]
-  Move this `use` statement to the top of the file, then retry.
-
-./src/lib.rs:23 [no-inline-imports]
-  Move this `use` statement to the top of the file, then retry.
-
-Checked 25 files against 6 rules
-```
-
-When all checks pass:
-
-```
-Checked 25 files against 6 rules
-  - .nudge.yaml: 6 rules
-```
-
-For the full check-mode contract, CI examples, and supported-feature matrix,
-see [CI and programmatic checks](docs/ci.md).
-
-### Manual Testing
-
-You can test a specific rule with the `test` subcommand:
-
-```bash
-nudge test --rule no-inline-imports --tool Write --file test.rs \
-  --content $'fn main() {\n    use std::io;\n}'
-```
-
-Or pipe raw hook JSON to nudge directly:
-
-```bash
-echo '{
-  "hook_event_name": "PreToolUse",
-  "session_id": "test",
-  "transcript_path": "/tmp/test",
-  "permission_mode": "default",
-  "cwd": "/tmp",
-  "tool_name": "Write",
-  "tool_use_id": "123",
-  "tool_input": {
-    "file_path": "test.rs",
-    "content": "fn main() {\n    use std::io;\n}"
-  }
-}' | nudge claude hook
-
-# Codex sends apply_patch for file writes and edits. Nudge normalizes supported
-# add/update/delete patches into Write/Edit/Delete before evaluating rules, and
-# warns the model when an apply_patch input cannot be inspected.
-echo '{
-  "hook_event_name": "PreToolUse",
-  "cwd": "/tmp",
-  "tool_name": "apply_patch",
-  "tool_input": {
-    "command": "*** Begin Patch\n*** Add File: test.rs\n+fn main() {\n+    use std::io;\n+}\n*** End Patch\n"
-  }
-}' | nudge codex hook
-
-# Exit 0 with JSON output = Interrupt or Substitute (rule matched)
-# Exit 0 with plain text = Continue (UserPromptSubmit context injected)
-# Exit 0 with no output = Passthrough (nothing to note)
-```
+Setup installs the bundled `nudge` and `nudge-learnings` skills so agents know
+how to respond to hook messages, write or debug rules, wire CI checks, and
+search, apply, or record repo-local learnings. Setup does not edit project
+`CLAUDE.md` or `AGENTS.md` files.
 
 ## Development
 
-See [CLAUDE.md](CLAUDE.md) for development instructions, architecture overview, and how to add new rules.
+Build and test:
+
+```bash
+cargo build -p nudge
+cargo test -p nudge
+cargo clippy -p nudge --all-targets --all-features -- -D warnings
+```
+
+See the [Developer Guide](docs/developer-guide.md) for the full development and
+live-agent dogfood workflow.

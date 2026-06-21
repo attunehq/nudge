@@ -7,17 +7,21 @@ use std::{
 };
 
 use clap::Args;
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{Context, OptionExt, Result};
 use serde_json::{Value, json};
 use tracing::instrument;
 
-use crate::cmd::{json_hooks, setup_command};
+use crate::cmd::{json_hooks, setup_command, skill_install};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
     /// Path to the .codex directory.
     #[arg(long, default_value = ".codex")]
     codex_dir: PathBuf,
+
+    /// Skip installing the bundled Nudge skills.
+    #[arg(long)]
+    skip_skills: bool,
 }
 
 #[instrument]
@@ -28,11 +32,22 @@ pub fn main(config: Config) -> Result<()> {
         .codex_dir
         .canonicalize()
         .with_context(|| format!("canonicalize codex dir: {:?}", config.codex_dir))?;
+    let project_root = dotcodex
+        .parent()
+        .ok_or_eyre("get parent directory of .codex")?;
+
+    if !config.skip_skills {
+        skill_install::install_bundled_skills(
+            "Codex",
+            &project_root.join(".agents").join("skills"),
+        )?;
+        println!();
+    }
 
     let inline_config = dotcodex.join("config.toml");
     if inline_config_has_hooks(&inline_config)? {
         eprintln!(
-            "warning: {} already contains inline Codex hooks. Nudge setup skipped because safe TOML hook merging is out of scope. Move hooks to .codex/hooks.json or merge Nudge manually.",
+            "warning: {} already contains inline Codex hooks. Nudge hook setup skipped because safe TOML hook merging is out of scope. Move hooks to .codex/hooks.json or merge Nudge manually.",
             inline_config.display()
         );
         return Ok(());
@@ -97,6 +112,7 @@ pub fn main(config: Config) -> Result<()> {
     println!(
         "4. If hooks do not appear, check that the project .codex/ layer is trusted and [features].hooks has not been disabled."
     );
+    println!("5. The bundled Nudge skills will load in new Codex sessions.");
 
     Ok(())
 }

@@ -108,7 +108,7 @@ detect_platform() {
       ;;
   esac
 
-  # Check for musl instead of glibc on Linux
+  # Musl release binaries are built without local semantic embeddings.
   if [[ "$os" == "unknown-linux" ]]; then
     if [[ -e /etc/alpine-release ]] || ldd /bin/sh 2>/dev/null | grep -q musl; then
       os="$os-musl"

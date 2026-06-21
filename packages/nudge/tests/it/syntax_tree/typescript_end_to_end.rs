@@ -156,7 +156,8 @@ rules:
 
     pretty_assert_eq!(exit_code, 1, "expected check to fail, output: {output}");
     assert!(
-        output.contains("src/user.ts:2 [no-exported-interfaces]"),
+        output.contains("src/user.ts:2 [no-exported-interfaces]")
+            || output.contains("src\\user.ts:2 [no-exported-interfaces]"),
         "expected TypeScript issue on the interface line, got: {output}"
     );
     assert!(

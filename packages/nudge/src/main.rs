@@ -28,6 +28,9 @@ enum Commands {
     /// Integration with Codex CLI.
     Codex(cmd::codex::Config),
 
+    /// Manage repo-local learned incident knowledge.
+    Learn(cmd::learn::Config),
+
     /// Display the syntax tree for code (for writing tree-sitter queries).
     Syntaxtree(cmd::syntaxtree::Config),
 
@@ -75,16 +78,18 @@ fn main() -> Result<()> {
         )
         .init();
 
-    // The suggestion is only added if the command fails; the intention here is
-    // that users or claude code can see an error and then run the command to
-    // learn more about debugging nudge.
+    // The suggestion is only added if the command fails; point agents at the
+    // installed skill instead of duplicating the rule reference in the CLI.
     match cli.command {
         Commands::Check(config) => cmd::check::main(config),
         Commands::Claude(config) => cmd::claude::main(config),
         Commands::Codex(config) => cmd::codex::main(config),
+        Commands::Learn(config) => cmd::learn::main(config),
         Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),
         Commands::Validate(config) => cmd::validate::main(config),
         Commands::Test(config) => cmd::test::main(config),
     }
-    .suggestion("Run `nudge claude docs` or `nudge codex docs` for documentation on writing/debugging Nudge rules.")
+    .suggestion(
+        "Read the bundled `nudge` skill for documentation on writing/debugging Nudge rules.",
+    )
 }
