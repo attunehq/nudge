@@ -1,63 +1,53 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# Claude Code cloud environment setup for nudge.
+#
+# Runs as root on Ubuntu 24.04 before the session starts, per
+# https://code.claude.com/docs/en/claude-code-on-the-web#setup-scripts
+# Point an environment's Setup script at:  bash scripts/setup-claude-env.sh
+#
+# Design rules (from the docs):
+#   - Never block session start: every step is non-fatal and the script exits 0.
+#   - Keep total runtime under ~5 minutes so the environment cache can build.
+#   - Rust (rustc/cargo) and git are pre-installed; nudge is a pure-Rust
+#     workspace (package in packages/nudge) with no native deps or secrets.
+# Idempotent and cached; safe to re-run.
 
-# setup-claude-env.sh
-#
-# Provision a fresh Claude Code cloud environment for nudge.
-# Targets a Debian/Ubuntu Linux container that starts with nothing installed.
-# Idempotent: safe to re-run. Invoke as: ./scripts/setup-claude-env.sh
-#
-# What it does:
-#   - installs build tooling (git, build-essential, pkg-config)
-#   - installs the Rust stable toolchain, plus nightly rustfmt (CI formats
-#     with `cargo +nightly fmt`)
-#   - fetches dependencies and warms the build cache
-#
-# nudge is a pure-Rust workspace (package in packages/nudge). No native
-# system libraries, submodules, or secrets are needed to build or test.
+set -uo pipefail
 
-GREEN='\033[0;32m'; YELLOW='\033[0;33m'; NC='\033[0m'
-log()  { printf "${GREEN}==>${NC} %s\n" "$1"; }
-warn() { printf "${YELLOW}warn:${NC} %s\n" "$1" >&2; }
+log()  { printf '==> %s\n' "$1"; }
+warn() { printf 'warn: %s\n' "$1" >&2; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-SUDO=""
-if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
-
-apt_install() {
-  if ! command -v apt-get >/dev/null 2>&1; then
-    warn "apt-get not found; please install manually: $*"
-    return 0
-  fi
-  $SUDO apt-get update -y
-  $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+persist_path() {
+  [ -n "${CLAUDE_ENV_FILE:-}" ] || return 0
+  printf 'export PATH="%s:$PATH"\n' "$1" >> "$CLAUDE_ENV_FILE"
 }
 
-log "Installing system build dependencies"
-apt_install git build-essential pkg-config ca-certificates curl
-
 if ! command -v cargo >/dev/null 2>&1; then
-  log "Installing Rust (stable)"
+  log "cargo not found; installing Rust via rustup"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-    | sh -s -- -y --default-toolchain stable --profile minimal
+    | sh -s -- -y --default-toolchain stable --profile minimal || warn "rustup install failed"
+  # shellcheck disable=SC1091
+  . "$HOME/.cargo/env" 2>/dev/null || true
+  persist_path "$HOME/.cargo/bin"
 fi
-# shellcheck disable=SC1091
-. "$HOME/.cargo/env"
 
-log "Ensuring nightly rustfmt is available (used by 'cargo +nightly fmt')"
-rustup toolchain install nightly --profile minimal --component rustfmt >/dev/null 2>&1 \
-  || warn "could not install nightly rustfmt; formatting checks may be unavailable"
+# CI formats with nightly and lints with clippy; both optional for a build.
+if command -v rustup >/dev/null 2>&1; then
+  rustup toolchain install nightly --profile minimal --component rustfmt >/dev/null 2>&1 \
+    || warn "nightly rustfmt unavailable; 'cargo +nightly fmt' may not work"
+  rustup component add clippy >/dev/null 2>&1 || warn "could not add clippy"
+fi
 
-log "Adding clippy (used by CI lint gate)"
-rustup component add clippy >/dev/null 2>&1 || warn "could not add clippy"
+log "Fetching crates"
+cargo fetch --locked || cargo fetch || warn "cargo fetch failed (check the environment's network access level)"
 
-log "Fetching dependencies"
-cargo fetch --locked || cargo fetch
-
-log "Warming the build (cargo build --all-targets)"
-cargo build --all-targets
+log "Warming the build (best-effort)"
+cargo build --all-targets \
+  || warn "cargo build did not finish; crates are fetched and the session can build in-session"
 
 log "nudge environment ready"
+exit 0
