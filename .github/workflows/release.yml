@@ -164,12 +164,34 @@ jobs:
                   tool: cargo-cross
                   checksum: true
 
+            # The cc/ort build scripts bake the active Xcode clang-runtime path
+            # (where libclang_rt.osx.a lives, e.g. .../clang/17/lib/darwin) into
+            # the cached build output. The Rust cache key keys on target, rustc,
+            # and the lockfile but not on the toolchain, so when macos-latest
+            # rolls to a new Xcode a restored cache links against a path that no
+            # longer exists, failing with "library 'clang_rt.osx' not found".
+            # Fold the Xcode/clang version into the cache key (via env-vars
+            # below) so a toolchain roll invalidates the stale cache.
+            - name: Record macOS toolchain version for cache key
+              if: runner.os == 'macOS'
+              run: |
+                  {
+                    echo "MACOS_TOOLCHAIN_KEY<<EOF"
+                    xcodebuild -version 2>/dev/null || true
+                    clang --version | head -n1
+                    echo EOF
+                  } >> "$GITHUB_ENV"
+
             - name: Setup Rust cache
               uses: Swatinem/rust-cache@v2
               with:
                   # PRs exercise the release matrix early; main-branch dry runs
                   # warm the default-branch cache that tag releases can restore.
                   shared-key: release-${{ matrix.target }}-embeddings-${{ matrix.embeddings }}
+                  # Hash the active Xcode/clang version into the macOS cache key
+                  # so a runner-image toolchain roll busts the cache instead of
+                  # restoring a build that links against a stale clang path.
+                  env-vars: "MACOS_TOOLCHAIN_KEY"
 
             - name: Build with cargo cross
               if: matrix.cross
