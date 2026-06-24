@@ -36,16 +36,40 @@ apt_install() {
   $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
 }
 
-log "Installing system build dependencies"
-apt_install git build-essential pkg-config ca-certificates curl
-
-if ! command -v cargo >/dev/null 2>&1; then
+install_rustup() {
   log "Installing Rust (stable)"
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --profile minimal
+}
+
+load_cargo_env() {
+  if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck disable=SC1091
+    . "$HOME/.cargo/env"
+  elif [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+  fi
+}
+
+log "Installing system build dependencies"
+apt_install git build-essential pkg-config ca-certificates curl
+
+if ! command -v rustup >/dev/null 2>&1; then
+  install_rustup
 fi
-# shellcheck disable=SC1091
-. "$HOME/.cargo/env"
+load_cargo_env
+
+if ! command -v cargo >/dev/null 2>&1; then
+  log "Installing Rust stable toolchain"
+  rustup toolchain install stable --profile minimal
+  rustup default stable
+  load_cargo_env
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  warn "cargo is still unavailable after Rust setup"
+  exit 1
+fi
 
 log "Ensuring nightly rustfmt is available (used by 'cargo +nightly fmt')"
 rustup toolchain install nightly --profile minimal --component rustfmt >/dev/null 2>&1 \
