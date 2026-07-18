@@ -203,6 +203,19 @@ rules:
                 (#eq? @method "unwrap"))
 ```
 
+Use an ordered `file` list to exclude generated or vendored files from one
+rule without hiding them from other tools:
+
+```yaml
+file:
+  - "**/*.rs"
+  - "!**/*.gen.rs"
+```
+
+The same exclusions apply when the rule runs through live Write and Edit
+hooks. A list must contain at least one positive pattern, and the last matching
+pattern wins.
+
 For deterministic command rewrites, keep using `action: substitute` in hook
 mode. Pair it with a separate file-based block rule only when there is a real
 file-state invariant that CI can verify.

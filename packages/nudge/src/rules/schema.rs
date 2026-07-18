@@ -269,7 +269,8 @@ pub struct PreToolUseWriteMatcher {
     hook: MustBe!("PreToolUse"),
     tool: MustBe!("Write"),
 
-    /// Glob pattern for files to match.
+    /// Glob pattern or ordered include and exclusion patterns for files to
+    /// match.
     ///
     /// When the path of the file being written to by the agent matches this
     /// pattern, the rule is triggered.
@@ -296,7 +297,8 @@ pub struct PreToolUseEditMatcher {
     hook: MustBe!("PreToolUse"),
     tool: MustBe!("Edit"),
 
-    /// Glob pattern for files to match.
+    /// Glob pattern or ordered include and exclusion patterns for files to
+    /// match.
     ///
     /// When the path of the file being edited by the agent matches this
     /// pattern, the rule is triggered.
