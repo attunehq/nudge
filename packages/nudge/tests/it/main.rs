@@ -19,6 +19,7 @@ mod markdown_target;
 mod message_content;
 mod multiple_rules;
 mod non_rust_files;
+mod path_exclusions;
 mod setup;
 mod skills;
 mod syntax_tree;

@@ -73,6 +73,21 @@ Important defaults:
 - `on` is a list; any matcher can trigger the rule.
 - `target` defaults to raw file content with `kind: Content`.
 
+## File Patterns
+
+`file` accepts one glob or an ordered list. In a list, patterns prefixed with
+`!` exclude matching paths. The last matching pattern wins, which permits a
+later positive pattern to include a path again.
+
+```yaml
+file:
+  - "**/*.ts"
+  - "!**/*.gen.ts"
+```
+
+The list must contain at least one positive pattern. Exclusions apply in live
+Write and Edit hooks and in `nudge check`.
+
 ## Hooks And Tools
 
 Use `PreToolUse` when matching an attempted operation:

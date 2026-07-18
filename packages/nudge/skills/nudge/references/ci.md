@@ -120,6 +120,18 @@ rules:
                 (#eq? @method "unwrap"))
 ```
 
+Use an ordered `file` list to exclude generated or vendored files from one
+rule:
+
+```yaml
+file:
+  - "**/*.rs"
+  - "!**/*.gen.rs"
+```
+
+The same exclusions apply to live Write and Edit hooks. A list must contain at
+least one positive pattern, and the last matching pattern wins.
+
 ## Validation
 
 After adding or changing a CI gate:

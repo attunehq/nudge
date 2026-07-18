@@ -165,6 +165,21 @@ local setup, hook responses, and learned incident notes.
 
 Copyable starter rules live in `examples/rules/`.
 
+### Exclude Files From One Rule
+
+`file` accepts one glob or an ordered list. In a list, patterns prefixed with
+`!` exclude matching paths. Later patterns override earlier ones, so a later
+positive pattern can include a path again.
+
+```yaml
+file:
+  - "**/*.ts"
+  - "!**/*.gen.ts"
+```
+
+This exclusion applies to live Write and Edit hooks and to `nudge check`. The
+list must contain at least one positive pattern.
+
 ## Use Nudge
 
 Use your agent normally. Nudge runs through hooks.
