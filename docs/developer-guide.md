@@ -97,7 +97,7 @@ actionlint
 
 The GitHub `Release` workflow runs as a dry-run matrix on pull requests,
 merge-queue checks, and pushes to `main`. Tag builds use the same matrix and
-cache keys, then sign/notarize macOS binaries and create the draft release.
+cache keys, then create the draft release.
 Supported release targets are macOS, Linux, and Windows x64. Targets whose ONNX
 Runtime artifacts are unavailable or do not link in the release cross-toolchain
 build with `--no-default-features`, which keeps BM25 learned-note search and

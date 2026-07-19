@@ -2,8 +2,7 @@
 #
 # Triggered on pull requests, main pushes, manual dry runs, and version tags
 # (v*). Builds binaries for all supported platforms in parallel on native
-# runners. Tag builds additionally sign/notarize macOS binaries and create a
-# draft GitHub Release.
+# runners. Tag builds additionally create a draft GitHub Release.
 #
 # The release is created as a draft so it can be reviewed and published
 # manually when ready.
@@ -216,60 +215,6 @@ jobs:
                     args+=(--no-default-features)
                   fi
                   cargo "${args[@]}"
-
-            - name: Import signing certificate
-              if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
-              env:
-                  APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-              run: |
-                  echo -n "$APPLE_CERTIFICATE_BASE64" | base64 --decode -o "$RUNNER_TEMP/certificate.p12"
-                  security create-keychain -p "$APPLE_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/build.keychain"
-                  security default-keychain -s "$RUNNER_TEMP/build.keychain"
-                  security unlock-keychain -p "$APPLE_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/build.keychain"
-                  security import "$RUNNER_TEMP/certificate.p12" -k "$RUNNER_TEMP/build.keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-                  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/build.keychain"
-                  rm "$RUNNER_TEMP/certificate.p12"
-
-            - name: Sign macOS binary
-              if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
-              env:
-                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-                  TARGET: ${{ matrix.target }}
-              run: |
-                  BINARY="target/${TARGET}/release/nudge"
-                  codesign --sign "$APPLE_TEAM_ID" \
-                           --timestamp \
-                           --options=runtime \
-                           --force \
-                           "$BINARY"
-
-            - name: Store notarization credentials
-              if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
-              env:
-                  APPLE_ID: ${{ secrets.APPLE_ID }}
-                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-                  APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-              run: |
-                  xcrun notarytool store-credentials "notarytool-password" \
-                          --apple-id "$APPLE_ID" \
-                          --team-id "$APPLE_TEAM_ID" \
-                          --password "$APPLE_APP_SPECIFIC_PASSWORD"
-
-            - name: Submit for notarization
-              if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS'
-              env:
-                  TARGET: ${{ matrix.target }}
-              run: |
-                  BINARY="target/${TARGET}/release/nudge"
-                  zip "$RUNNER_TEMP/nudge-macos.zip" "$BINARY"
-                  xcrun notarytool submit "$RUNNER_TEMP/nudge-macos.zip" \
-                          --keychain-profile "notarytool-password" \
-                          --wait
-
-            - name: Cleanup keychain
-              if: needs.prepare.outputs.publish == 'true' && runner.os == 'macOS' && always()
-              run: security delete-keychain "$RUNNER_TEMP/build.keychain" || true
 
             - name: Package binary
               id: package

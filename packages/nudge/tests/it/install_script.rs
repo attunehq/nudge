@@ -54,13 +54,7 @@ fn shell_installer_keeps_musl_release_artifacts_available() {
 
 #[test]
 fn release_workflow_builds_ort_limited_targets_without_embeddings() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("packages dir")
-        .parent()
-        .expect("repo root");
-    let workflow_path = repo_root.join(".github/workflows/release.yml");
-    let workflow = fs::read_to_string(&workflow_path).expect("read release workflow");
+    let workflow = read_release_workflow();
 
     pretty_assert_eq!(
         target_embeddings(&workflow, "x86_64-apple-darwin"),
@@ -105,13 +99,7 @@ fn release_workflow_builds_ort_limited_targets_without_embeddings() {
 
 #[test]
 fn release_workflow_checks_out_repo_before_generating_release_notes() {
-    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("packages dir")
-        .parent()
-        .expect("repo root");
-    let workflow_path = repo_root.join(".github/workflows/release.yml");
-    let workflow = fs::read_to_string(&workflow_path).expect("read release workflow");
+    let workflow = read_release_workflow();
     let release_job = release_job(&workflow).expect("release job");
 
     let checkout = release_job
@@ -129,6 +117,19 @@ fn release_workflow_checks_out_repo_before_generating_release_notes() {
         release_job[checkout..generated_notes].contains("fetch-depth: 0"),
         "generated notes should have full git history available"
     );
+}
+
+fn read_release_workflow() -> String {
+    let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("packages dir")
+        .parent()
+        .expect("repo root");
+    let workflow_path = repo_root.join(".github/workflows/release.yml");
+
+    fs::read_to_string(&workflow_path)
+        .expect("read release workflow")
+        .replace("\r\n", "\n")
 }
 
 fn release_job(workflow: &str) -> Option<&str> {
