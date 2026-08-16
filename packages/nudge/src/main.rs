@@ -28,6 +28,9 @@ enum Commands {
     /// Integration with Codex CLI.
     Codex(cmd::codex::Config),
 
+    /// Integration with Cursor / cursor-agent.
+    Cursor(cmd::cursor::Config),
+
     /// Integration with Grok Build.
     Grok(cmd::grok::Config),
 
@@ -87,6 +90,7 @@ fn main() -> Result<()> {
         Commands::Check(config) => cmd::check::main(config),
         Commands::Claude(config) => cmd::claude::main(config),
         Commands::Codex(config) => cmd::codex::main(config),
+        Commands::Cursor(config) => cmd::cursor::main(config),
         Commands::Grok(config) => cmd::grok::main(config),
         Commands::Learn(config) => cmd::learn::main(config),
         Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),

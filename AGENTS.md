@@ -41,6 +41,9 @@ cargo run -p nudge -- codex skills install # Install the bundled Codex skills
 cargo run -p nudge -- grok hook        # Respond to Grok Build hook (reads JSON from stdin)
 cargo run -p nudge -- grok setup       # Install hooks and bundled skills for Grok Build
 cargo run -p nudge -- grok skills install # Install the bundled Grok skills
+cargo run -p nudge -- cursor hook      # Respond to Cursor hook (reads JSON from stdin)
+cargo run -p nudge -- cursor setup     # Install hooks and bundled skills for Cursor
+cargo run -p nudge -- cursor skills install # Install the bundled Cursor skills
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
 cargo run -p nudge -- learn search     # Search learned incident notes
 cargo run -p nudge -- learn embeddings # Manage local learned-note embeddings
@@ -74,6 +77,9 @@ nudge codex skills install - Installs the bundled skills into .agents/skills
 nudge grok hook     - Receives hook JSON on stdin, evaluates rules, outputs response
 nudge grok setup    - Writes hook configuration and installs the bundled skills for Grok Build
 nudge grok skills install - Installs the bundled skills into .grok/skills
+nudge cursor hook   - Receives hook JSON on stdin, evaluates rules, outputs response
+nudge cursor setup  - Writes hook configuration and installs the bundled skills for Cursor
+nudge cursor skills install - Installs the bundled skills into .cursor/skills
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
 nudge learn search  - Search learned incident notes with BM25 or configured local embeddings
@@ -86,7 +92,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 ### Module Layout
 
 - `src/main.rs` - CLI entry point using clap
-- `src/agent.rs` - Provider adapters for Claude Code, Codex CLI, and Grok Build
+- `src/agent.rs` - Provider adapters for Claude Code, Codex CLI, Grok Build, and Cursor
 - `src/hook.rs` - Normalized hook event model
 - `src/hook/evaluate.rs` - Provider-neutral rule evaluation
 - `src/hook/response.rs` - Provider-specific response rendering
@@ -104,6 +110,9 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/grok/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/grok/setup.rs` - Setup command: configures hooks in .grok/hooks/nudge.json
 - `src/cmd/grok/skills.rs` - Skills command: installs the bundled skills into .grok/skills
+- `src/cmd/cursor/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
+- `src/cmd/cursor/setup.rs` - Setup command: configures hooks in .cursor/hooks.json
+- `src/cmd/cursor/skills.rs` - Skills command: installs the bundled skills into .cursor/skills
 - `src/cmd/learn.rs` - CLI for adding, listing, and searching learned notes
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs
@@ -130,7 +139,7 @@ When Nudge has something to share, it responds in one of several ways:
 
 The response type is determined by the hook type:
 - `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
-- `PreToolUse` substitute rules **allow with updated input** (Claude Code and Codex CLI Bash commands)
+- `PreToolUse` substitute rules **allow with updated input** (Claude Code, Codex CLI, Grok Build, and Cursor Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
 - `Delete` is normalized but not yet matchable from YAML rules

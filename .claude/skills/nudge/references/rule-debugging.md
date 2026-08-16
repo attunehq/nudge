@@ -70,6 +70,11 @@ exposes the surface:
 - Grok Build supports Write, Edit, WebFetch, and Bash through native tool
   aliases. UserPromptSubmit is registered, but Grok currently ignores prompt-hook
   stdout.
+- Cursor / cursor-agent supports Write, Edit, and Bash through `Write`, `Shell`,
+  and `beforeShellExecution`. UserPromptSubmit is registered as
+  `beforeSubmitPrompt`; native output is a gate, and context is emitted as
+  Claude-compat `additionalContext`. WebFetch is best-effort because Cursor's
+  Claude-compat tool map does not include it.
 
 If provider support is missing, do not work around the rule by pretending it is
 universal. Either document the limitation, add a CI-friendly file rule where

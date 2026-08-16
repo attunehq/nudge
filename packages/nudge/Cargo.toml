@@ -5,7 +5,7 @@ name = "nudge"
 # metadata via build.rs.
 version = "0.1.0"
 edition = "2024"
-description = "Collaborative memory layer for Claude Code, Codex CLI, and Grok Build agent hooks."
+description = "Collaborative memory layer for Claude Code, Codex CLI, Grok Build, and Cursor agent hooks."
 license = "Apache-2.0"
 repository = "https://github.com/attunehq/nudge"
 readme = "../../README.md"

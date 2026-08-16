@@ -49,6 +49,7 @@ commands if you use both agents:
 nudge claude setup
 nudge codex setup
 nudge grok setup
+nudge cursor setup
 ```
 
 Add a `.nudge.yaml`:
@@ -73,8 +74,8 @@ rules:
             pattern: "\\.unwrap\\(\\)"
 ```
 
-Restart open agent sessions, then use Claude Code, Codex CLI, or Grok Build
-normally. Run
+Restart open agent sessions, then use Claude Code, Codex CLI, Grok Build, or
+Cursor normally. Run
 `/hooks` in the agent to verify setup. After a useful debugging session, ask the
 agent to use `nudge-learnings` to record durable repo-local learnings for future
 work; Claude setup also installs a `nudge:learn` slash command for this
@@ -105,6 +106,8 @@ Nudge watches supported hook surfaces:
 - Codex `apply_patch` inputs, normalized into Write/Edit/Delete where possible.
 - Grok Build tool aliases such as `run_terminal_command`, `search_replace`,
   `write_file`, and `web_fetch`.
+- Cursor / cursor-agent tools such as `Shell`, `Write`, and `Delete`, plus
+  `beforeShellExecution` and `beforeSubmitPrompt`.
 
 When a rule or learned note matches, Nudge returns one of these outcomes:
 
