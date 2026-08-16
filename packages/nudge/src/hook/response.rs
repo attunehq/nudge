@@ -134,11 +134,12 @@ fn render_cursor(outcome: HookOutcome) -> Result<RenderedHookOutcome> {
                 additional_context: Some(context),
             },
         }),
+        // cursor-agent surfaces only `user_message` to the model on deny
+        // ("Rejected: <user_message>") and drops `agent_message`, so the full
+        // message goes in both.
         HookOutcome::DenyPreToolUse { message } => serialize_cursor(CursorHookResponse {
             permission: Some(String::from("deny")),
-            user_message: Some(String::from(
-                "Nudge blocked operation due to rule violation.",
-            )),
+            user_message: Some(message.clone()),
             agent_message: Some(message.clone()),
             updated_input: None,
             continue_submission: None,
@@ -555,6 +556,7 @@ mod tests {
         };
         let json = serde_json::from_str::<Value>(&output).expect("valid json");
         pretty_assert_eq!(json["permission"], Value::String(String::from("deny")));
+        pretty_assert_eq!(json["user_message"], Value::String(String::from("blocked")));
         pretty_assert_eq!(
             json["agent_message"],
             Value::String(String::from("blocked"))
