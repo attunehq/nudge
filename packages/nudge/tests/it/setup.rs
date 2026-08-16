@@ -694,7 +694,7 @@ fn grok_setup_creates_nudge_json_and_is_idempotent() {
     let json = serde_json::from_str::<Value>(&second).expect("valid json");
     pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
-        "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write_file|create_file|edit_file|web_fetch"
+        "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write|write_file|create_file|edit_file|web_fetch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
 }

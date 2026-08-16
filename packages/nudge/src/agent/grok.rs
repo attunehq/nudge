@@ -137,7 +137,7 @@ enum NormalizedTool {
 
 fn normalize_tool_name(tool_name: &str) -> NormalizedTool {
     match tool_name {
-        "Write" | "write_file" | "create_file" => NormalizedTool::Write,
+        "Write" | "write" | "write_file" | "create_file" => NormalizedTool::Write,
         "Edit" | "MultiEdit" | "search_replace" | "edit_file" => NormalizedTool::Edit,
         "Delete" | "delete_file" => NormalizedTool::Delete,
         "WebFetch" | "web_fetch" => NormalizedTool::WebFetch,
@@ -345,6 +345,28 @@ mod tests {
         };
         pretty_assert_eq!(input.file_path, PathBuf::from("src.rs"));
         pretty_assert_eq!(input.content, "fn main() {}");
+    }
+
+    #[test]
+    fn native_write_tool_normalizes_to_write() {
+        // Grok Build 1.0.4 emits `write` with `file_path` for new files.
+        let hooks = parse_hook(json!({
+            "hookEventName": "pre_tool_use",
+            "cwd": "/tmp",
+            "toolName": "write",
+            "toolInput": { "file_path": "/tmp/note.txt", "content": "hello\n" },
+            "toolInputTruncated": false
+        }))
+        .expect("parse hook");
+
+        let [NudgeHook::PreToolUse(payload)] = hooks.as_slice() else {
+            panic!("expected PreToolUse");
+        };
+        let ToolUse::Write(input) = &payload.tool else {
+            panic!("expected Write");
+        };
+        pretty_assert_eq!(input.file_path, PathBuf::from("/tmp/note.txt"));
+        pretty_assert_eq!(input.content, "hello\n");
     }
 
     #[test]

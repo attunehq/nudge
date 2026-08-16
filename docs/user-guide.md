@@ -216,7 +216,7 @@ surfaces, but the current shape is:
 
 | Surface | Claude Code | Codex CLI | Grok Build |
 | --- | --- | --- | --- |
-| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing | Yes, via `write_file`, `create_file`, and empty-`old_string` `search_replace` |
+| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing | Yes, via `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
 | `PreToolUse` `Edit` | Yes | Yes, via `apply_patch` update parsing | Yes, via `search_replace` and `edit_file` |
 | `PreToolUse` `Delete` | Normalized internally | Normalized internally via `apply_patch` delete parsing | Normalized when Grok emits `Delete` or `delete_file` |
 | `PreToolUse` `WebFetch` | Yes | No current WebSearch interception | Yes, via `web_fetch` |

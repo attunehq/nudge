@@ -97,7 +97,7 @@ Grok setup:
 - writes or merges `.grok/hooks/nudge.json`
 - backs up an existing Nudge hook file before writing
 - registers `PreToolUse` for Claude tool names and Grok aliases
-  (`run_terminal_command`, `search_replace`, `write_file`, `web_fetch`, and
+  (`run_terminal_command`, `search_replace`, `write`, `write_file`, `web_fetch`, and
   related names)
 - registers `UserPromptSubmit`
 - installs the bundled skills to `.grok/skills/nudge` and

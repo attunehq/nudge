@@ -48,7 +48,7 @@ pub fn main(config: Config) -> Result<()> {
         (
             "PreToolUse",
             json!({
-                "matcher": "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write_file|create_file|edit_file|web_fetch",
+                "matcher": "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write|write_file|create_file|edit_file|web_fetch",
                 "hooks": [nudge_hook.clone()]
             }),
         ),

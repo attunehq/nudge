@@ -18,7 +18,7 @@ Nudge returns provider-specific hook responses, but the working model is simple:
 
 | Surface | Claude Code | Codex CLI | Grok Build |
 | --- | --- | --- | --- |
-| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing | yes, through `write_file`, `create_file`, and empty-`old_string` `search_replace` |
+| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing | yes, through `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
 | `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing | yes, through `search_replace` and `edit_file` |
 | `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing | normalized when Grok emits `Delete` or `delete_file` |
 | `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch | yes, through `web_fetch` |
