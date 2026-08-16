@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod claude;
 pub mod codex;
+pub mod cursor;
 pub mod grok;
 
 /// The agent that emitted a hook event.
@@ -14,6 +15,9 @@ pub enum AgentKind {
 
     /// Codex CLI.
     Codex,
+
+    /// Cursor / cursor-agent.
+    Cursor,
 
     /// Grok Build.
     Grok,

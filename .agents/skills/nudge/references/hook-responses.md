@@ -16,20 +16,21 @@ Nudge returns provider-specific hook responses, but the working model is simple:
 
 ## Provider Surfaces
 
-| Surface | Claude Code | Codex CLI | Grok Build |
-| --- | --- | --- | --- |
-| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing | yes, through `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
-| `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing | yes, through `search_replace` and `edit_file` |
-| `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing | normalized when Grok emits `Delete` or `delete_file` |
-| `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch | yes, through `web_fetch` |
-| `PreToolUse Bash` | yes | partial; Codex hook coverage is incomplete for some shell paths | yes, through `run_terminal_command` |
-| `PermissionRequest` | parsed only | parsed only | parsed only |
-| `UserPromptSubmit` | yes | yes | registered; Grok currently ignores prompt-hook stdout |
+| Surface | Claude Code | Codex CLI | Grok Build | Cursor |
+| --- | --- | --- | --- | --- |
+| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing | yes, through `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` | yes, through `Write` and empty-`old_string` edits |
+| `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing | yes, through `search_replace` and `edit_file` | yes, through `Write` with `old_string`/`new_string` |
+| `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing | normalized when Grok emits `Delete` or `delete_file` | normalized when Cursor emits `Delete` |
+| `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch | yes, through `web_fetch` | best-effort; Claude-compat mapping does not include WebFetch |
+| `PreToolUse Bash` | yes | partial; Codex hook coverage is incomplete for some shell paths | yes, through `run_terminal_command` | yes, through `Shell` and `beforeShellExecution` |
+| `PermissionRequest` | parsed only | parsed only | parsed only | parsed only |
+| `UserPromptSubmit` | yes | yes | registered; Grok currently ignores prompt-hook stdout | registered as `beforeSubmitPrompt`; native output is a gate, context is Claude-compat `additionalContext` |
 
 Write YAML rules in terms of `Write`, `Edit`, `WebFetch`, `Bash`, and
-`UserPromptSubmit`. Codex `apply_patch` and Grok tool aliases are adapter
-details. `Delete` and `PermissionRequest` are parsed so Nudge can name them
-precisely, but they do not have YAML rule matchers yet.
+`UserPromptSubmit`. Codex `apply_patch`, Grok tool aliases, and Cursor
+`Shell`/`Write`/`beforeShellExecution` names are adapter details. `Delete` and
+`PermissionRequest` are parsed so Nudge can name them precisely, but they do
+not have YAML rule matchers yet.
 
 If Codex file-edit input cannot be parsed safely, Nudge allows the operation
 with a model-visible warning. Treat that as "the operation was not fully

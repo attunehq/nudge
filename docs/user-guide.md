@@ -1,8 +1,8 @@
 # Nudge User Guide
 
 Nudge is a collaborative memory layer for coding agents. It sits in the hook
-path for Claude Code, Codex CLI, and Grok Build, watches the operations those
-agents expose,
+path for Claude Code, Codex CLI, Grok Build, and Cursor, watches the operations
+those agents expose,
 and reminds them about conventions, local workflow, and previously solved
 debugging incidents at the moment the reminder is useful.
 
@@ -80,14 +80,15 @@ nudge --help
 
 ## Set Up A Project
 
-Run setup from the project where you use Claude Code, Codex CLI, or Grok Build.
-Use the command for the agent you use, or run each command for the agents you
-use.
+Run setup from the project where you use Claude Code, Codex CLI, Grok Build, or
+Cursor. Use the command for the agent you use, or run each command for the
+agents you use.
 
 ```bash
 nudge claude setup
 nudge codex setup
 nudge grok setup
+nudge cursor setup
 ```
 
 Claude setup writes `.claude/settings.local.json`, installs the bundled `nudge`
@@ -100,6 +101,10 @@ Codex setup writes `.codex/hooks.json` and installs the bundled `nudge` and
 Grok setup writes `.grok/hooks/nudge.json` and installs the bundled `nudge` and
 `nudge-learnings` skills under `.grok/skills/`. Grok project hooks stay inert
 until the folder is trusted with `/hooks-trust` or `grok --trust`.
+
+Cursor setup writes `.cursor/hooks.json` and installs the bundled `nudge` and
+`nudge-learnings` skills under `.cursor/skills/`. Project hooks run in trusted
+workspaces and in cloud agents that load `.cursor/hooks.json`.
 
 Setup does not edit project `CLAUDE.md` or `AGENTS.md` files. Modern agents
 learn how to respond to Nudge by reading the bundled skills that setup installs.
@@ -211,18 +216,18 @@ the deterministic things you encode well. Expect it to miss things you have not
 encoded, vague rules, and provider surfaces that the current hook APIs do not
 expose.
 
-Provider support changes with Claude Code, Codex CLI, and Grok Build hook
-surfaces, but the current shape is:
+Provider support changes with Claude Code, Codex CLI, Grok Build, and Cursor
+hook surfaces, but the current shape is:
 
-| Surface | Claude Code | Codex CLI | Grok Build |
-| --- | --- | --- | --- |
-| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing | Yes, via `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
-| `PreToolUse` `Edit` | Yes | Yes, via `apply_patch` update parsing | Yes, via `search_replace` and `edit_file` |
-| `PreToolUse` `Delete` | Normalized internally | Normalized internally via `apply_patch` delete parsing | Normalized when Grok emits `Delete` or `delete_file` |
-| `PreToolUse` `WebFetch` | Yes | No current WebSearch interception | Yes, via `web_fetch` |
-| `PreToolUse` `Bash` | Yes | Partial, depending on Codex hook coverage | Yes, via `run_terminal_command` |
-| `UserPromptSubmit` | Yes | Yes | Registered; Grok currently ignores prompt-hook stdout |
-| `PermissionRequest` | Parsed only | Parsed only | Parsed only |
+| Surface | Claude Code | Codex CLI | Grok Build | Cursor |
+| --- | --- | --- | --- | --- |
+| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing | Yes, via `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` | Yes, via `Write` and empty-`old_string` edits |
+| `PreToolUse` `Edit` | Yes | Yes, via `apply_patch` update parsing | Yes, via `search_replace` and `edit_file` | Yes, via `Write` with `old_string`/`new_string` |
+| `PreToolUse` `Delete` | Normalized internally | Normalized internally via `apply_patch` delete parsing | Normalized when Grok emits `Delete` or `delete_file` | Normalized when Cursor emits `Delete` |
+| `PreToolUse` `WebFetch` | Yes | No current WebSearch interception | Yes, via `web_fetch` | Best-effort; Claude-compat mapping does not include WebFetch |
+| `PreToolUse` `Bash` | Yes | Partial, depending on Codex hook coverage | Yes, via `run_terminal_command` | Yes, via `Shell` and `beforeShellExecution` |
+| `UserPromptSubmit` | Yes | Yes | Registered; Grok currently ignores prompt-hook stdout | Registered as `beforeSubmitPrompt`; native output is a gate, context is Claude-compat `additionalContext` |
+| `PermissionRequest` | Parsed only | Parsed only | Parsed only | Parsed only |
 
 Codex users should write file rules in terms of `Write` and `Edit`; Nudge handles
 the `apply_patch` adapter internally. If a Codex patch cannot be inspected,
@@ -232,6 +237,13 @@ Grok users should also write file and shell rules in terms of `Write`, `Edit`,
 `Bash`, and `WebFetch`. Nudge maps Grok's native tool names. Grok currently
 treats `UserPromptSubmit` as observe-only, so prompt-time context may not reach
 the model.
+
+Cursor users should write the same YAML surfaces. Nudge maps `Shell` and
+`beforeShellExecution` to `Bash`, and maps Cursor `Write` with
+`old_string`/`new_string` to `Edit`. Cursor's native `beforeSubmitPrompt`
+response can only allow or block the prompt; Nudge also emits Claude-compatible
+`additionalContext` so prompt-time rules can inject context when Cursor honors
+that nested format.
 
 ## How Agents Use It
 
@@ -435,6 +447,10 @@ For Grok Build, restart sessions after setup, run `/hooks-trust` or launch with
 `--trust`, then run `/hooks`. If hooks do not appear, confirm
 `.grok/hooks/nudge.json` exists and the recorded command points at the intended
 `nudge` binary.
+
+For Cursor, restart sessions after setup and trust the workspace if prompted.
+Confirm `.cursor/hooks.json` exists and the recorded command points at the
+intended `nudge` binary. Cloud agents load project `.cursor/hooks.json` only.
 
 Run `nudge learn embeddings status` when learned-note search behaves
 unexpectedly. If embeddings are enabled and notes changed substantially, run

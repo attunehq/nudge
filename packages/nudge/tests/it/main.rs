@@ -10,6 +10,7 @@ mod basic;
 mod check;
 mod cli;
 mod codex;
+mod cursor;
 mod edit_tool;
 mod external;
 mod grok;
@@ -174,6 +175,26 @@ pub fn run_codex_hook(input: &str) -> (i32, String) {
 /// output).
 pub fn run_grok_hook(input: &str) -> (i32, String) {
     run_agent_hook("grok", input)
+}
+
+/// Run nudge cursor hook with the given input JSON and return (exit_code,
+/// output).
+pub fn run_cursor_hook(input: &str) -> (i32, String) {
+    run_agent_hook("cursor", input)
+}
+
+/// Build a native Cursor preToolUse hook JSON payload.
+pub fn cursor_pretooluse_hook(tool_name: &str, tool_input: serde_json::Value) -> String {
+    serde_json::json!({
+        "hook_event_name": "preToolUse",
+        "conversation_id": "test",
+        "generation_id": "turn",
+        "cwd": "/tmp",
+        "workspace_roots": ["/tmp"],
+        "tool_name": tool_name,
+        "tool_input": tool_input
+    })
+    .to_string()
 }
 
 /// Build a native Grok PreToolUse hook JSON payload.

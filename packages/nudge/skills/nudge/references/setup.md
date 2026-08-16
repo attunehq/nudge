@@ -13,8 +13,8 @@ Setup is appropriate when:
 - The user asks to install Nudge locally.
 - The repo contains `.nudge.yaml`, `.nudge.yml`, or `.nudge/`, but no Nudge hook
   is firing.
-- A teammate cloned the repo and needs Claude Code, Codex CLI, or Grok Build to
-  honor the repo's Nudge rules.
+- A teammate cloned the repo and needs Claude Code, Codex CLI, Grok Build, or
+  Cursor to honor the repo's Nudge rules.
 - The bundled `nudge` / `nudge-learnings` skills or Claude learning command are
   missing or stale.
 
@@ -64,6 +64,7 @@ both commands when they use both agents:
 nudge claude setup
 nudge codex setup
 nudge grok setup
+nudge cursor setup
 ```
 
 Claude setup:
@@ -108,6 +109,23 @@ or `grok --trust`. Grok currently treats `UserPromptSubmit` as observe-only, so
 prompt-time context is emitted in Claude-compatible JSON but may not be injected
 into the conversation.
 
+Cursor setup:
+
+- creates `.cursor/` when needed
+- writes or merges `.cursor/hooks.json` with `version: 1`
+- backs up an existing hooks file before writing
+- registers `preToolUse` for `Shell|Write|Delete|WebFetch`
+- registers `beforeShellExecution` for extra Bash coverage
+- registers `beforeSubmitPrompt`
+- installs the bundled skills to `.cursor/skills/nudge` and
+  `.cursor/skills/nudge-learnings`
+
+Cursor project hooks run in trusted workspaces. Cloud agents load project
+`.cursor/hooks.json` only. Cursor's native `beforeSubmitPrompt` response is a
+gate (`continue: true|false`); Nudge also emits Claude-compatible
+`additionalContext` so prompt-time rules can inject context when Cursor honors
+that nested format.
+
 ## Useful Setup Options
 
 Use non-default project directories only when the repo actually stores agent
@@ -117,6 +135,7 @@ configuration somewhere else:
 nudge claude setup --claude-dir path/to/.claude
 nudge codex setup --codex-dir path/to/.codex
 nudge grok setup --grok-dir path/to/.grok
+nudge cursor setup --cursor-dir path/to/.cursor
 ```
 
 Use `--skip-skills` only when hook setup is wanted but the bundled skills are
@@ -126,6 +145,7 @@ managed separately:
 nudge claude setup --skip-skills
 nudge codex setup --skip-skills
 nudge grok setup --skip-skills
+nudge cursor setup --skip-skills
 ```
 
 Use Claude `--skip-commands` only when hook setup is wanted but slash commands
@@ -141,6 +161,7 @@ Reinstall only the bundled skill files when hooks already exist:
 nudge claude skills install
 nudge codex skills install
 nudge grok skills install
+nudge cursor skills install
 ```
 
 For custom skill directories:
@@ -149,13 +170,14 @@ For custom skill directories:
 nudge claude skills install --claude-dir path/to/.claude
 nudge codex skills install --agents-dir path/to/.agents
 nudge grok skills install --grok-dir path/to/.grok
+nudge cursor skills install --cursor-dir path/to/.cursor
 ```
 
 ## Verify Setup
 
 After setup:
 
-1. Restart open Claude Code, Codex, or Grok sessions so hooks and skills load. Claude slash commands also require restart.
+1. Restart open Claude Code, Codex, Grok, or Cursor sessions so hooks and skills load. Claude slash commands also require restart.
 2. Run `/hooks` in the agent.
 3. Run `nudge validate` from the project root.
 4. Run `nudge check` or `nudge check <paths>` when file-content rules exist.
@@ -182,6 +204,14 @@ Grok-specific checks:
 - Confirm Nudge appears in `/hooks`.
 - The Nudge skill should exist at `.grok/skills/nudge`.
 - The Nudge learnings skill should exist at `.grok/skills/nudge-learnings`.
+
+Cursor-specific checks:
+
+- Trust the workspace if Cursor prompts before project hooks can run.
+- Confirm `.cursor/hooks.json` exists and lists `preToolUse`,
+  `beforeShellExecution`, and `beforeSubmitPrompt`.
+- The Nudge skill should exist at `.cursor/skills/nudge`.
+- The Nudge learnings skill should exist at `.cursor/skills/nudge-learnings`.
 
 If hooks still do not appear, inspect the generated hook file and verify the
 recorded command points to the intended `nudge` binary.
