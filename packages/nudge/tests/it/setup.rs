@@ -631,3 +631,194 @@ rules:
         "expected Codex WebFetch warning, got: {stderr}"
     );
 }
+
+#[test]
+fn grok_setup_help_mentions_nudge_json() {
+    let (exit_code, stdout, stderr) = run_nudge(&["grok", "setup", "--help"]);
+
+    pretty_assert_eq!(exit_code, 0, "help failed: {stderr}");
+    assert!(
+        stdout.contains(".grok/hooks/nudge.json"),
+        "help should mention .grok/hooks/nudge.json, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("--skip-skills"),
+        "help should mention skill install opt-out, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--skip-commands"),
+        "Grok setup should not advertise unsupported project slash commands, got: {stdout}"
+    );
+}
+
+#[test]
+fn grok_setup_creates_nudge_json_and_is_idempotent() {
+    let temp = TempDir::new().expect("temp dir");
+    let grok_dir = temp.path().join(".grok");
+    let grok_dir = grok_dir.to_str().expect("utf-8 path");
+    let args = ["grok", "setup", "--grok-dir", grok_dir];
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Backed up previous configuration"),
+        "fresh setup should not report a backup, got: {stdout}"
+    );
+    assert!(
+        !temp.path().join(".grok/hooks/nudge.json.bak").exists(),
+        "fresh setup should not create a backup"
+    );
+    assert!(
+        stdout.contains("Installed nudge skill"),
+        "fresh setup should install bundled router skill, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled learnings skill, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("/hooks-trust") && stdout.contains("--trust"),
+        "setup should tell the user to trust project hooks, got: {stdout}"
+    );
+    assert_nudge_skill_installed(&temp.path().join(".grok/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".grok/skills/nudge-learnings"));
+    let first = fs::read_to_string(temp.path().join(".grok/hooks/nudge.json")).expect("read hooks");
+
+    let (exit_code, _, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    let second =
+        fs::read_to_string(temp.path().join(".grok/hooks/nudge.json")).expect("read hooks");
+
+    pretty_assert_eq!(first, second);
+
+    let json = serde_json::from_str::<Value>(&second).expect("valid json");
+    pretty_assert_eq!(
+        json["hooks"]["PreToolUse"][0]["matcher"],
+        "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write_file|create_file|edit_file|web_fetch"
+    );
+    assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
+}
+
+#[test]
+fn grok_setup_backs_up_existing_hooks_without_overwriting_backups() {
+    let temp = TempDir::new().expect("temp dir");
+    let grok_dir = temp.path().join(".grok");
+    let hooks_dir = grok_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir).expect("create .grok/hooks");
+    let canonical_hooks_dir = hooks_dir.canonicalize().expect("canonical hooks dir");
+
+    let hooks_file = hooks_dir.join("nudge.json");
+    let first_backup = canonical_hooks_dir.join("nudge.json.bak");
+    let second_backup = canonical_hooks_dir.join("nudge.json.bak.1");
+    let original =
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}"#;
+    fs::write(&hooks_file, original).expect("write hooks");
+
+    let args = [
+        "grok",
+        "setup",
+        "--grok-dir",
+        grok_dir.to_str().expect("utf-8 path"),
+    ];
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            first_backup.display()
+        )),
+        "setup should print backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read backup"),
+        original
+    );
+    let installed = fs::read_to_string(&hooks_file).expect("read installed hooks");
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            second_backup.display()
+        )),
+        "repeated setup should print next backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read first backup"),
+        original,
+        "repeated setup must not overwrite the first backup"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(second_backup).expect("read second backup"),
+        installed
+    );
+}
+
+#[test]
+fn grok_setup_quotes_binary_path_with_spaces() {
+    let temp = TempDir::new().expect("temp dir");
+    let binary = copy_nudge_binary_to_path_with_spaces(&temp);
+    let grok_dir = temp.path().join(".grok");
+    let args = [
+        "grok",
+        "setup",
+        "--grok-dir",
+        grok_dir.to_str().expect("utf-8 path"),
+    ];
+
+    let (exit_code, _stdout, stderr) = run_nudge_binary(&binary, &args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(grok_dir.join("hooks/nudge.json")).expect("read hooks"),
+    )
+    .expect("valid json");
+    let command = json["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+        .as_str()
+        .expect("command");
+    assert!(
+        command.starts_with('\''),
+        "expected shell-quoted command for spaced path, got: {command}"
+    );
+    let words = shell_words::split(command).expect("split command");
+    pretty_assert_eq!(
+        words,
+        vec![
+            binary.to_str().expect("utf-8 binary").to_string(),
+            "grok".to_string(),
+            "hook".to_string()
+        ]
+    );
+}
+
+#[test]
+fn grok_setup_preserves_existing_unrelated_hooks() {
+    let temp = TempDir::new().expect("temp dir");
+    let grok_dir = temp.path().join(".grok");
+    fs::create_dir_all(grok_dir.join("hooks")).expect("create .grok/hooks");
+    fs::write(
+        grok_dir.join("hooks/nudge.json"),
+        r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"echo hi"}]}]}}"#,
+    )
+    .expect("write hooks");
+
+    let args = [
+        "grok",
+        "setup",
+        "--grok-dir",
+        grok_dir.to_str().expect("utf-8 path"),
+    ];
+    let (exit_code, _, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(grok_dir.join("hooks/nudge.json")).expect("read hooks"),
+    )
+    .expect("valid json");
+    pretty_assert_eq!(
+        json["hooks"]["SessionStart"][0]["hooks"][0]["command"],
+        "echo hi"
+    );
+    assert!(json["hooks"]["PreToolUse"].is_array());
+}

@@ -96,7 +96,9 @@ fn claude_skills_install_writes_bundled_skills() {
     assert!(setup.contains("Nudge Setup"));
     assert!(setup.contains("nudge claude setup"));
     assert!(setup.contains("nudge codex setup"));
+    assert!(setup.contains("nudge grok setup"));
     assert!(setup.contains("nudge claude skills install"));
+    assert!(setup.contains("nudge grok skills install"));
     assert!(setup.contains("Do not edit `CLAUDE.md`, `AGENTS.md`"));
     assert!(validation.contains("Nudge Validation"));
     let learnings_skill_dir = temp.path().join(".claude/skills/nudge-learnings");
@@ -171,12 +173,42 @@ fn codex_skills_install_writes_agents_bundled_skills() {
 }
 
 #[test]
+fn grok_skills_install_writes_grok_bundled_skills() {
+    let temp = TempDir::new().expect("temp dir");
+
+    let (exit_code, stdout, stderr) = run_nudge_in(temp.path(), &["grok", "skills", "install"]);
+
+    pretty_assert_eq!(exit_code, 0, "skill install failed: {stderr}");
+    assert!(
+        stdout.contains("Installed nudge skill"),
+        "install should report destination, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "install should report bundled learnings skill, got: {stdout}"
+    );
+
+    let skill_dir = temp.path().join(".grok/skills/nudge");
+    assert!(skill_dir.join("SKILL.md").exists());
+    assert!(skill_dir.join("references/ci.md").exists());
+    assert!(skill_dir.join("references/hook-responses.md").exists());
+    assert!(skill_dir.join("references/setup.md").exists());
+    assert!(skill_dir.join("references/rule-debugging.md").exists());
+    assert!(skill_dir.join("references/rule-writing.md").exists());
+    assert!(skill_dir.join("references/validation.md").exists());
+    let learnings_skill_dir = temp.path().join(".grok/skills/nudge-learnings");
+    assert!(learnings_skill_dir.join("SKILL.md").exists());
+    assert!(learnings_skill_dir.join("references/learnings.md").exists());
+}
+
+#[test]
 fn docs_subcommands_are_removed_from_help() {
     let temp = TempDir::new().expect("temp dir");
 
     for args in [
         &["claude", "--help"][..],
         &["codex", "--help"][..],
+        &["grok", "--help"][..],
         &["learn", "--help"][..],
     ] {
         let (exit_code, stdout, stderr) = run_nudge_in(temp.path(), args);

@@ -73,6 +73,21 @@ Important defaults:
 - `on` is a list; any matcher can trigger the rule.
 - `target` defaults to raw file content with `kind: Content`.
 
+## File Patterns
+
+`file` accepts one glob or an ordered list. In a list, patterns prefixed with
+`!` exclude matching paths. The last matching pattern wins, which permits a
+later positive pattern to include a path again.
+
+```yaml
+file:
+  - "**/*.ts"
+  - "!**/*.gen.ts"
+```
+
+The list must contain at least one positive pattern. Exclusions apply in live
+Write and Edit hooks and in `nudge check`.
+
 ## Hooks And Tools
 
 Use `PreToolUse` when matching an attempted operation:
@@ -110,6 +125,8 @@ Supported YAML surfaces today:
 - Claude Code: `Write`, `Edit`, `WebFetch`, `Bash`, and `UserPromptSubmit`
 - Codex CLI: `UserPromptSubmit`, `Write` through `apply_patch` add-file parsing,
   `Edit` through `apply_patch` update parsing, and partial Bash coverage
+- Grok Build: `Write`, `Edit`, `WebFetch`, and `Bash` through Grok tool aliases.
+  `UserPromptSubmit` is registered, but Grok currently ignores prompt-hook stdout
 
 `Delete` and `PermissionRequest` are normalized internally, but do not have YAML
 matchers yet. Write Codex file rules in terms of `Write` and `Edit`; `apply_patch`

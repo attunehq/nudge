@@ -12,6 +12,7 @@ mod cli;
 mod codex;
 mod edit_tool;
 mod external;
+mod grok;
 mod inline_imports;
 mod install_script;
 mod learn;
@@ -167,6 +168,26 @@ pub fn run_hook(_sh: &Shell, input: &str) -> (i32, String) {
 /// output).
 pub fn run_codex_hook(input: &str) -> (i32, String) {
     run_agent_hook("codex", input)
+}
+
+/// Run nudge grok hook with the given input JSON and return (exit_code,
+/// output).
+pub fn run_grok_hook(input: &str) -> (i32, String) {
+    run_agent_hook("grok", input)
+}
+
+/// Build a native Grok PreToolUse hook JSON payload.
+pub fn grok_pretooluse_hook(tool_name: &str, tool_input: serde_json::Value) -> String {
+    serde_json::json!({
+        "hookEventName": "pre_tool_use",
+        "sessionId": "test",
+        "cwd": "/tmp",
+        "workspaceRoot": "/tmp",
+        "permissionMode": "default",
+        "toolName": tool_name,
+        "toolInput": tool_input
+    })
+    .to_string()
 }
 
 fn run_agent_hook(agent: &str, input: &str) -> (i32, String) {
