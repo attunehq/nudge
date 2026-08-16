@@ -633,6 +633,195 @@ rules:
 }
 
 #[test]
+fn cursor_setup_help_mentions_hooks_json() {
+    let (exit_code, stdout, stderr) = run_nudge(&["cursor", "setup", "--help"]);
+
+    pretty_assert_eq!(exit_code, 0, "help failed: {stderr}");
+    assert!(
+        stdout.contains(".cursor/hooks.json"),
+        "help should mention .cursor/hooks.json, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("--skip-skills"),
+        "help should mention skill install opt-out, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("--skip-commands"),
+        "Cursor setup should not advertise unsupported project slash commands, got: {stdout}"
+    );
+}
+
+#[test]
+fn cursor_setup_creates_hooks_json_and_is_idempotent() {
+    let temp = TempDir::new().expect("temp dir");
+    let cursor_dir = temp.path().join(".cursor");
+    let cursor_dir = cursor_dir.to_str().expect("utf-8 path");
+    let args = ["cursor", "setup", "--cursor-dir", cursor_dir];
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        !stdout.contains("Backed up previous configuration"),
+        "fresh setup should not report a backup, got: {stdout}"
+    );
+    assert!(
+        !temp.path().join(".cursor/hooks.json.bak").exists(),
+        "fresh setup should not create a backup"
+    );
+    assert!(
+        stdout.contains("Installed nudge skill"),
+        "fresh setup should install bundled router skill, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Installed nudge-learnings skill"),
+        "fresh setup should install bundled learnings skill, got: {stdout}"
+    );
+    assert!(
+        stdout.contains("Trust the workspace"),
+        "setup should tell the user to trust the workspace, got: {stdout}"
+    );
+    assert_nudge_skill_installed(&temp.path().join(".cursor/skills/nudge"));
+    assert_nudge_learnings_skill_installed(&temp.path().join(".cursor/skills/nudge-learnings"));
+    let first = fs::read_to_string(temp.path().join(".cursor/hooks.json")).expect("read hooks");
+
+    let (exit_code, _, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    let second = fs::read_to_string(temp.path().join(".cursor/hooks.json")).expect("read hooks");
+
+    pretty_assert_eq!(first, second);
+
+    let json = serde_json::from_str::<Value>(&second).expect("valid json");
+    pretty_assert_eq!(json["version"], 1);
+    pretty_assert_eq!(
+        json["hooks"]["preToolUse"][0]["matcher"],
+        "Shell|Write|Delete|WebFetch"
+    );
+    pretty_assert_eq!(json["hooks"]["preToolUse"][0]["timeout"], 5);
+    assert!(json["hooks"]["beforeShellExecution"][0]["command"].is_string());
+    assert!(json["hooks"]["beforeSubmitPrompt"][0]["command"].is_string());
+}
+
+#[test]
+fn cursor_setup_backs_up_existing_hooks_without_overwriting_backups() {
+    let temp = TempDir::new().expect("temp dir");
+    let cursor_dir = temp.path().join(".cursor");
+    fs::create_dir_all(&cursor_dir).expect("create .cursor");
+    let canonical_cursor_dir = cursor_dir.canonicalize().expect("canonical .cursor");
+
+    let hooks_file = cursor_dir.join("hooks.json");
+    let first_backup = canonical_cursor_dir.join("hooks.json.bak");
+    let second_backup = canonical_cursor_dir.join("hooks.json.bak.1");
+    let original = r#"{"version":1,"hooks":{"sessionStart":[{"command":"echo hi"}]}}"#;
+    fs::write(&hooks_file, original).expect("write hooks");
+
+    let args = [
+        "cursor",
+        "setup",
+        "--cursor-dir",
+        cursor_dir.to_str().expect("utf-8 path"),
+    ];
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            first_backup.display()
+        )),
+        "setup should print backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read backup"),
+        original
+    );
+    let installed = fs::read_to_string(&hooks_file).expect("read installed hooks");
+
+    let (exit_code, stdout, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+    assert!(
+        stdout.contains(&format!(
+            "Backed up previous configuration to {}",
+            second_backup.display()
+        )),
+        "repeated setup should print next backup path, got: {stdout}"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(&first_backup).expect("read first backup"),
+        original,
+        "repeated setup must not overwrite the first backup"
+    );
+    pretty_assert_eq!(
+        fs::read_to_string(second_backup).expect("read second backup"),
+        installed
+    );
+}
+
+#[test]
+fn cursor_setup_quotes_binary_path_with_spaces() {
+    let temp = TempDir::new().expect("temp dir");
+    let binary = copy_nudge_binary_to_path_with_spaces(&temp);
+    let cursor_dir = temp.path().join(".cursor");
+    let args = [
+        "cursor",
+        "setup",
+        "--cursor-dir",
+        cursor_dir.to_str().expect("utf-8 path"),
+    ];
+
+    let (exit_code, _stdout, stderr) = run_nudge_binary(&binary, &args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(cursor_dir.join("hooks.json")).expect("read hooks"),
+    )
+    .expect("valid json");
+    let command = json["hooks"]["preToolUse"][0]["command"]
+        .as_str()
+        .expect("command");
+    assert!(
+        command.starts_with('\''),
+        "expected shell-quoted command for spaced path, got: {command}"
+    );
+    let words = shell_words::split(command).expect("split command");
+    pretty_assert_eq!(
+        words,
+        vec![
+            binary.to_str().expect("utf-8 binary").to_string(),
+            "cursor".to_string(),
+            "hook".to_string()
+        ]
+    );
+}
+
+#[test]
+fn cursor_setup_preserves_existing_unrelated_hooks() {
+    let temp = TempDir::new().expect("temp dir");
+    let cursor_dir = temp.path().join(".cursor");
+    fs::create_dir_all(&cursor_dir).expect("create .cursor");
+    fs::write(
+        cursor_dir.join("hooks.json"),
+        r#"{"version":1,"hooks":{"sessionStart":[{"command":"echo hi"}]}}"#,
+    )
+    .expect("write hooks");
+
+    let args = [
+        "cursor",
+        "setup",
+        "--cursor-dir",
+        cursor_dir.to_str().expect("utf-8 path"),
+    ];
+    let (exit_code, _, stderr) = run_nudge(&args);
+    pretty_assert_eq!(exit_code, 0, "setup failed: {stderr}");
+
+    let json = serde_json::from_str::<Value>(
+        &fs::read_to_string(cursor_dir.join("hooks.json")).expect("read hooks"),
+    )
+    .expect("valid json");
+    pretty_assert_eq!(json["hooks"]["sessionStart"][0]["command"], "echo hi");
+    assert!(json["hooks"]["preToolUse"].is_array());
+    pretty_assert_eq!(json["version"], 1);
+}
+
+#[test]
 fn grok_setup_help_mentions_nudge_json() {
     let (exit_code, stdout, stderr) = run_nudge(&["grok", "setup", "--help"]);
 

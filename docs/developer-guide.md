@@ -46,6 +46,7 @@ Important entrypoints:
 | `packages/nudge/src/agent/claude.rs` | Claude Code hook parsing |
 | `packages/nudge/src/agent/codex.rs` | Codex CLI hook parsing and `apply_patch` adaptation |
 | `packages/nudge/src/agent/grok.rs` | Grok Build hook parsing and tool-name aliases |
+| `packages/nudge/src/agent/cursor.rs` | Cursor / cursor-agent hook parsing and tool-name aliases |
 | `packages/nudge/src/hook.rs` | Provider-neutral hook model |
 | `packages/nudge/src/hook/evaluate.rs` | Rule and learned-context evaluation |
 | `packages/nudge/src/hook/response.rs` | Provider-specific response rendering |
@@ -199,7 +200,7 @@ binary in disposable repos before trying it in a real project.
 
 Use live-agent testing when the change affects agent-visible behavior:
 
-- Hook setup for Claude Code, Codex CLI, or Grok Build.
+- Hook setup for Claude Code, Codex CLI, Grok Build, or Cursor.
 - Provider response JSON.
 - Rule messages or snippet rendering.
 - Codex `apply_patch` normalization.
@@ -262,6 +263,7 @@ For setup changes:
 nudge claude setup
 nudge codex setup
 nudge grok setup
+nudge cursor setup
 ```
 
 Verify generated files directly:
@@ -269,12 +271,15 @@ Verify generated files directly:
 - `.claude/settings.local.json`
 - `.codex/hooks.json`
 - `.grok/hooks/nudge.json`
+- `.cursor/hooks.json`
 - `.claude/skills/nudge/SKILL.md`
 - `.claude/skills/nudge-learnings/SKILL.md`
 - `.agents/skills/nudge/SKILL.md`
 - `.agents/skills/nudge-learnings/SKILL.md`
 - `.grok/skills/nudge/SKILL.md`
 - `.grok/skills/nudge-learnings/SKILL.md`
+- `.cursor/skills/nudge/SKILL.md`
+- `.cursor/skills/nudge-learnings/SKILL.md`
 
 Setup should not create or edit project `CLAUDE.md` or `AGENTS.md`; Nudge
 bootstrap guidance lives in the bundled skills.

@@ -4,6 +4,7 @@ pub mod check;
 pub mod claude;
 pub mod codex;
 pub(crate) mod command_install;
+pub mod cursor;
 pub mod grok;
 pub(crate) mod json_hooks;
 pub mod learn;

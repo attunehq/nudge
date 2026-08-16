@@ -59,6 +59,7 @@ pub fn emit(agent: AgentKind, outcome: HookOutcome) -> Result<()> {
 /// Render a hook outcome without printing.
 pub fn render(agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOutcome> {
     match agent {
+        AgentKind::Cursor => render_cursor(outcome),
         AgentKind::Grok => render_grok(outcome),
         AgentKind::Claude | AgentKind::Codex => render_claude_compat(outcome),
     }
@@ -105,6 +106,78 @@ fn render_claude_compat(outcome: HookOutcome) -> Result<RenderedHookOutcome> {
             decision: None,
             reason: None,
             system_message: Some(system_message),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: Some(updated_input),
+                additional_context: Some(additional_context),
+            },
+        }),
+    }
+}
+
+fn render_cursor(outcome: HookOutcome) -> Result<RenderedHookOutcome> {
+    match outcome {
+        HookOutcome::Passthrough => Ok(RenderedHookOutcome::NoOutput),
+        HookOutcome::AddContext { context } => serialize_cursor(CursorHookResponse {
+            permission: None,
+            user_message: None,
+            agent_message: None,
+            updated_input: None,
+            continue_submission: Some(true),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("UserPromptSubmit"),
+                permission_decision: None,
+                permission_decision_reason: None,
+                updated_input: None,
+                additional_context: Some(context),
+            },
+        }),
+        // cursor-agent surfaces only `user_message` to the model on deny
+        // ("Rejected: <user_message>") and drops `agent_message`, so the full
+        // message goes in both.
+        HookOutcome::DenyPreToolUse { message } => serialize_cursor(CursorHookResponse {
+            permission: Some(String::from("deny")),
+            user_message: Some(message.clone()),
+            agent_message: Some(message.clone()),
+            updated_input: None,
+            continue_submission: None,
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("deny")),
+                permission_decision_reason: Some(message),
+                updated_input: None,
+                additional_context: None,
+            },
+        }),
+        HookOutcome::AllowPreToolUseWithContext {
+            system_message,
+            additional_context,
+        } => serialize_cursor(CursorHookResponse {
+            permission: Some(String::from("allow")),
+            user_message: Some(system_message),
+            agent_message: Some(additional_context.clone()),
+            updated_input: None,
+            continue_submission: None,
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: None,
+                additional_context: Some(additional_context),
+            },
+        }),
+        HookOutcome::UpdatePreToolUse {
+            system_message,
+            additional_context,
+            updated_input,
+        } => serialize_cursor(CursorHookResponse {
+            permission: Some(String::from("allow")),
+            user_message: Some(system_message),
+            agent_message: Some(additional_context.clone()),
+            updated_input: Some(updated_input.clone()),
+            continue_submission: None,
             hook_specific_output: PreToolUseOutput {
                 hook_event_name: String::from("PreToolUse"),
                 permission_decision: Some(String::from("allow")),
@@ -185,6 +258,12 @@ fn serialize_pretooluse(response: PreToolUseResponse) -> Result<RenderedHookOutc
     ))
 }
 
+fn serialize_cursor(response: CursorHookResponse) -> Result<RenderedHookOutcome> {
+    Ok(RenderedHookOutcome::Stdout(
+        serde_json::to_string(&response).context("serialize hook response")?,
+    ))
+}
+
 /// Rendered hook output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RenderedHookOutcome {
@@ -204,6 +283,22 @@ struct PreToolUseResponse {
     reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     system_message: Option<String>,
+    hook_specific_output: PreToolUseOutput,
+}
+
+#[derive(Debug, Serialize)]
+struct CursorHookResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    permission: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_input: Option<Value>,
+    #[serde(rename = "continue", skip_serializing_if = "Option::is_none")]
+    continue_submission: Option<bool>,
+    #[serde(rename = "hookSpecificOutput")]
     hook_specific_output: PreToolUseOutput,
 }
 
@@ -443,6 +538,98 @@ mod tests {
     #[test]
     fn grok_passthrough_renders_no_output() {
         let rendered = render(AgentKind::Grok, HookOutcome::Passthrough).expect("render");
+        pretty_assert_eq!(rendered, RenderedHookOutcome::NoOutput);
+    }
+
+    #[test]
+    fn cursor_denial_uses_native_permission_and_claude_compat_fields() {
+        let rendered = render(
+            AgentKind::Cursor,
+            HookOutcome::DenyPreToolUse {
+                message: String::from("blocked"),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["permission"], Value::String(String::from("deny")));
+        pretty_assert_eq!(json["user_message"], Value::String(String::from("blocked")));
+        pretty_assert_eq!(
+            json["agent_message"],
+            Value::String(String::from("blocked"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["permissionDecision"],
+            Value::String(String::from("deny"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["permissionDecisionReason"],
+            Value::String(String::from("blocked"))
+        );
+    }
+
+    #[test]
+    fn cursor_substitution_allows_with_updated_input() {
+        let rendered = render(
+            AgentKind::Cursor,
+            HookOutcome::UpdatePreToolUse {
+                system_message: String::from("Nudge substituted a command."),
+                additional_context: String::from("rewrote npm to yarn"),
+                updated_input: serde_json::json!({ "command": "yarn add foo" }),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["permission"], Value::String(String::from("allow")));
+        pretty_assert_eq!(
+            json["updated_input"]["command"],
+            Value::String(String::from("yarn add foo"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["updatedInput"]["command"],
+            Value::String(String::from("yarn add foo"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["additionalContext"],
+            Value::String(String::from("rewrote npm to yarn"))
+        );
+    }
+
+    #[test]
+    fn cursor_user_prompt_context_continues_with_additional_context() {
+        let rendered = render(
+            AgentKind::Cursor,
+            HookOutcome::AddContext {
+                context: String::from("remember this"),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["continue"], Value::Bool(true));
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["hookEventName"],
+            Value::String(String::from("UserPromptSubmit"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["additionalContext"],
+            Value::String(String::from("remember this"))
+        );
+    }
+
+    #[test]
+    fn cursor_passthrough_renders_no_output() {
+        let rendered = render(AgentKind::Cursor, HookOutcome::Passthrough).expect("render");
         pretty_assert_eq!(rendered, RenderedHookOutcome::NoOutput);
     }
 }

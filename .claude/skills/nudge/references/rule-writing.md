@@ -127,6 +127,10 @@ Supported YAML surfaces today:
   `Edit` through `apply_patch` update parsing, and partial Bash coverage
 - Grok Build: `Write`, `Edit`, `WebFetch`, and `Bash` through Grok tool aliases.
   `UserPromptSubmit` is registered, but Grok currently ignores prompt-hook stdout
+- Cursor / cursor-agent: `Write`, `Edit`, and `Bash` through `Write`, `Shell`,
+  and `beforeShellExecution`. `UserPromptSubmit` is registered as
+  `beforeSubmitPrompt`; native output is a gate, and context is emitted as
+  Claude-compat `additionalContext`
 
 `Delete` and `PermissionRequest` are normalized internally, but do not have YAML
 matchers yet. Write Codex file rules in terms of `Write` and `Edit`; `apply_patch`
