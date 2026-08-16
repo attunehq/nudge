@@ -57,68 +57,132 @@ pub fn emit(agent: AgentKind, outcome: HookOutcome) -> Result<()> {
 }
 
 /// Render a hook outcome without printing.
-pub fn render(_agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOutcome> {
+pub fn render(agent: AgentKind, outcome: HookOutcome) -> Result<RenderedHookOutcome> {
+    match agent {
+        AgentKind::Grok => render_grok(outcome),
+        AgentKind::Claude | AgentKind::Codex => render_claude_compat(outcome),
+    }
+}
+
+fn render_claude_compat(outcome: HookOutcome) -> Result<RenderedHookOutcome> {
     match outcome {
         HookOutcome::Passthrough => Ok(RenderedHookOutcome::NoOutput),
         HookOutcome::AddContext { context } => Ok(RenderedHookOutcome::Stdout(context)),
-        HookOutcome::DenyPreToolUse { message } => {
-            let response = PreToolUseResponse {
-                system_message: Some(String::from(
-                    "Nudge blocked operation due to rule violation.",
-                )),
-                hook_specific_output: PreToolUseOutput {
-                    hook_event_name: String::from("PreToolUse"),
-                    permission_decision: String::from("deny"),
-                    permission_decision_reason: Some(message),
-                    updated_input: None,
-                    additional_context: None,
-                },
-            };
-
-            Ok(RenderedHookOutcome::Stdout(
-                serde_json::to_string(&response).context("serialize hook response")?,
-            ))
-        }
+        HookOutcome::DenyPreToolUse { message } => serialize_pretooluse(PreToolUseResponse {
+            decision: None,
+            reason: None,
+            system_message: Some(String::from(
+                "Nudge blocked operation due to rule violation.",
+            )),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("deny")),
+                permission_decision_reason: Some(message),
+                updated_input: None,
+                additional_context: None,
+            },
+        }),
         HookOutcome::AllowPreToolUseWithContext {
             system_message,
             additional_context,
-        } => {
-            let response = PreToolUseResponse {
-                system_message: Some(system_message),
-                hook_specific_output: PreToolUseOutput {
-                    hook_event_name: String::from("PreToolUse"),
-                    permission_decision: String::from("allow"),
-                    permission_decision_reason: None,
-                    updated_input: None,
-                    additional_context: Some(additional_context),
-                },
-            };
-
-            Ok(RenderedHookOutcome::Stdout(
-                serde_json::to_string(&response).context("serialize hook response")?,
-            ))
-        }
+        } => serialize_pretooluse(PreToolUseResponse {
+            decision: None,
+            reason: None,
+            system_message: Some(system_message),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: None,
+                additional_context: Some(additional_context),
+            },
+        }),
         HookOutcome::UpdatePreToolUse {
             system_message,
             additional_context,
             updated_input,
-        } => {
-            let response = PreToolUseResponse {
-                system_message: Some(system_message),
-                hook_specific_output: PreToolUseOutput {
-                    hook_event_name: String::from("PreToolUse"),
-                    permission_decision: String::from("allow"),
-                    permission_decision_reason: None,
-                    updated_input: Some(updated_input),
-                    additional_context: Some(additional_context),
-                },
-            };
-
-            Ok(RenderedHookOutcome::Stdout(
-                serde_json::to_string(&response).context("serialize hook response")?,
-            ))
-        }
+        } => serialize_pretooluse(PreToolUseResponse {
+            decision: None,
+            reason: None,
+            system_message: Some(system_message),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: Some(updated_input),
+                additional_context: Some(additional_context),
+            },
+        }),
     }
+}
+
+fn render_grok(outcome: HookOutcome) -> Result<RenderedHookOutcome> {
+    match outcome {
+        HookOutcome::Passthrough => Ok(RenderedHookOutcome::NoOutput),
+        HookOutcome::AddContext { context } => serialize_pretooluse(PreToolUseResponse {
+            decision: None,
+            reason: None,
+            system_message: None,
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("UserPromptSubmit"),
+                permission_decision: None,
+                permission_decision_reason: None,
+                updated_input: None,
+                additional_context: Some(context),
+            },
+        }),
+        HookOutcome::DenyPreToolUse { message } => serialize_pretooluse(PreToolUseResponse {
+            decision: Some(String::from("deny")),
+            reason: Some(message.clone()),
+            system_message: Some(String::from(
+                "Nudge blocked operation due to rule violation.",
+            )),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("deny")),
+                permission_decision_reason: Some(message),
+                updated_input: None,
+                additional_context: None,
+            },
+        }),
+        HookOutcome::AllowPreToolUseWithContext {
+            system_message,
+            additional_context,
+        } => serialize_pretooluse(PreToolUseResponse {
+            decision: Some(String::from("allow")),
+            reason: None,
+            system_message: Some(system_message),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: None,
+                additional_context: Some(additional_context),
+            },
+        }),
+        HookOutcome::UpdatePreToolUse {
+            system_message,
+            additional_context,
+            updated_input,
+        } => serialize_pretooluse(PreToolUseResponse {
+            decision: Some(String::from("allow")),
+            reason: None,
+            system_message: Some(system_message),
+            hook_specific_output: PreToolUseOutput {
+                hook_event_name: String::from("PreToolUse"),
+                permission_decision: Some(String::from("allow")),
+                permission_decision_reason: None,
+                updated_input: Some(updated_input),
+                additional_context: Some(additional_context),
+            },
+        }),
+    }
+}
+
+fn serialize_pretooluse(response: PreToolUseResponse) -> Result<RenderedHookOutcome> {
+    Ok(RenderedHookOutcome::Stdout(
+        serde_json::to_string(&response).context("serialize hook response")?,
+    ))
 }
 
 /// Rendered hook output.
@@ -135,6 +199,10 @@ pub enum RenderedHookOutcome {
 #[serde(rename_all = "camelCase")]
 struct PreToolUseResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     system_message: Option<String>,
     hook_specific_output: PreToolUseOutput,
 }
@@ -143,7 +211,8 @@ struct PreToolUseResponse {
 #[serde(rename_all = "camelCase")]
 struct PreToolUseOutput {
     hook_event_name: String,
-    permission_decision: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    permission_decision: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     permission_decision_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -292,5 +361,88 @@ mod tests {
             rendered,
             RenderedHookOutcome::Stdout(String::from("remember this"))
         );
+    }
+
+    #[test]
+    fn grok_denial_uses_native_decision_and_claude_compat_fields() {
+        let rendered = render(
+            AgentKind::Grok,
+            HookOutcome::DenyPreToolUse {
+                message: String::from("blocked"),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["decision"], Value::String(String::from("deny")));
+        pretty_assert_eq!(json["reason"], Value::String(String::from("blocked")));
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["permissionDecision"],
+            Value::String(String::from("deny"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["permissionDecisionReason"],
+            Value::String(String::from("blocked"))
+        );
+    }
+
+    #[test]
+    fn grok_substitution_allows_with_updated_input() {
+        let rendered = render(
+            AgentKind::Grok,
+            HookOutcome::UpdatePreToolUse {
+                system_message: String::from("Nudge substituted a command."),
+                additional_context: String::from("rewrote npm to yarn"),
+                updated_input: serde_json::json!({ "command": "yarn add foo" }),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(json["decision"], Value::String(String::from("allow")));
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["updatedInput"]["command"],
+            Value::String(String::from("yarn add foo"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["additionalContext"],
+            Value::String(String::from("rewrote npm to yarn"))
+        );
+    }
+
+    #[test]
+    fn grok_user_prompt_context_renders_additional_context_json() {
+        let rendered = render(
+            AgentKind::Grok,
+            HookOutcome::AddContext {
+                context: String::from("remember this"),
+            },
+        )
+        .expect("render");
+
+        let RenderedHookOutcome::Stdout(output) = rendered else {
+            panic!("expected stdout");
+        };
+        let json = serde_json::from_str::<Value>(&output).expect("valid json");
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["hookEventName"],
+            Value::String(String::from("UserPromptSubmit"))
+        );
+        pretty_assert_eq!(
+            json["hookSpecificOutput"]["additionalContext"],
+            Value::String(String::from("remember this"))
+        );
+    }
+
+    #[test]
+    fn grok_passthrough_renders_no_output() {
+        let rendered = render(AgentKind::Grok, HookOutcome::Passthrough).expect("render");
+        pretty_assert_eq!(rendered, RenderedHookOutcome::NoOutput);
     }
 }

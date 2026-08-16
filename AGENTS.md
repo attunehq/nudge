@@ -38,6 +38,9 @@ cargo run -p nudge -- claude skills install # Install the bundled Claude skills
 cargo run -p nudge -- codex hook       # Respond to Codex hook (reads JSON from stdin)
 cargo run -p nudge -- codex setup      # Install hooks and bundled skills for Codex
 cargo run -p nudge -- codex skills install # Install the bundled Codex skills
+cargo run -p nudge -- grok hook        # Respond to Grok Build hook (reads JSON from stdin)
+cargo run -p nudge -- grok setup       # Install hooks and bundled skills for Grok Build
+cargo run -p nudge -- grok skills install # Install the bundled Grok skills
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
 cargo run -p nudge -- learn search     # Search learned incident notes
 cargo run -p nudge -- learn embeddings # Manage local learned-note embeddings
@@ -68,6 +71,9 @@ nudge claude skills install - Installs the bundled skills into .claude/skills
 nudge codex hook    - Receives hook JSON on stdin, evaluates rules, outputs response
 nudge codex setup   - Writes hook configuration and installs the bundled skills for Codex
 nudge codex skills install - Installs the bundled skills into .agents/skills
+nudge grok hook     - Receives hook JSON on stdin, evaluates rules, outputs response
+nudge grok setup    - Writes hook configuration and installs the bundled skills for Grok Build
+nudge grok skills install - Installs the bundled skills into .grok/skills
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
 nudge learn search  - Search learned incident notes with BM25 or configured local embeddings
@@ -80,7 +86,7 @@ nudge check         - Check project files against rules (CI/linter mode)
 ### Module Layout
 
 - `src/main.rs` - CLI entry point using clap
-- `src/agent.rs` - Provider adapters for Claude Code and Codex CLI
+- `src/agent.rs` - Provider adapters for Claude Code, Codex CLI, and Grok Build
 - `src/hook.rs` - Normalized hook event model
 - `src/hook/evaluate.rs` - Provider-neutral rule evaluation
 - `src/hook/response.rs` - Provider-specific response rendering
@@ -95,6 +101,9 @@ nudge check         - Check project files against rules (CI/linter mode)
 - `src/cmd/codex/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
 - `src/cmd/codex/setup.rs` - Setup command: configures hooks in hooks.json
 - `src/cmd/codex/skills.rs` - Skills command: installs the bundled skills into .agents/skills
+- `src/cmd/grok/hook.rs` - Hook command: deserializes input, evaluates rules, emits response
+- `src/cmd/grok/setup.rs` - Setup command: configures hooks in .grok/hooks/nudge.json
+- `src/cmd/grok/skills.rs` - Skills command: installs the bundled skills into .grok/skills
 - `src/cmd/learn.rs` - CLI for adding, listing, and searching learned notes
 - `src/cmd/test.rs` - Test command: test a rule against sample input
 - `src/cmd/validate.rs` - Validate command: parse and display rule configs

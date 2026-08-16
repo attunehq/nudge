@@ -13,8 +13,8 @@ Setup is appropriate when:
 - The user asks to install Nudge locally.
 - The repo contains `.nudge.yaml`, `.nudge.yml`, or `.nudge/`, but no Nudge hook
   is firing.
-- A teammate cloned the repo and needs Claude Code or Codex CLI to honor the
-  repo's Nudge rules.
+- A teammate cloned the repo and needs Claude Code, Codex CLI, or Grok Build to
+  honor the repo's Nudge rules.
 - The bundled `nudge` / `nudge-learnings` skills or Claude learning command are
   missing or stale.
 
@@ -63,6 +63,7 @@ both commands when they use both agents:
 ```bash
 nudge claude setup
 nudge codex setup
+nudge grok setup
 ```
 
 Claude setup:
@@ -90,6 +91,23 @@ If `.codex/config.toml` already contains inline hook tables, Codex setup skips
 hook merging and prints a warning. Move those hooks to `.codex/hooks.json` or
 merge Nudge manually; Nudge intentionally avoids unsafe TOML hook merges.
 
+Grok setup:
+
+- creates `.grok/hooks/` when needed
+- writes or merges `.grok/hooks/nudge.json`
+- backs up an existing Nudge hook file before writing
+- registers `PreToolUse` for Claude tool names and Grok aliases
+  (`run_terminal_command`, `search_replace`, `write`, `write_file`, `web_fetch`, and
+  related names)
+- registers `UserPromptSubmit`
+- installs the bundled skills to `.grok/skills/nudge` and
+  `.grok/skills/nudge-learnings`
+
+Grok project hooks stay inert until the folder is trusted with `/hooks-trust`
+or `grok --trust`. Grok currently treats `UserPromptSubmit` as observe-only, so
+prompt-time context is emitted in Claude-compatible JSON but may not be injected
+into the conversation.
+
 ## Useful Setup Options
 
 Use non-default project directories only when the repo actually stores agent
@@ -98,6 +116,7 @@ configuration somewhere else:
 ```bash
 nudge claude setup --claude-dir path/to/.claude
 nudge codex setup --codex-dir path/to/.codex
+nudge grok setup --grok-dir path/to/.grok
 ```
 
 Use `--skip-skills` only when hook setup is wanted but the bundled skills are
@@ -106,6 +125,7 @@ managed separately:
 ```bash
 nudge claude setup --skip-skills
 nudge codex setup --skip-skills
+nudge grok setup --skip-skills
 ```
 
 Use Claude `--skip-commands` only when hook setup is wanted but slash commands
@@ -120,6 +140,7 @@ Reinstall only the bundled skill files when hooks already exist:
 ```bash
 nudge claude skills install
 nudge codex skills install
+nudge grok skills install
 ```
 
 For custom skill directories:
@@ -127,13 +148,14 @@ For custom skill directories:
 ```bash
 nudge claude skills install --claude-dir path/to/.claude
 nudge codex skills install --agents-dir path/to/.agents
+nudge grok skills install --grok-dir path/to/.grok
 ```
 
 ## Verify Setup
 
 After setup:
 
-1. Restart open Claude Code or Codex sessions so hooks and skills load. Claude slash commands also require restart.
+1. Restart open Claude Code, Codex, or Grok sessions so hooks and skills load. Claude slash commands also require restart.
 2. Run `/hooks` in the agent.
 3. Run `nudge validate` from the project root.
 4. Run `nudge check` or `nudge check <paths>` when file-content rules exist.
@@ -153,6 +175,13 @@ Codex-specific checks:
 - The Nudge learnings skill should exist at `.agents/skills/nudge-learnings`.
 - Codex users can explicitly invoke `nudge-learnings` when they want help
   recording learnings from a session.
+
+Grok-specific checks:
+
+- Trust the project with `/hooks-trust` or launch with `--trust`.
+- Confirm Nudge appears in `/hooks`.
+- The Nudge skill should exist at `.grok/skills/nudge`.
+- The Nudge learnings skill should exist at `.grok/skills/nudge-learnings`.
 
 If hooks still do not appear, inspect the generated hook file and verify the
 recorded command points to the intended `nudge` binary.

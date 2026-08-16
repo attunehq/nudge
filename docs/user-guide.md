@@ -1,7 +1,8 @@
 # Nudge User Guide
 
 Nudge is a collaborative memory layer for coding agents. It sits in the hook
-path for Claude Code and Codex CLI, watches the operations those agents expose,
+path for Claude Code, Codex CLI, and Grok Build, watches the operations those
+agents expose,
 and reminds them about conventions, local workflow, and previously solved
 debugging incidents at the moment the reminder is useful.
 
@@ -79,12 +80,14 @@ nudge --help
 
 ## Set Up A Project
 
-Run setup from the project where you use Claude Code or Codex CLI. Use the
-command for the agent you use, or run both if you use both agents.
+Run setup from the project where you use Claude Code, Codex CLI, or Grok Build.
+Use the command for the agent you use, or run each command for the agents you
+use.
 
 ```bash
 nudge claude setup
 nudge codex setup
+nudge grok setup
 ```
 
 Claude setup writes `.claude/settings.local.json`, installs the bundled `nudge`
@@ -93,6 +96,10 @@ learning slash command at `.claude/commands/nudge/learn.md`.
 
 Codex setup writes `.codex/hooks.json` and installs the bundled `nudge` and
 `nudge-learnings` skills under `.agents/skills/`.
+
+Grok setup writes `.grok/hooks/nudge.json` and installs the bundled `nudge` and
+`nudge-learnings` skills under `.grok/skills/`. Grok project hooks stay inert
+until the folder is trusted with `/hooks-trust` or `grok --trust`.
 
 Setup does not edit project `CLAUDE.md` or `AGENTS.md` files. Modern agents
 learn how to respond to Nudge by reading the bundled skills that setup installs.
@@ -204,22 +211,27 @@ the deterministic things you encode well. Expect it to miss things you have not
 encoded, vague rules, and provider surfaces that the current hook APIs do not
 expose.
 
-Provider support changes with Claude Code and Codex CLI hook surfaces, but the
-current shape is:
+Provider support changes with Claude Code, Codex CLI, and Grok Build hook
+surfaces, but the current shape is:
 
-| Surface | Claude Code | Codex CLI |
-| --- | --- | --- |
-| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing |
-| `PreToolUse` `Edit` | Yes | Yes, via `apply_patch` update parsing |
-| `PreToolUse` `Delete` | Normalized internally | Normalized internally via `apply_patch` delete parsing |
-| `PreToolUse` `WebFetch` | Yes | No current WebSearch interception |
-| `PreToolUse` `Bash` | Yes | Partial, depending on Codex hook coverage |
-| `UserPromptSubmit` | Yes | Yes |
-| `PermissionRequest` | Parsed only | Parsed only |
+| Surface | Claude Code | Codex CLI | Grok Build |
+| --- | --- | --- | --- |
+| `PreToolUse` `Write` | Yes | Yes, via `apply_patch` add-file parsing | Yes, via `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
+| `PreToolUse` `Edit` | Yes | Yes, via `apply_patch` update parsing | Yes, via `search_replace` and `edit_file` |
+| `PreToolUse` `Delete` | Normalized internally | Normalized internally via `apply_patch` delete parsing | Normalized when Grok emits `Delete` or `delete_file` |
+| `PreToolUse` `WebFetch` | Yes | No current WebSearch interception | Yes, via `web_fetch` |
+| `PreToolUse` `Bash` | Yes | Partial, depending on Codex hook coverage | Yes, via `run_terminal_command` |
+| `UserPromptSubmit` | Yes | Yes | Registered; Grok currently ignores prompt-hook stdout |
+| `PermissionRequest` | Parsed only | Parsed only | Parsed only |
 
 Codex users should write file rules in terms of `Write` and `Edit`; Nudge handles
 the `apply_patch` adapter internally. If a Codex patch cannot be inspected,
 Nudge allows it and warns the model to report that warning.
+
+Grok users should also write file and shell rules in terms of `Write`, `Edit`,
+`Bash`, and `WebFetch`. Nudge maps Grok's native tool names. Grok currently
+treats `UserPromptSubmit` as observe-only, so prompt-time context may not reach
+the model.
 
 ## How Agents Use It
 
@@ -418,6 +430,11 @@ Run `claude --debug` to inspect Claude Code hook execution.
 For Codex, restart sessions after setup, run `/hooks`, and trust the Nudge hook
 when prompted. If hooks do not appear, check that the project `.codex/` layer is
 trusted and Codex hooks have not been disabled.
+
+For Grok Build, restart sessions after setup, run `/hooks-trust` or launch with
+`--trust`, then run `/hooks`. If hooks do not appear, confirm
+`.grok/hooks/nudge.json` exists and the recorded command points at the intended
+`nudge` binary.
 
 Run `nudge learn embeddings status` when learned-note search behaves
 unexpectedly. If embeddings are enabled and notes changed substantially, run

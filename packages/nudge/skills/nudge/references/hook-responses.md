@@ -16,20 +16,20 @@ Nudge returns provider-specific hook responses, but the working model is simple:
 
 ## Provider Surfaces
 
-| Surface | Claude Code | Codex CLI |
-| --- | --- | --- |
-| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing |
-| `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing |
-| `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing |
-| `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch |
-| `PreToolUse Bash` | yes | partial; Codex hook coverage is incomplete for some shell paths |
-| `PermissionRequest` | parsed only | parsed only |
-| `UserPromptSubmit` | yes | yes |
+| Surface | Claude Code | Codex CLI | Grok Build |
+| --- | --- | --- | --- |
+| `PreToolUse Write` | yes | yes, through `apply_patch` add-file parsing | yes, through `write`, `write_file`, `create_file`, and empty-`old_string` `search_replace` |
+| `PreToolUse Edit` | yes | yes, through `apply_patch` update parsing | yes, through `search_replace` and `edit_file` |
+| `PreToolUse Delete` | normalized | normalized through `apply_patch` delete-file parsing | normalized when Grok emits `Delete` or `delete_file` |
+| `PreToolUse WebFetch` | yes | no; current Codex hooks do not intercept WebSearch/WebFetch | yes, through `web_fetch` |
+| `PreToolUse Bash` | yes | partial; Codex hook coverage is incomplete for some shell paths | yes, through `run_terminal_command` |
+| `PermissionRequest` | parsed only | parsed only | parsed only |
+| `UserPromptSubmit` | yes | yes | registered; Grok currently ignores prompt-hook stdout |
 
 Write YAML rules in terms of `Write`, `Edit`, `WebFetch`, `Bash`, and
-`UserPromptSubmit`. Codex `apply_patch` is an adapter detail. `Delete` and
-`PermissionRequest` are parsed so Nudge can name them precisely, but they do not
-have YAML rule matchers yet.
+`UserPromptSubmit`. Codex `apply_patch` and Grok tool aliases are adapter
+details. `Delete` and `PermissionRequest` are parsed so Nudge can name them
+precisely, but they do not have YAML rule matchers yet.
 
 If Codex file-edit input cannot be parsed safely, Nudge allows the operation
 with a model-visible warning. Treat that as "the operation was not fully

@@ -67,6 +67,9 @@ exposes the surface:
 - Codex supports UserPromptSubmit and file edits through `apply_patch`
   normalization. Bash coverage depends on the hook event. WebSearch/WebFetch is
   not currently intercepted by Codex hooks.
+- Grok Build supports Write, Edit, WebFetch, and Bash through native tool
+  aliases. UserPromptSubmit is registered, but Grok currently ignores prompt-hook
+  stdout.
 
 If provider support is missing, do not work around the rule by pretending it is
 universal. Either document the limitation, add a CI-friendly file rule where
