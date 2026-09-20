@@ -1,0 +1,12 @@
+{
+  "recorded_at": "2026-09-19T23:12:42.711Z",
+  "elapsed_ms": 256.023542,
+  "transport": "Bun fetch, one direct HTTPS request",
+  "model": "jev-1.13.0",
+  "questions": 12,
+  "agreement_at_0_5": 11,
+  "usage": {
+    "input_tokens": 2226,
+    "output_tokens": 223
+  }
+}
