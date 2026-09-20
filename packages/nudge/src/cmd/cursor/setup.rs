@@ -44,7 +44,7 @@ pub fn main(config: Config) -> Result<()> {
             json!({
                 "command": nudge_command,
                 "timeout": 5,
-                "matcher": "Shell|Write|Delete|WebFetch"
+                "matcher": "Shell|Write|Edit|MultiEdit|StrReplace|Delete|WebFetch"
             }),
         ),
         (

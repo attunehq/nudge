@@ -120,6 +120,13 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
         })),
         NormalizedTool::Edit => {
             let file_path = path_field(&input)?;
+            if input.get("edits").is_some() {
+                return Ok(ToolUse::Edit(crate::semantic::edit::multi_input(
+                    &context.cwd,
+                    &file_path,
+                    &input,
+                )));
+            }
             let old_string = optional_string(&input, "old_string", "oldString").unwrap_or_default();
             let new_string = string_field(&input, "new_string", "newString")?.to_string();
 
@@ -134,6 +141,11 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
                 post_edit_content(&context.cwd, &file_path, &old_string, &new_string);
 
             Ok(ToolUse::Edit(EditInput {
+                semantic_snapshot: crate::semantic::edit::replacement(
+                    &context.cwd,
+                    &file_path,
+                    &input,
+                ),
                 file_path,
                 old_string,
                 new_string,
@@ -178,7 +190,9 @@ fn normalize_tool_name(tool_name: &str, input: &Value) -> NormalizedTool {
                 NormalizedTool::Write
             }
         }
-        "Edit" | "StrReplace" | "search_replace" | "edit_file" => NormalizedTool::Edit,
+        "Edit" | "MultiEdit" | "StrReplace" | "search_replace" | "edit_file" => {
+            NormalizedTool::Edit
+        }
         "Delete" | "delete_file" => NormalizedTool::Delete,
         "WebFetch" | "web_fetch" => NormalizedTool::WebFetch,
         "Shell" | "Bash" | "run_terminal_command" => NormalizedTool::Bash,

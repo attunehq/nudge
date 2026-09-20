@@ -1,6 +1,9 @@
 # RFC 0003: Immediate semantic lint rules
 
-Status: proposed. Research date: 2026-09-19. No runtime behavior changes in this RFC.
+Status: warning-only first slice implemented on 2026-09-19. Research date: 2026-09-19.
+The [public guide](../semantic-rules.md) describes shipped behavior. Semantic
+blocking, quality qualification, additional selectors, and prompt-intent rules
+remain future work.
 
 ## Recommendation
 
@@ -67,7 +70,7 @@ separating model scores from application decisions.
 
 ## User-facing rule shape
 
-Illustrative proposed syntax, NOT accepted by the current CLI:
+Supported warning-only syntax:
 
 ```yaml
 version: 1
@@ -97,9 +100,8 @@ rules:
 ```
 
 An Edit matcher uses the same semantic block. The thresholds above are candidate
-evaluation settings, not established production values. `action: warn` is a new
-action; it must be implemented explicitly, rather than treating an uncertain
-judgment as a block. Rules promoted to `action: block` use the same predicate.
+evaluation settings, not established production values. `action: warn` is required.
+Semantic `action: block` is rejected until quality qualification is complete.
 
 `semantic` is a sibling to existing content matchers. Existing file, target,
 Regex, SyntaxTree, and project-state selectors remain deterministic preconditions.
@@ -140,14 +142,14 @@ Deletion-only changes can affect surviving adjacent comments and must participat
 in changed-range mapping. Markdown code-block offsets must compose with the
 existing target-to-file mapping.
 
-Current adapters do not yet supply a uniform edit contract. Codex apply_patch
+Before this implementation, adapters did not supply a uniform edit contract. Codex apply_patch
 normalization puts the entire resulting file in `new_string`; other providers
 usually put only replacement text there and optionally reconstruct
 `post_edit_content`. Claude's reconstruction currently replaces the first match.
-Before enabling semantic blocking, preserve each provider's actual replacement
-semantics, including replace-all and multi-edit behavior, and carry explicit
-changed ranges. Do not quietly evaluate a replacement fragment as a complete file
-when reconstruction fails. Deterministic matcher behavior remains unchanged.
+Semantic evaluation now carries a separate exact snapshot with changed byte ranges,
+including unambiguous replace-all and sequential multi-edit operations. It reports
+incomplete inspection when reconstruction fails. Existing deterministic single-edit
+matcher behavior remains unchanged. MultiEdit is normalized as one final snapshot.
 
 ### Jev client boundary
 
@@ -196,8 +198,8 @@ Propose exit codes 0, 1, and 2 respectively, with incomplete taking precedence.
 Use the existing model-visible warning response where supported, and document
 provider delivery limits. Preserve substitution output when a warning is also
 present: the current outcome ordering returns warnings before an updated command,
-so blindly adding warnings can discard a deterministic substitution. Add coverage
-for combined outcomes rather than inheriting that behavior accidentally.
+so blindly adding warnings could discard a deterministic substitution. The
+implementation now combines those outcomes and regression-tests that behavior.
 
 Batch predicates for the same state first. Measure before adding a daemon for
 the remote path or a persistent cache. If caching becomes justified, key raw

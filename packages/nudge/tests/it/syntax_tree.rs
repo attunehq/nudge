@@ -396,7 +396,8 @@ rules:
 
 #[test]
 fn test_syntax_tree_respects_file_extension_filter() {
-    // Verify that a TypeScript rule with "**/*.ts" does not trigger on .js files
+    // Verify that a TypeScript rule with "**/*.ts" does not trigger on .js
+    // files
     let config = r#"
 version: 1
 rules:

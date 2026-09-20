@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process;
+use std::time::{Duration, Instant};
 
 use clap::Args;
 use color_eyre::eyre::{Context, Result, eyre};
@@ -16,6 +17,7 @@ use ignore::WalkBuilder;
 use nudge::rules::{
     self, ContentMatcher, FileContentTarget, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction,
 };
+use nudge::semantic::{JevClient, Plan, SemanticConfig, Status};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -40,6 +42,7 @@ struct Issue {
 
 /// A file pattern extracted from a rule, with the matchers to apply.
 struct FileRule<'a> {
+    semantic: Option<&'a SemanticConfig>,
     /// The glob pattern for matching files.
     pattern: &'a GlobMatcher,
     /// The content matchers to apply.
@@ -76,6 +79,58 @@ pub fn main(config: Config) -> Result<()> {
     let files = collect_files(&config.paths)?;
     let (issues, checked_files) = check_files(&files, &file_rules);
 
+    let mut plan = Plan::default();
+    for file in &files {
+        let semantic_rules = file_rules
+            .iter()
+            .filter(|r| r.semantic.is_some() && r.pattern.is_match_path(file))
+            .collect::<Vec<_>>();
+        if semantic_rules.is_empty() {
+            continue;
+        }
+        match fs::read_to_string(file) {
+            Ok(content) => {
+                for rule in semantic_rules {
+                    plan.add_file(
+                        file,
+                        &content,
+                        None,
+                        rule.rule,
+                        rule.target,
+                        rule.matchers.as_slice(),
+                        rule.semantic.expect("semantic rule"),
+                    );
+                }
+            }
+            Err(_) => {
+                for rule in semantic_rules {
+                    plan.incomplete(file, rule.rule, "could not read file as UTF-8");
+                }
+            }
+        }
+    }
+    let diagnostics = plan.execute(
+        &mut JevClient::default(),
+        Instant::now() + Duration::from_secs(30),
+    );
+    for diagnostic in &diagnostics {
+        println!("{}", diagnostic.render());
+    }
+    if diagnostics.iter().any(|d| d.status != Status::Finding) {
+        if !issues.is_empty() {
+            print_failure(&issues, checked_files, total_rules);
+        }
+        eprintln!("Semantic scan incomplete or uncertain; no all-clear result.");
+        process::exit(2);
+    }
+    if !diagnostics.is_empty() {
+        if !issues.is_empty() {
+            print_failure(&issues, checked_files, total_rules);
+        }
+        println!("Found {} semantic findings", diagnostics.len());
+        process::exit(1);
+    }
+
     if issues.is_empty() {
         print_success(checked_files, total_rules, &rules_by_source);
         Ok(())
@@ -97,7 +152,7 @@ fn collect_file_rules(rules_by_source: &[(PathBuf, Vec<Rule>)]) -> (Vec<FileRule
 }
 
 fn file_rules_for_rule(rule: &Rule) -> impl Iterator<Item = FileRule<'_>> {
-    if rule.action != RuleAction::Block {
+    if rule.action == RuleAction::Substitute {
         return Vec::new().into_iter();
     }
 
@@ -105,12 +160,14 @@ fn file_rules_for_rule(rule: &Rule) -> impl Iterator<Item = FileRule<'_>> {
         .iter()
         .filter_map(move |hook| match hook {
             Hook::PreToolUse(PreToolUseMatcher::Write(matcher)) => Some(FileRule {
+                semantic: matcher.semantic.as_ref(),
                 pattern: &matcher.file,
                 matchers: ContentMatcherSet::Write(&matcher.content),
                 target: &matcher.target,
                 rule,
             }),
             Hook::PreToolUse(PreToolUseMatcher::Edit(matcher)) => Some(FileRule {
+                semantic: matcher.semantic.as_ref(),
                 pattern: &matcher.file,
                 matchers: ContentMatcherSet::Edit(&matcher.new_content),
                 target: &matcher.target,
@@ -168,6 +225,9 @@ fn check_file(file: &Path, file_rules: &[FileRule<'_>]) -> (Vec<Issue>, bool) {
 }
 
 fn rule_issues(file: &Path, content: &str, file_rule: &FileRule<'_>) -> Vec<Issue> {
+    if file_rule.semantic.is_some() {
+        return Vec::new();
+    }
     let matchers = file_rule.matchers.as_slice();
     file_rule
         .target

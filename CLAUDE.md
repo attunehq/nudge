@@ -122,11 +122,12 @@ When Nudge has something to share, it responds in one of several ways:
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
 - **Learned context**: For UserPromptSubmit hooks, Nudge searches `.nudge/learned/*.md` with BM25, or hybrid BM25 plus local embeddings when `learn.embeddings.enabled` is set in `.nudge.yaml` or `.nudge.yml`, and injects the most relevant incident notes when the prompt resembles a known scenario. For supported PreToolUse command surfaces, learned context can be surfaced as an allow-with-context warning.
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
-- **Warning**: For provider inputs that look like supported PreToolUse surfaces but cannot be inspected (currently Codex apply_patch parse failures), Nudge allows the operation and tells the model to report the warning to the user
+- **Warning**: For uninspectable provider inputs and opt-in Jev semantic findings, uncertainty, or incomplete checks, Nudge allows the operation and returns model-visible context.
 - **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
 
 The response type is determined by the hook type:
 - `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
+- `PreToolUse` semantic `warn` rules **allow with context**; semantic blocking is not enabled.
 - `PreToolUse` substitute rules **allow with updated input** (Claude Code, Codex CLI, Grok Build, and Cursor Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
@@ -165,3 +166,15 @@ Nudge has several documentation sources that must stay aligned. When updating on
 **packages/nudge/skills/nudge-learnings/** is the focused agent-facing learnings workflow. It should stay proactive about searching `.nudge/learned` during repo debugging and recording durable repo-specific fixes after the issue is solved.
 
 When you change something fundamental, such as changing the rule format, setup flow, learned-note behavior, or collaborative framing, update every affected source.
+
+## Jev Semantic Rules
+
+Opt-in Write/Edit `semantic` rules select ordinary Rust comments, evaluate Noul
+judgments through Jev 1.13.0, and require `action: warn`. The client reads
+`TYPESAFE_API_KEY` from the environment and uses a fixed TypeSafe endpoint.
+`src/semantic.rs` owns planning and policy; `src/semantic/` contains configuration,
+selection, exact edit snapshots, and the HTTP client. Tests inject a transport,
+without reading credentials or contacting Jev. Hooks allow uncertain/incomplete
+checks with warnings. Check mode exits 1 for findings and 2 for uncertain or
+incomplete semantic scans. Semantic blocking awaits quality qualification.
+See [the semantic rules guide](docs/semantic-rules.md) for the full contract.

@@ -136,6 +136,9 @@ pub struct WriteInput {
 /// Normalized edit input.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EditInput {
+    /// Exact edit context for semantic checks; absence means incomplete
+    /// inspection.
+    pub semantic_snapshot: Option<crate::semantic::edit::EditSnapshot>,
     /// Path being edited.
     pub file_path: PathBuf,
 

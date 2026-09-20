@@ -46,6 +46,13 @@ Checked 25 files against 6 rules
 
 ## Rule Discovery
 
+Semantic Rust-comment rules with `action: warn` are also evaluated in check mode.
+They require `TYPESAFE_API_KEY` and send selected source context to TypeSafe.
+Completed findings exit 1; uncertain or incomplete semantic evaluation exits 2
+and takes precedence over other findings. Check mode never prints an all-clear
+result for those states. See [semantic rules](semantic-rules.md) for thresholds,
+budgets, and setup. Static `nudge validate` remains offline.
+
 `nudge check` loads the same rule files as hook mode:
 
 1. User-level `rules.yaml` from Nudge's platform config directory, if present.

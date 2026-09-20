@@ -50,8 +50,12 @@ pub fn parse(command: &str, cwd: &Path) -> Result<Vec<ToolUse>> {
             let (update, next) = parse_update_file(&lines, index + 1);
             let current_path = cwd.join(path);
             let current = fs::read_to_string(&current_path)?;
-            let new_string = apply_hunks(current, &update.hunks)?;
+            let new_string = apply_hunks(current.clone(), &update.hunks)?;
             changes.push(ToolUse::Edit(EditInput {
+                semantic_snapshot: Some(crate::semantic::edit::EditSnapshot::between(
+                    &current,
+                    new_string.clone(),
+                )),
                 file_path: update.move_to.unwrap_or_else(|| path.into()),
                 old_string: update.old_string,
                 post_edit_content: Some(new_string.clone()),
