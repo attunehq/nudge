@@ -207,11 +207,14 @@ unambiguous replacements and sequential edits, and maps changes to resulting-fil
 byte ranges. `semantic/select.rs` uses tree-sitter to select Rust comments.
 
 `cargo test -p nudge semantic` covers selection, normalization, HTTP failures,
-deadlines, response validation, and CLI/provider warning behavior without a key.
+deadlines, response validation, severity, and CLI/provider behavior without a key.
+`cargo test -p nudge credentials` covers user credential storage and precedence;
+`cargo test -p nudge login` covers offline login input validation.
 Keep live credentials outside fixtures. For live proof, use synthetic source in
 a disposable repo and the active branch binary. Record network/hook timings
 separately from model evaluation time. See [semantic rules](semantic-rules.md)
-for the supported public contract; blocking remains gated on quality evaluation.
+for the supported public contract. Rules choose warning or block behavior and
+probability thresholds; uncertain and incomplete judgments never block hooks.
 
 ### Agent behavior
 

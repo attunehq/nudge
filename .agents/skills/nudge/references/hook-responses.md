@@ -76,11 +76,11 @@ part of the work.
 For noisy, silent, or surprising rules, read
 [rule-debugging.md](rule-debugging.md).
 
-## Jev Semantic Warnings
+## Jev Semantic Rules
 
-Opt-in Rust-comment rules use `action: warn`. Jev findings, uncertain judgments,
-and incomplete checks allow the tool with model-visible context. Treat uncertain
-judgments as questions to review, not established violations. Missing credentials
-or service errors do not establish that code is clean. Semantic blocking is not
-enabled. Deterministic blocks still take priority, and warnings preserve any
-deterministic command substitution.
+Opt-in Rust-comment rules choose `action: warn` or `action: block`. Completed
+findings at or above `thresholds.violation` warn or block according to that action.
+Uncertain judgments and incomplete checks always allow the tool with model-visible
+context. Treat uncertainty as a question to review, not an established violation.
+Missing credentials or service errors do not establish that code is clean.
+Deterministic blocks still take priority, and warnings preserve substitutions.

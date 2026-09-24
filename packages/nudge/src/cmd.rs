@@ -8,6 +8,7 @@ pub mod cursor;
 pub mod grok;
 pub(crate) mod json_hooks;
 pub mod learn;
+pub mod login;
 pub(crate) mod setup_command;
 pub(crate) mod skill_install;
 pub mod syntaxtree;

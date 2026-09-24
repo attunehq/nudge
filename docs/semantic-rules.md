@@ -1,9 +1,10 @@
 # Natural-language lint rules with Jev
 
 Semantic rules evaluate ordinary Rust comments in the context of adjacent code.
-They run during supported Write/Edit hooks and `nudge check`. Set
-`TYPESAFE_API_KEY` in the environment of the agent or CLI before use. Selected
-source context is sent to TypeSafe; credentials stay out of rule YAML.
+They run during supported Write/Edit hooks and `nudge check`. Run
+`nudge login typesafe.ai` to save a TypeSafe API key, or set `TYPESAFE_API_KEY`
+in the environment. Selected source context is sent to TypeSafe; credentials
+stay out of rule YAML.
 Repositories without semantic rules make no Jev requests.
 
 ```yaml
@@ -41,11 +42,17 @@ Optional `content` (Write) or `new_content` (Edit) matchers act as deterministic
 preconditions on each selected target. With semantic Edit rules these conditions
 apply to the resulting file or code block, not just the replacement string.
 
-This first release requires `action: warn` for semantic rules. Values at or below
-`clear` pass, values at or above `violation` report a finding, and values between
-them report uncertainty. These example thresholds need evaluation on your own
-code. Warnings allow the tool operation; they are not verified facts or security
-gates. Semantic blocking awaits held-out quality evaluation.
+Choose `action: warn` for warning-level findings or `action: block` for
+error-level findings that prevent the hook operation. Values at or below `clear`
+pass; values at or above `violation` trigger the chosen action. Values between
+them report uncertainty and allow the operation. API failures and incomplete
+checks also allow the operation with a warning, even for `action: block`.
+
+`thresholds.violation` is the probability that the violation statement is true,
+not a separate confidence score. For example, `violation: 0.95` triggers at 95%
+or higher. The thresholds must satisfy `0 <= clear < violation <= 1`. Choose
+thresholds for each rule based on your code and tolerance for false positives.
+Semantic judgments are probabilistic; selecting `block` does not make them facts.
 
 The client pins `jev-1.13.0`, batches independent judgments, and uses a one-second
 semantic deadline for a hook invocation. It does not retry failures or follow
@@ -55,10 +62,11 @@ or malformed responses produce explicit incomplete warnings. Check mode has a
 network call are separate from deterministic checks; existing block rules still
 take priority in hooks.
 
-`nudge check` exits 0 for a complete scan with no findings, 1 for findings, and 2
+`nudge check` exits 0 for a complete scan with no errors, including warning-only
+findings; 1 for error-level semantic findings or deterministic violations; and 2
 for uncertain or incomplete semantic checks. Incomplete or uncertain takes
-precedence over findings, and never prints an all-clear result. Although hooks
-only warn, completed semantic findings fail check mode so CI can surface them.
+precedence over errors, and never prints an all-clear result. Warnings are printed
+but do not fail CI.
 
 Validate configuration offline with `nudge validate`. For a sample evaluation:
 
@@ -69,6 +77,28 @@ nudge test --rule comments-explain-intent --tool Write \
 
 Plain `nudge test --tool Edit` supplies a replacement fragment, so semantic
 evaluation reports missing full-file context; use a Write sample or an actual
-Edit hook to test the judgment. Existing agents must inherit the credential from
-their launching environment; saving an environment file alone does not update
-an already-running agent process.
+Edit hook to test the judgment.
+
+## Login and credential storage
+
+1. Create an API key at <https://console.typesafe.ai/keys>.
+2. Run `nudge login typesafe.ai`.
+3. Paste the key into the hidden prompt.
+
+The command verifies the key with a small synthetic Jev request before saving it.
+A failed verification leaves any saved key unchanged. For automation, pipe the
+key from your secret store into `nudge login typesafe.ai --stdin`; never put it
+in command-line arguments or repository files.
+
+Nudge prints the saved path. It uses `credentials.json` in the same user config
+directory as global `rules.yaml`:
+
+- macOS: `~/Library/Application Support/com.attunehq.nudge/credentials.json`
+- Linux: `$XDG_CONFIG_HOME/nudge/credentials.json`, or `~/.config/nudge/credentials.json`
+- Windows: `%APPDATA%\attunehq\nudge\config\credentials.json`
+
+The file stores the key as plaintext, with owner-only permissions on Unix. Each
+hook process reads it when needed, so saved credentials work without restarting
+the agent. A non-empty `TYPESAFE_API_KEY` overrides the saved credential; use this
+for CI secrets or a temporary account override. An agent using an environment
+override must inherit it from its launching process.

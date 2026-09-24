@@ -17,6 +17,7 @@ mod grok;
 mod inline_imports;
 mod install_script;
 mod learn;
+mod login;
 mod markdown_target;
 mod message_content;
 mod multiple_rules;
@@ -30,7 +31,7 @@ mod user_prompt;
 mod webfetch;
 
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
@@ -38,6 +39,18 @@ use xshell::Shell;
 
 pub fn nudge_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_nudge"))
+}
+
+/// Keep credential tests independent of the developer's saved user config.
+pub fn isolated_command(home: &Path) -> Command {
+    let mut command = Command::new(nudge_binary());
+    command
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("APPDATA", home.join("AppData/Roaming"))
+        .env("USERPROFILE", home)
+        .env_remove("TYPESAFE_API_KEY");
+    command
 }
 
 /// Expected outcome from running a hook through nudge.

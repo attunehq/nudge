@@ -34,7 +34,7 @@ before rule evaluation.
 - `target: { kind: Content }`
 - `target: { kind: MarkdownCodeBlock }`
 - `action: block`
-- Semantic Rust-comment rules with `action: warn` (requires `TYPESAFE_API_KEY`; selected source context is sent to TypeSafe)
+- Semantic Rust-comment rules with `action: warn` or `action: block` (use `nudge login typesafe.ai` or `TYPESAFE_API_KEY`; selected source context is sent to TypeSafe)
 
 It does not evaluate live-hook surfaces:
 
@@ -47,6 +47,9 @@ It does not evaluate live-hook surfaces:
 
 If the user wants CI coverage, prefer file-content rules for conventions that
 must be enforceable outside a live agent.
+
+Semantic warnings exit 0; error/block findings exit 1. Uncertain or incomplete
+semantic scans exit 2, taking precedence over errors.
 
 ## GitHub Actions Example
 

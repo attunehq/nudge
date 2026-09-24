@@ -74,7 +74,6 @@ fn write_hook(code: &str) -> Vec<NudgeHook> {
 fn validates_semantic_rules_without_credentials() {
     pretty_assert_eq!(rules(RULE).len(), 1);
     for invalid in [
-        RULE.replace("action: warn", "action: block"),
         RULE.replace("action: warn", "action: substitute"),
         RULE.replace("language: rust", "language: python"),
         RULE.replace("clear: 0.1", "clear: 0.95"),
@@ -150,6 +149,111 @@ fn warning_policy_and_batching_preserve_distinct_predicates() {
     assert!(matches!(
         evaluate_hooks_with_transport(&hooks, &rules(RULE), &mut fake),
         HookOutcome::AllowPreToolUseWithContext { .. }
+    ));
+}
+
+#[test]
+fn semantic_severity_and_custom_thresholds_control_hook_decisions() {
+    let hooks = write_hook("fn grace() {\n// Call run\nrun();\n}\n");
+    for action in ["warn", "block"] {
+        let yaml = RULE
+            .replace("action: warn", &format!("action: {action}"))
+            .replace("violation: 0.9", "violation: 0.8")
+            .replace(
+                "        semantic:",
+                "        content: [{kind: Regex, pattern: run}]\n        semantic:",
+            );
+        for probability in [0.0, 0.1, 0.1001, 0.7999, 0.8, 1.0] {
+            let mut fake = Fake {
+                probability,
+                ..Fake::default()
+            };
+            let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake);
+            pretty_assert_eq!(fake.requests.len(), 1);
+            if probability <= 0.1 {
+                pretty_assert_eq!(outcome, HookOutcome::Passthrough);
+            } else if probability >= 0.8 && action == "block" {
+                assert!(matches!(outcome, HookOutcome::DenyPreToolUse { .. }));
+            } else {
+                assert!(matches!(
+                    outcome,
+                    HookOutcome::AllowPreToolUseWithContext { .. }
+                ));
+            }
+        }
+        for error in [
+            EvaluationError::MissingCredential,
+            EvaluationError::InvalidCredentialFile,
+            EvaluationError::Http(401),
+            EvaluationError::Timeout,
+        ] {
+            let mut fake = Fake {
+                error: Some(error),
+                ..Fake::default()
+            };
+            assert!(matches!(
+                evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake),
+                HookOutcome::AllowPreToolUseWithContext { .. }
+            ));
+        }
+    }
+}
+
+#[test]
+fn semantic_edit_preconditions_never_block_without_a_model_finding() {
+    let dir = TempDir::new().expect("temp");
+    fs::write(
+        dir.path().join("src.rs"),
+        "fn ada() {\n// Call run\nrun();\n}\n",
+    )
+    .expect("source");
+    let yaml = RULE
+        .replace("tool: Write", "tool: Edit")
+        .replace("action: warn", "action: block")
+        .replace(
+            "        semantic:",
+            "        new_content: [{kind: Regex, pattern: stop}]\n        semantic:",
+        );
+    let hooks = claude::parse_hook(
+        json!({"hook_event_name":"PreToolUse", "tool_name":"Edit", "cwd":dir.path(),
+        "tool_input":{"file_path":"src.rs", "old_string":"run();", "new_string":"stop();"}}),
+    )
+    .expect("edit");
+    for probability in [0.0, 0.9] {
+        let mut fake = Fake {
+            probability,
+            ..Fake::default()
+        };
+        let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake);
+        pretty_assert_eq!(fake.requests.len(), 1);
+        pretty_assert_eq!(
+            matches!(outcome, HookOutcome::DenyPreToolUse { .. }),
+            probability >= 0.9
+        );
+    }
+}
+
+#[test]
+fn mixed_warning_and_block_rules_keep_their_own_actions() {
+    let mut loaded = rules(RULE);
+    loaded.extend(rules(
+        &RULE
+            .replace("action: warn", "action: block")
+            .replace("name: explain-intent", "name: error-intent"),
+    ));
+    let hooks = write_hook("fn grace() {\n// Call run\nrun();\n}\n");
+    let mut fake = Fake {
+        probability: 0.9,
+        ..Fake::default()
+    };
+    let diagnostics =
+        Plan::from_hooks(&hooks, &loaded).execute(&mut fake, Instant::now() + HOOK_BUDGET);
+    pretty_assert_eq!(diagnostics.len(), 2);
+    assert!(!diagnostics[0].is_error());
+    assert!(diagnostics[1].is_error());
+    assert!(matches!(
+        evaluate_hooks_with_transport(&hooks, &loaded, &mut fake),
+        HookOutcome::DenyPreToolUse { .. }
     ));
 }
 

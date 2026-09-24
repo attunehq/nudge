@@ -1,7 +1,12 @@
-use std::{env, fmt, time::Instant};
+use std::{
+    fmt,
+    time::{Duration, Instant},
+};
 
 use reqwest::{blocking::Client, redirect::Policy};
-use serde_json::Value;
+use serde_json::{Value, json};
+
+use crate::credentials;
 
 pub const MODEL: &str = "jev-1.13.0";
 const ENDPOINT: &str = "https://api.typesafe.ai/v1/systemone";
@@ -10,6 +15,7 @@ const ENDPOINT: &str = "https://api.typesafe.ai/v1/systemone";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvaluationError {
     MissingCredential,
+    InvalidCredentialFile,
     Timeout,
     Http(u16),
     Unavailable,
@@ -20,7 +26,8 @@ pub enum EvaluationError {
 impl fmt::Display for EvaluationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingCredential => f.write_str("TYPESAFE_API_KEY is missing"),
+            Self::MissingCredential => f.write_str("Jev credential is missing; run `nudge login typesafe.ai` or set TYPESAFE_API_KEY"),
+            Self::InvalidCredentialFile => f.write_str("could not read Nudge credentials.json; run `nudge login typesafe.ai` to replace it"),
             Self::Timeout => f.write_str("semantic deadline exceeded"),
             Self::Http(status) => write!(f, "Jev returned HTTP {status}"),
             Self::Unavailable => f.write_str("Jev is unavailable"),
@@ -43,15 +50,29 @@ pub struct JevClient {
 
 impl Transport for JevClient {
     fn send(&mut self, request: &Value, deadline: Instant) -> Result<Value, EvaluationError> {
-        let key = env::var("TYPESAFE_API_KEY")
-            .ok()
-            .filter(|key| !key.trim().is_empty())
+        let key = credentials::load_jev()
+            .map_err(|_| EvaluationError::InvalidCredentialFile)?
             .ok_or(EvaluationError::MissingCredential)?;
         self.send_authenticated(ENDPOINT, &key, request, deadline)
     }
 }
 
 impl JevClient {
+    pub fn verify_key(&mut self, key: &str) -> Result<(), EvaluationError> {
+        let request = json!({
+            "model": MODEL,
+            "state": "Nudge credential verification",
+            "questions": {"connected": {"type": "noul", "instructions": "Does the state mention Nudge?"}}
+        });
+        let response = self.send_authenticated(
+            ENDPOINT,
+            key,
+            &request,
+            Instant::now() + Duration::from_secs(10),
+        )?;
+        probabilities(&request, &response).map(|_| ())
+    }
+
     fn send_authenticated(
         &mut self,
         endpoint: &str,
