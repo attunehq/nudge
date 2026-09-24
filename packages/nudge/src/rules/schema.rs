@@ -6,6 +6,7 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use crate::{
     fmap_match,
     learn::LearnConfig,
+    semantic::SemanticConfig,
     snippet::{Annotation, Match, Span},
     template,
 };
@@ -41,7 +42,7 @@ pub struct RuleConfig {
 }
 
 /// A single rule definition.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
     /// Unique identifier for this rule.
@@ -73,6 +74,70 @@ pub struct Rule {
     /// overall rule is considered to match.
     #[serde(deserialize_with = "deserialize_non_empty_vec")]
     pub on: Vec<Hook>,
+}
+
+#[derive(Deserialize)]
+#[serde(remote = "Rule", deny_unknown_fields)]
+struct RuleDef {
+    name: String,
+    description: Option<String>,
+    message: Option<String>,
+    #[serde(default)]
+    action: RuleAction,
+    #[serde(deserialize_with = "deserialize_non_empty_vec")]
+    on: Vec<Hook>,
+}
+
+impl<'de> Deserialize<'de> for Rule {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let rule = RuleDef::deserialize(deserializer)?;
+        for hook in &rule.on {
+            let (content, semantic, target) = match hook {
+                Hook::PreToolUse(PreToolUseMatcher::Write(m)) => {
+                    (&m.content, &m.semantic, &m.target)
+                }
+                Hook::PreToolUse(PreToolUseMatcher::Edit(m)) => {
+                    (&m.new_content, &m.semantic, &m.target)
+                }
+                _ if rule.action == RuleAction::Warn => {
+                    return Err(de::Error::custom(
+                        "warn currently requires a semantic Write/Edit matcher",
+                    ));
+                }
+                _ => continue,
+            };
+            if content.is_empty() && semantic.is_none() {
+                return Err(de::Error::custom(
+                    "file matcher requires content or semantic",
+                ));
+            }
+            if let Some(semantic) = semantic {
+                if rule.action != RuleAction::Warn {
+                    return Err(de::Error::custom(
+                        "semantic rules currently require action: warn; blocking awaits quality qualification",
+                    ));
+                }
+                semantic.validate().map_err(de::Error::custom)?;
+                if let FileContentTarget::MarkdownCodeBlock { language } = target
+                    && *language != Language::Rust
+                {
+                    return Err(de::Error::custom(
+                        "Comments selection currently supports only Rust targets",
+                    ));
+                }
+                if rule.message.as_ref().is_none_or(|m| m.trim().is_empty()) {
+                    return Err(de::Error::custom(
+                        "semantic rules require an actionable message",
+                    ));
+                }
+            } else if rule.action == RuleAction::Warn {
+                return Err(de::Error::custom(
+                    "warn currently requires a semantic matcher",
+                ));
+            }
+        }
+        Ok(rule)
+    }
 }
 
 fn deserialize_non_empty_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -174,6 +239,9 @@ pub enum RuleAction {
 
     /// Rewrite matching Bash commands and let the operation proceed.
     Substitute,
+
+    /// Report a semantic finding without blocking the operation.
+    Warn,
 }
 
 impl From<&Rule> for Rule {
@@ -285,8 +353,12 @@ pub struct PreToolUseWriteMatcher {
     ///
     /// When the content being written by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(deserialize_with = "deserialize_non_empty_vec")]
+    #[serde(default)]
     pub content: Vec<ContentMatcher>,
+
+    /// Opt-in Jev evaluation after deterministic content preconditions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<SemanticConfig>,
 }
 
 /// Matches the Edit tool.
@@ -313,8 +385,12 @@ pub struct PreToolUseEditMatcher {
     ///
     /// When the new content being written by the agent matches all of these
     /// patterns, the rule is triggered.
-    #[serde(deserialize_with = "deserialize_non_empty_vec")]
+    #[serde(default)]
     pub new_content: Vec<ContentMatcher>,
+
+    /// Opt-in Jev evaluation of the proposed resulting file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<SemanticConfig>,
 }
 
 /// Matches the WebFetch tool.

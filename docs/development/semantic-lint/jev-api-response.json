@@ -1,0 +1,57 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "rename-what": {
+      "type": "noul",
+      "noul": 0.88
+    },
+    "rename-why": {
+      "type": "noul",
+      "noul": 0.07
+    },
+    "loop-what": {
+      "type": "noul",
+      "noul": 0.93
+    },
+    "loop-why": {
+      "type": "noul",
+      "noul": 0.06
+    },
+    "assignment": {
+      "type": "noul",
+      "noul": 0.81
+    },
+    "workaround": {
+      "type": "noul",
+      "noul": 0.06
+    },
+    "api-contract": {
+      "type": "noul",
+      "noul": 0.08
+    },
+    "mixed": {
+      "type": "noul",
+      "noul": 0.08
+    },
+    "misleading-because": {
+      "type": "noul",
+      "noul": 0.94
+    },
+    "why-without-because": {
+      "type": "noul",
+      "noul": 0.09
+    },
+    "injection": {
+      "type": "noul",
+      "noul": 0.43
+    },
+    "no-comment": {
+      "type": "noul",
+      "noul": 0.1
+    }
+  },
+  "usage": {
+    "input_tokens": 2226,
+    "output_tokens": 223
+  }
+}

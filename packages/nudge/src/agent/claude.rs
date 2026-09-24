@@ -71,8 +71,15 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
             file_path: path_field(&input, "file_path")?,
             content: string_field(&input, "content")?.to_string(),
         })),
-        "Edit" => {
+        "Edit" | "MultiEdit" => {
             let file_path = path_field(&input, "file_path")?;
+            if input.get("edits").is_some() {
+                return Ok(ToolUse::Edit(crate::semantic::edit::multi_input(
+                    &context.cwd,
+                    &file_path,
+                    &input,
+                )));
+            }
             let old_string = string_field(&input, "old_string")
                 .unwrap_or_default()
                 .to_string();
@@ -81,6 +88,11 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
                 post_edit_content(&context.cwd, &file_path, &old_string, &new_string);
 
             Ok(ToolUse::Edit(EditInput {
+                semantic_snapshot: crate::semantic::edit::replacement(
+                    &context.cwd,
+                    &file_path,
+                    &input,
+                ),
                 file_path,
                 old_string,
                 new_string,

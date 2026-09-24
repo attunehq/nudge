@@ -17,7 +17,8 @@ Exit behavior:
 
 - `0`: no checkable violations were found, or no file-based rules exist.
 - `1`: one or more checkable violations were found.
-- other non-zero: configuration, argument, or runtime error.
+- `2`: uncertain or incomplete semantic checks; takes precedence over findings.
+- Other non-zero exits can indicate configuration, argument, or runtime errors.
 
 With explicit operands, every path or glob must resolve to at least one file.
 Missing paths, empty directories, and glob patterns that match no files fail
@@ -33,6 +34,7 @@ before rule evaluation.
 - `target: { kind: Content }`
 - `target: { kind: MarkdownCodeBlock }`
 - `action: block`
+- Semantic Rust-comment rules with `action: warn` (requires `TYPESAFE_API_KEY`; selected source context is sent to TypeSafe)
 
 It does not evaluate live-hook surfaces:
 

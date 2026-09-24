@@ -1,5 +1,7 @@
 //! Rule evaluation for normalized hook events.
 
+use std::{path::Path, time::Instant};
+
 use indoc::formatdoc;
 use itertools::Itertools;
 use serde_json::Value;
@@ -15,6 +17,7 @@ use crate::{
         PreToolUseWriteMatcher, Rule, RuleAction, UrlMatcher, UserPromptSubmitMatcher,
         evaluate_all_matched,
     },
+    semantic::{self, JevClient, Plan, Transport},
     snippet::{Annotation, Match, Source},
 };
 
@@ -23,23 +26,51 @@ use crate::{
 /// A raw provider hook can normalize into multiple Nudge events. This happens
 /// for Codex `apply_patch`, where one tool call can touch several files.
 pub fn evaluate_hooks(hooks: &[NudgeHook], rules: &[Rule]) -> HookOutcome {
-    evaluate_hooks_with_learnings(
-        std::path::Path::new("."),
-        hooks,
-        rules,
-        &[],
-        &LearnConfig::default(),
-    )
+    evaluate_hooks_with_learnings(Path::new("."), hooks, rules, &[], &LearnConfig::default())
 }
 
 /// Evaluate hooks against configured rules and learned repo knowledge.
 pub fn evaluate_hooks_with_learnings(
-    root: &std::path::Path,
+    root: &Path,
     hooks: &[NudgeHook],
     rules: &[Rule],
     learned_notes: &[LearnedNote],
     learn_config: &LearnConfig,
 ) -> HookOutcome {
+    evaluate_hooks_using(
+        root,
+        hooks,
+        rules,
+        learned_notes,
+        learn_config,
+        &mut JevClient::default(),
+    )
+}
+
+pub fn evaluate_hooks_with_transport(
+    hooks: &[NudgeHook],
+    rules: &[Rule],
+    transport: &mut impl Transport,
+) -> HookOutcome {
+    evaluate_hooks_using(
+        Path::new("."),
+        hooks,
+        rules,
+        &[],
+        &LearnConfig::default(),
+        transport,
+    )
+}
+
+fn evaluate_hooks_using(
+    root: &Path,
+    hooks: &[NudgeHook],
+    rules: &[Rule],
+    learned_notes: &[LearnedNote],
+    learn_config: &LearnConfig,
+    transport: &mut impl Transport,
+) -> HookOutcome {
+    let deadline = Instant::now() + semantic::HOOK_BUDGET;
     let mut pretooluse_warnings = Vec::new();
     let mut pretooluse_matches = Vec::new();
     let mut pretooluse_update = None;
@@ -75,6 +106,26 @@ pub fn evaluate_hooks_with_learnings(
         };
     }
 
+    pretooluse_warnings.extend(
+        Plan::from_hooks(hooks, rules)
+            .execute(transport, deadline)
+            .iter()
+            .map(|diagnostic| diagnostic.render()),
+    );
+
+    if let Some(update) = pretooluse_update {
+        let context = join_context(update.model_context, learned_context.pre_tool_use.clone());
+        let additional_context = join_context(
+            context,
+            (!pretooluse_warnings.is_empty()).then(|| pretooluse_warnings.join("\n\n")),
+        );
+        return HookOutcome::UpdatePreToolUse {
+            system_message: update.user_message,
+            additional_context,
+            updated_input: update.updated_input,
+        };
+    }
+
     if !pretooluse_warnings.is_empty() {
         let additional_context = join_context(
             pretooluse_warnings.join("\n\n"),
@@ -92,16 +143,6 @@ pub fn evaluate_hooks_with_learnings(
             learned_context.user_prompt.clone(),
         );
         return HookOutcome::AddContext { context };
-    }
-
-    if let Some(update) = pretooluse_update {
-        let additional_context =
-            join_context(update.model_context, learned_context.pre_tool_use.clone());
-        return HookOutcome::UpdatePreToolUse {
-            system_message: update.user_message,
-            additional_context,
-            updated_input: update.updated_input,
-        };
     }
 
     if let HookLearnedContext {

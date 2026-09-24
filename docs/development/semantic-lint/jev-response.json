@@ -1,0 +1,71 @@
+{
+  "model": "jev-1.13.0",
+  "answers": {
+    "rename-what": {
+      "type": "noul",
+      "noul": 0.87,
+      "stats": {}
+    },
+    "rename-why": {
+      "type": "noul",
+      "noul": 0.07,
+      "stats": {}
+    },
+    "loop-what": {
+      "type": "noul",
+      "noul": 0.92,
+      "stats": {}
+    },
+    "loop-why": {
+      "type": "noul",
+      "noul": 0.06,
+      "stats": {}
+    },
+    "assignment": {
+      "type": "noul",
+      "noul": 0.81,
+      "stats": {}
+    },
+    "workaround": {
+      "type": "noul",
+      "noul": 0.06,
+      "stats": {}
+    },
+    "api-contract": {
+      "type": "noul",
+      "noul": 0.08,
+      "stats": {}
+    },
+    "mixed": {
+      "type": "noul",
+      "noul": 0.07,
+      "stats": {}
+    },
+    "misleading-because": {
+      "type": "noul",
+      "noul": 0.95,
+      "stats": {}
+    },
+    "why-without-because": {
+      "type": "noul",
+      "noul": 0.1,
+      "stats": {}
+    },
+    "injection": {
+      "type": "noul",
+      "noul": 0.46,
+      "stats": {}
+    },
+    "no-comment": {
+      "type": "noul",
+      "noul": 0.1,
+      "stats": {}
+    }
+  },
+  "usage": {
+    "input_tokens": 2226,
+    "output_tokens": 223
+  },
+  "request_id": "playground_163e7dd98a9f8384a82b3bfbb81ff59f04b",
+  "evaluation_time_ms": 128.99529699643608
+}

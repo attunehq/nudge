@@ -23,6 +23,18 @@ pub enum FileContentTarget {
 }
 
 impl FileContentTarget {
+    /// Source slices and physical offsets for semantic candidate selection.
+    pub fn segments<'a>(&self, content: &'a str) -> Vec<(&'a str, usize)> {
+        match self {
+            Self::Content => vec![(content, 0)],
+            Self::MarkdownCodeBlock { language } => markdown_code_blocks(content)
+                .into_iter()
+                .filter(|block| language.matches_markdown_info_word(&block.language))
+                .map(|block| (block.source, block.body_start))
+                .collect(),
+        }
+    }
+
     /// Evaluate all matchers against this target and return translated matches.
     pub fn evaluate(&self, content: &str, matchers: &[ContentMatcher]) -> Vec<Match> {
         match self {
@@ -93,7 +105,7 @@ fn markdown_code_blocks(markdown: &str) -> Vec<MarkdownCodeBlock<'_>> {
                     info,
                     language,
                     body_start: range.end,
-                    body_end: range.end,
+                    body_end: range.start,
                     start_line: byte_offset_to_line(markdown, range.start),
                 });
             }
@@ -219,6 +231,21 @@ pattern: "{pattern}"
         pretty_assert_eq!(
             &markdown[matches[0].span.start..matches[0].span.end],
             "value: usize"
+        );
+    }
+
+    #[test]
+    fn markdown_segments_exclude_fences() {
+        let markdown = "# Example\n\n```rust\nfn ada() {}\n```\n";
+        let target = FileContentTarget::MarkdownCodeBlock {
+            language: Language::Rust,
+        };
+        let segments = target.segments(markdown);
+        pretty_assert_eq!(segments.len(), 1);
+        pretty_assert_eq!(segments[0].0, "fn ada() {}\n");
+        pretty_assert_eq!(
+            &markdown[segments[0].1..segments[0].1 + segments[0].0.len()],
+            segments[0].0
         );
     }
 

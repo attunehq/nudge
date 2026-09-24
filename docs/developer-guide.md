@@ -198,6 +198,23 @@ binary in disposable repos before trying it in a real project.
 
 ## Live-Agent Testing
 
+### Semantic lint development
+
+`src/semantic.rs` plans comment checks separately from deterministic matching.
+`semantic/client.rs` pins Jev and validates responses; `Transport` is an offline
+test seam, not a configurable provider API. `semantic/edit.rs` reconstructs
+unambiguous replacements and sequential edits, and maps changes to resulting-file
+byte ranges. `semantic/select.rs` uses tree-sitter to select Rust comments.
+
+`cargo test -p nudge semantic` covers selection, normalization, HTTP failures,
+deadlines, response validation, and CLI/provider warning behavior without a key.
+Keep live credentials outside fixtures. For live proof, use synthetic source in
+a disposable repo and the active branch binary. Record network/hook timings
+separately from model evaluation time. See [semantic rules](semantic-rules.md)
+for the supported public contract; blocking remains gated on quality evaluation.
+
+### Agent behavior
+
 Use live-agent testing when the change affects agent-visible behavior:
 
 - Hook setup for Claude Code, Codex CLI, Grok Build, or Cursor.

@@ -241,7 +241,7 @@ fn claude_setup_is_idempotent_and_installs_only_handled_events() {
     assert!(json["hooks"].get("Stop").is_none());
     pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
-        "Write|Edit|WebFetch|Bash"
+        "Write|Edit|MultiEdit|WebFetch|Bash"
     );
 
     let command = json["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
@@ -694,7 +694,7 @@ fn cursor_setup_creates_hooks_json_and_is_idempotent() {
     pretty_assert_eq!(json["version"], 1);
     pretty_assert_eq!(
         json["hooks"]["preToolUse"][0]["matcher"],
-        "Shell|Write|Delete|WebFetch"
+        "Shell|Write|Edit|MultiEdit|StrReplace|Delete|WebFetch"
     );
     pretty_assert_eq!(json["hooks"]["preToolUse"][0]["timeout"], 5);
     assert!(json["hooks"]["beforeShellExecution"][0]["command"].is_string());
@@ -883,7 +883,7 @@ fn grok_setup_creates_nudge_json_and_is_idempotent() {
     let json = serde_json::from_str::<Value>(&second).expect("valid json");
     pretty_assert_eq!(
         json["hooks"]["PreToolUse"][0]["matcher"],
-        "Write|Edit|WebFetch|Bash|run_terminal_command|search_replace|write|write_file|create_file|edit_file|web_fetch"
+        "Write|Edit|MultiEdit|WebFetch|Bash|run_terminal_command|search_replace|write|write_file|create_file|edit_file|web_fetch"
     );
     assert!(json["hooks"]["UserPromptSubmit"][0]["hooks"].is_array());
 }

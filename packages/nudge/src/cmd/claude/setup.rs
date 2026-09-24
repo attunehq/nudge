@@ -86,7 +86,7 @@ pub fn main(config: Config) -> Result<()> {
         .timeout(5)
         .build();
     let nudge_pretooluse_matcher = HookMatcher::builder()
-        .matcher("Write|Edit|WebFetch|Bash")
+        .matcher("Write|Edit|MultiEdit|WebFetch|Bash")
         .hooks([&nudge_hook])
         .build();
     let nudge_matcher = HookMatcher::builder().hooks([nudge_hook]).build();

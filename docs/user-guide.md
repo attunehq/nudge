@@ -356,6 +356,11 @@ prompt reminders, permissions, or learned-note prompt injection.
 
 See [CI and Programmatic Checks](ci.md) for the full check-mode contract.
 
+Opt-in [natural-language rules with Jev](semantic-rules.md) also check Rust
+comments. These rules warn during edits; check mode exits 1 for completed
+findings and 2 for uncertain or incomplete evaluations. They require a TypeSafe
+credential and transmit selected source context to TypeSafe.
+
 ## Examples
 
 Prompt-time reminder:
