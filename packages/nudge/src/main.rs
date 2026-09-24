@@ -37,6 +37,9 @@ enum Commands {
     /// Manage repo-local learned incident knowledge.
     Learn(cmd::learn::Config),
 
+    /// Save a credential for an external service.
+    Login(cmd::login::Config),
+
     /// Display the syntax tree for code (for writing tree-sitter queries).
     Syntaxtree(cmd::syntaxtree::Config),
 
@@ -93,6 +96,7 @@ fn main() -> Result<()> {
         Commands::Cursor(config) => cmd::cursor::main(config),
         Commands::Grok(config) => cmd::grok::main(config),
         Commands::Learn(config) => cmd::learn::main(config),
+        Commands::Login(config) => cmd::login::main(config),
         Commands::Syntaxtree(config) => cmd::syntaxtree::main(config),
         Commands::Validate(config) => cmd::validate::main(config),
         Commands::Test(config) => cmd::test::main(config),

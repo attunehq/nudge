@@ -17,7 +17,7 @@ use ignore::WalkBuilder;
 use nudge::rules::{
     self, ContentMatcher, FileContentTarget, GlobMatcher, Hook, PreToolUseMatcher, Rule, RuleAction,
 };
-use nudge::semantic::{JevClient, Plan, SemanticConfig, Status};
+use nudge::semantic::{Diagnostic, JevClient, Plan, SemanticConfig, Status};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -116,27 +116,50 @@ pub fn main(config: Config) -> Result<()> {
     for diagnostic in &diagnostics {
         println!("{}", diagnostic.render());
     }
-    if diagnostics.iter().any(|d| d.status != Status::Finding) {
-        if !issues.is_empty() {
-            print_failure(&issues, checked_files, total_rules);
-        }
+    let exit_code = scan_exit_code(!issues.is_empty(), &diagnostics);
+    if !issues.is_empty() {
+        print_failure(&issues, checked_files, total_rules);
+    }
+    if exit_code == 2 {
         eprintln!("Semantic scan incomplete or uncertain; no all-clear result.");
         process::exit(2);
     }
-    if !diagnostics.is_empty() {
-        if !issues.is_empty() {
-            print_failure(&issues, checked_files, total_rules);
-        }
-        println!("Found {} semantic findings", diagnostics.len());
-        process::exit(1);
+    if diagnostics.iter().any(|diagnostic| diagnostic.is_error()) {
+        println!(
+            "Found {} semantic errors",
+            diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.is_error())
+                .count()
+        );
     }
 
-    if issues.is_empty() {
+    let warnings = diagnostics
+        .iter()
+        .filter(|diagnostic| !diagnostic.is_error())
+        .count();
+    if warnings > 0 {
+        println!("Found {warnings} semantic warnings");
+    }
+
+    if exit_code == 0 {
         print_success(checked_files, total_rules, &rules_by_source);
         Ok(())
     } else {
-        print_failure(&issues, checked_files, total_rules);
-        process::exit(1);
+        process::exit(exit_code);
+    }
+}
+
+fn scan_exit_code(deterministic_errors: bool, diagnostics: &[Diagnostic]) -> i32 {
+    if diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.status != Status::Finding)
+    {
+        2
+    } else if deterministic_errors || diagnostics.iter().any(Diagnostic::is_error) {
+        1
+    } else {
+        0
     }
 }
 
@@ -378,4 +401,42 @@ fn print_failure(issues: &[Issue], checked_files: usize, total_rules: usize) {
         "Checked {} files against {} rules",
         checked_files, total_rules
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq as pretty_assert_eq;
+    use std::slice;
+
+    #[test]
+    fn scan_status_preserves_severity_and_incomplete_precedence() {
+        let warning = Diagnostic {
+            file: PathBuf::from("ada.rs"),
+            line: 1,
+            rule: String::from("intent"),
+            status: Status::Finding,
+            action: RuleAction::Warn,
+            message: String::from("Explain intent"),
+        };
+        let error = Diagnostic {
+            action: RuleAction::Block,
+            ..warning.clone()
+        };
+        pretty_assert_eq!(scan_exit_code(false, &[]), 0);
+        pretty_assert_eq!(scan_exit_code(false, slice::from_ref(&warning)), 0);
+        pretty_assert_eq!(scan_exit_code(true, slice::from_ref(&warning)), 1);
+        pretty_assert_eq!(scan_exit_code(false, &[warning.clone(), error.clone()]), 1);
+        for status in [Status::Uncertain, Status::Incomplete] {
+            for action in [RuleAction::Warn, RuleAction::Block] {
+                let incomplete = Diagnostic {
+                    status,
+                    action,
+                    ..warning.clone()
+                };
+                pretty_assert_eq!(scan_exit_code(false, slice::from_ref(&incomplete)), 2);
+                pretty_assert_eq!(scan_exit_code(true, &[error.clone(), incomplete]), 2);
+            }
+        }
+    }
 }

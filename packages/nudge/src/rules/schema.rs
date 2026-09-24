@@ -112,9 +112,9 @@ impl<'de> Deserialize<'de> for Rule {
                 ));
             }
             if let Some(semantic) = semantic {
-                if rule.action != RuleAction::Warn {
+                if rule.action == RuleAction::Substitute {
                     return Err(de::Error::custom(
-                        "semantic rules currently require action: warn; blocking awaits quality qualification",
+                        "semantic rules require action: warn or action: block",
                     ));
                 }
                 semantic.validate().map_err(de::Error::custom)?;

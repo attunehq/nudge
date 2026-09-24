@@ -15,7 +15,7 @@ small, testable rules and learned notes:
 
 - Rules catch deterministic conventions before an operation lands.
 - Opt-in [Jev rules](docs/semantic-rules.md) check Rust comments against
-  natural-language criteria and return immediate warnings.
+  natural-language criteria, with configurable warning/error levels and probability thresholds.
 - Bash substitutions rewrite simple command mistakes automatically.
 - Prompt reminders add project context when a user asks for something specific.
 - Learned incident notes keep future agents from rediscovering old debugging

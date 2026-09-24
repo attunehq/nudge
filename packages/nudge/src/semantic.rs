@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 
 use crate::{
     hook::{NudgeHook, ToolUse},
-    rules::{ContentMatcher, FileContentTarget, Rule, evaluate_all_matched},
+    rules::{ContentMatcher, FileContentTarget, Rule, RuleAction, evaluate_all_matched},
 };
 
 pub use client::{EvaluationError, JevClient, Transport};
@@ -37,13 +37,19 @@ pub struct Diagnostic {
     pub line: usize,
     pub rule: String,
     pub status: Status,
+    pub action: RuleAction,
     pub message: String,
 }
 
 impl Diagnostic {
+    pub fn is_error(&self) -> bool {
+        self.status == Status::Finding && self.action == RuleAction::Block
+    }
+
     pub fn render(&self) -> String {
         let status = match self.status {
-            Status::Finding => "semantic finding",
+            Status::Finding if self.is_error() => "semantic finding (error)",
+            Status::Finding => "semantic finding (warning)",
             Status::Uncertain => "semantic judgment uncertain",
             Status::Incomplete => "semantic check incomplete",
         };
@@ -77,6 +83,7 @@ impl Plan {
             line: 1,
             rule: rule.name.clone(),
             status: Status::Incomplete,
+            action: rule.action,
             message: message.to_string(),
         });
     }
@@ -136,6 +143,7 @@ impl Plan {
                         line: content[..start].bytes().filter(|b| *b == b'\n').count() + 1,
                         rule: rule.name.clone(),
                         status: Status::Finding,
+                        action: rule.action,
                         message: rule.message().to_string(),
                     },
                 });

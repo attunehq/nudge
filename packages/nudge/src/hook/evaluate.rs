@@ -106,12 +106,19 @@ fn evaluate_hooks_using(
         };
     }
 
-    pretooluse_warnings.extend(
-        Plan::from_hooks(hooks, rules)
-            .execute(transport, deadline)
-            .iter()
-            .map(|diagnostic| diagnostic.render()),
-    );
+    let diagnostics = Plan::from_hooks(hooks, rules).execute(transport, deadline);
+    if diagnostics.iter().any(|diagnostic| diagnostic.is_error()) {
+        return HookOutcome::DenyPreToolUse {
+            message: format!(
+                "Nudge blocked operation due to semantic rule violation.\n\n{}",
+                diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.render())
+                    .join("\n\n")
+            ),
+        };
+    }
+    pretooluse_warnings.extend(diagnostics.iter().map(|diagnostic| diagnostic.render()));
 
     if let Some(update) = pretooluse_update {
         let context = join_context(update.model_context, learned_context.pre_tool_use.clone());
@@ -324,6 +331,7 @@ impl<T> PipeMatches for T where T: Iterator<Item = Match> {}
 
 fn annotate_write(rule: &Rule, input: &WriteInput) -> Vec<Annotation> {
     rule.hooks_pretooluse_write()
+        .filter(|matcher| matcher.semantic.is_none())
         .flat_map(|matcher| evaluate_write(input, matcher))
         .pipe_matches(rule)
 }
@@ -353,6 +361,7 @@ fn edit_annotation_groups<'a>(
     input: &'a EditInput,
 ) -> impl Iterator<Item = (&'a str, Vec<Annotation>)> {
     rule.hooks_pretooluse_edit()
+        .filter(|matcher| matcher.semantic.is_none())
         .filter(|matcher| matcher.file.is_match_path(&input.file_path))
         .filter_map(move |matcher| {
             let source = source_for_edit(input, &matcher.target);

@@ -1,14 +1,10 @@
-use std::{
-    fs,
-    io::Write,
-    process::{Command, Stdio},
-};
+use std::{fs, io::Write, process::Stdio};
 
 use pretty_assertions::assert_eq as pretty_assert_eq;
 use serde_json::json;
 use tempfile::TempDir;
 
-use crate::nudge_binary;
+use crate::isolated_command;
 
 const RULE: &str = r#"
 version: 1
@@ -40,7 +36,7 @@ fn validate_stays_offline_and_check_reports_missing_credentials() {
         (vec!["validate", ".nudge.yaml"], 0),
         (vec!["check", "src.rs"], 2),
     ] {
-        let output = Command::new(nudge_binary())
+        let output = isolated_command(dir.path())
             .args(args)
             .current_dir(dir.path())
             .env_remove("TYPESAFE_API_KEY")
@@ -49,12 +45,12 @@ fn validate_stays_offline_and_check_reports_missing_credentials() {
         pretty_assert_eq!(output.status.code(), Some(expected));
         if expected == 2 {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(stdout.contains("TYPESAFE_API_KEY is missing"));
+            assert!(stdout.contains("Jev credential is missing"));
             assert!(!stdout.contains("✓ Checked"));
         }
     }
     fs::write(dir.path().join("src.rs"), "fn ada() {}\n").expect("source without comments");
-    let output = Command::new(nudge_binary())
+    let output = isolated_command(dir.path())
         .args(["check", "src.rs"])
         .current_dir(dir.path())
         .env_remove("TYPESAFE_API_KEY")
@@ -80,7 +76,7 @@ fn provider_hooks_deliver_incomplete_warning_without_blocking() {
             )
         };
         let payload = json!({"hook_event_name":"PreToolUse","tool_name":tool,"cwd":dir.path(),"tool_input":input});
-        let mut child = Command::new(nudge_binary())
+        let mut child = isolated_command(dir.path())
             .args([provider, "hook"])
             .current_dir(dir.path())
             .env_remove("TYPESAFE_API_KEY")
@@ -99,7 +95,7 @@ fn provider_hooks_deliver_incomplete_warning_without_blocking() {
         pretty_assert_eq!(output.status.code(), Some(0));
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
-            stdout.contains("TYPESAFE_API_KEY is missing"),
+            stdout.contains("Jev credential is missing"),
             "{provider}: {stdout}"
         );
         assert!(!stdout.contains("\"deny\""));

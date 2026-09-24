@@ -44,6 +44,7 @@ cargo run -p nudge -- grok skills install # Install the bundled Grok skills
 cargo run -p nudge -- cursor hook      # Respond to Cursor hook (reads JSON from stdin)
 cargo run -p nudge -- cursor setup     # Install hooks and bundled skills for Cursor
 cargo run -p nudge -- cursor skills install # Install the bundled Cursor skills
+cargo run -p nudge -- login typesafe.ai # Verify and save a TypeSafe API key
 cargo run -p nudge -- learn add        # Record a repo-local learned incident note
 cargo run -p nudge -- learn search     # Search learned incident notes
 cargo run -p nudge -- learn embeddings # Manage local learned-note embeddings
@@ -80,6 +81,7 @@ nudge grok skills install - Installs the bundled skills into .grok/skills
 nudge cursor hook   - Receives hook JSON on stdin, evaluates rules, outputs response
 nudge cursor setup  - Writes hook configuration and installs the bundled skills for Cursor
 nudge cursor skills install - Installs the bundled skills into .cursor/skills
+nudge login typesafe.ai - Verify and save a TypeSafe API key outside the repository
 nudge learn add     - Record a repo-local learned incident note in .nudge/learned
 nudge learn list    - List repo-local learned incident notes
 nudge learn search  - Search learned incident notes with BM25 or configured local embeddings
@@ -92,6 +94,8 @@ nudge check         - Check project files against rules (CI/linter mode)
 ### Module Layout
 
 - `src/main.rs` - CLI entry point using clap
+- `src/credentials.rs` - User-level credential storage and environment overrides
+- `src/cmd/login.rs` - TypeSafe API key verification and login
 - `src/agent.rs` - Provider adapters for Claude Code, Codex CLI, Grok Build, and Cursor
 - `src/hook.rs` - Normalized hook event model
 - `src/hook/evaluate.rs` - Provider-neutral rule evaluation
@@ -139,7 +143,7 @@ When Nudge has something to share, it responds in one of several ways:
 
 The response type is determined by the hook type:
 - `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
-- `PreToolUse` semantic `warn` rules **allow with context**; semantic blocking is not enabled.
+- `PreToolUse` semantic rules choose `warn` (**allow with context**) or `block` (**deny completed findings**). Uncertain or incomplete checks always allow with context.
 - `PreToolUse` substitute rules **allow with updated input** (Claude Code, Codex CLI, Grok Build, and Cursor Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
@@ -182,11 +186,13 @@ When you change something fundamental, such as changing the rule format, setup f
 ## Jev Semantic Rules
 
 Opt-in Write/Edit `semantic` rules select ordinary Rust comments, evaluate Noul
-judgments through Jev 1.13.0, and require `action: warn`. The client reads
-`TYPESAFE_API_KEY` from the environment and uses a fixed TypeSafe endpoint.
+judgments through Jev 1.13.0, and support `action: warn` or `action: block`.
+`thresholds.violation` controls the probability at which a finding fires. The
+client reads `TYPESAFE_API_KEY`, falling back to user-level `credentials.json`
+saved by `nudge login typesafe.ai`, and uses a fixed TypeSafe endpoint.
 `src/semantic.rs` owns planning and policy; `src/semantic/` contains configuration,
 selection, exact edit snapshots, and the HTTP client. Tests inject a transport,
 without reading credentials or contacting Jev. Hooks allow uncertain/incomplete
-checks with warnings. Check mode exits 1 for findings and 2 for uncertain or
-incomplete semantic scans. Semantic blocking awaits quality qualification.
+checks with warnings. Check mode exits 0 for warning-only findings, 1 for errors,
+and 2 for uncertain or incomplete semantic scans.
 See [the semantic rules guide](docs/semantic-rules.md) for the full contract.
