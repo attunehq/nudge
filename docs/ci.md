@@ -21,9 +21,8 @@ nudge check "**/*.rs"
 
 Exit behavior:
 
-- `0`: no errors were found (semantic warnings are allowed), or no file-based rules exist.
+- `0`: no errors were found (semantic warnings, uncertain judgments, and skipped checks are allowed), or no file-based rules exist.
 - `1`: one or more deterministic violations or semantic errors were found.
-- `2`: a semantic check was uncertain or incomplete; this takes precedence over errors.
 - Other non-zero exits: configuration, argument, or runtime errors.
 
 With no path arguments, `nudge check` scans the whole project from the current
@@ -49,11 +48,11 @@ Checked 25 files against 6 rules
 
 Semantic Rust-comment rules with `action: warn` or `action: block` also run in check
 mode. Use a saved credential from `nudge login typesafe.ai`, or `TYPESAFE_API_KEY`
-for CI. Selected source context is sent to TypeSafe. Warning findings exit 0;
-error/block findings exit 1; uncertain or incomplete semantic evaluation exits 2
-and takes precedence over other findings. Check mode never prints an all-clear
-result for those states. See [semantic rules](semantic-rules.md) for thresholds,
-budgets, and setup. Static `nudge validate` remains offline.
+for CI. Selected source context is sent to TypeSafe. Semantic checks are best
+effort: error/block findings exit 1, while warnings, uncertain judgments, and
+checks skipped for missing credentials or service failures exit 0 with a warning
+that names what was not evaluated. See [semantic rules](semantic-rules.md) for
+thresholds, retries, budgets, and setup. Static `nudge validate` remains offline.
 
 `nudge check` loads the same rule files as hook mode:
 

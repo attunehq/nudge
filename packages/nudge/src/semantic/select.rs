@@ -20,12 +20,29 @@ pub fn comments(source: &str) -> Result<Vec<Candidate>, &'static str> {
         return Err("Rust syntax is incomplete; comment context could not be established");
     }
     let mut result = Vec::new();
-    visit(tree.root_node(), source, &mut result)?;
+    visit(tree.root_node(), source, &mut result);
     Ok(result)
 }
 
+fn is_comment(node: Node<'_>) -> bool {
+    matches!(node.kind(), "line_comment" | "block_comment")
+}
+
+fn code_sibling<'a>(
+    node: Node<'a>,
+    step: impl Fn(Node<'a>) -> Option<Node<'a>>,
+) -> Option<Node<'a>> {
+    let mut sibling = step(node);
+    while let Some(candidate) = sibling
+        && is_comment(candidate)
+    {
+        sibling = step(candidate);
+    }
+    sibling
+}
+
 fn ordinary_comment(node: Node<'_>, source: &str) -> bool {
-    if !matches!(node.kind(), "line_comment" | "block_comment") {
+    if !is_comment(node) {
         return false;
     }
     let text = &source[node.byte_range()];
@@ -35,15 +52,15 @@ fn ordinary_comment(node: Node<'_>, source: &str) -> bool {
         || (text.starts_with("/**") && !text.starts_with("/***")))
 }
 
-fn visit(node: Node<'_>, source: &str, result: &mut Vec<Candidate>) -> Result<(), &'static str> {
+fn visit(node: Node<'_>, source: &str, result: &mut Vec<Candidate>) {
     let mut cursor = node.walk();
     let children = node.named_children(&mut cursor).collect::<Vec<_>>();
     let mut i = 0;
     while i < children.len() {
         let first = children[i];
         if !ordinary_comment(first, source) {
-            if !matches!(first.kind(), "line_comment" | "block_comment") {
-                visit(first, source, result)?;
+            if !is_comment(first) {
+                visit(first, source, result);
             }
             i += 1;
             continue;
@@ -59,14 +76,20 @@ fn visit(node: Node<'_>, source: &str, result: &mut Vec<Candidate>) -> Result<()
             i += 1;
             last = children[i];
         }
-        let previous = first.prev_named_sibling().filter(|n| {
-            n.end_position().row == first.start_position().row
-                && !matches!(n.kind(), "line_comment" | "block_comment")
-        });
-        let adjacent = previous
-            .or_else(|| last.next_named_sibling())
-            .filter(|n| !matches!(n.kind(), "line_comment" | "block_comment"))
-            .ok_or("comment has no resolvable adjacent code")?;
+        let trailing = first
+            .prev_named_sibling()
+            .filter(|n| n.end_position().row == first.start_position().row && !is_comment(*n));
+        // Comments closing a block describe the code before them; a block with
+        // only comments is described as a whole. Comments with no code in scope
+        // have nothing to be judged against.
+        let Some(adjacent) = trailing
+            .or_else(|| code_sibling(last, |n| n.next_named_sibling()))
+            .or_else(|| code_sibling(first, |n| n.prev_named_sibling()))
+            .or_else(|| node.parent().map(|_| node))
+        else {
+            i += 1;
+            continue;
+        };
         let mut enclosing = node;
         while !enclosing.kind().ends_with("_item") {
             match enclosing.parent() {
@@ -92,5 +115,4 @@ fn visit(node: Node<'_>, source: &str, result: &mut Vec<Candidate>) -> Result<()
         });
         i += 1;
     }
-    Ok(())
 }

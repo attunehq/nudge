@@ -214,7 +214,8 @@ Keep live credentials outside fixtures. For live proof, use synthetic source in
 a disposable repo and the active branch binary. Record network/hook timings
 separately from model evaluation time. See [semantic rules](semantic-rules.md)
 for the supported public contract. Rules choose warning or block behavior and
-probability thresholds; uncertain and incomplete judgments never block hooks.
+probability thresholds; uncertain judgments and skipped checks never block hooks
+or fail CI.
 
 ### Agent behavior
 

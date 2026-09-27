@@ -358,9 +358,10 @@ See [CI and Programmatic Checks](ci.md) for the full check-mode contract.
 
 Opt-in [natural-language rules with Jev](semantic-rules.md) also check Rust
 comments. Choose warning or block actions and a violation probability threshold.
-Check mode exits 0 for warnings, 1 for errors, and 2 for uncertain or incomplete
-evaluations. Run `nudge login typesafe.ai` to save a credential, or supply
-`TYPESAFE_API_KEY` in CI. Selected source context is sent to TypeSafe.
+Check mode exits 1 only for errors; warnings, uncertain judgments, and checks
+skipped because Jev could not run are reported without failing. Run
+`nudge login typesafe.ai` to save a credential, or supply `TYPESAFE_API_KEY` in
+CI. Selected source context is sent to TypeSafe.
 
 ## Examples
 

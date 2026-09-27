@@ -1,5 +1,6 @@
 use std::{
     fmt,
+    sync::OnceLock,
     time::{Duration, Instant},
 };
 
@@ -37,19 +38,30 @@ impl fmt::Display for EvaluationError {
     }
 }
 
+impl EvaluationError {
+    /// Rate limits, overload, and connection failures can clear on their own.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            Self::Unavailable => true,
+            Self::Http(status) => *status == 429 || *status >= 500,
+            _ => false,
+        }
+    }
+}
+
 /// Transport injection keeps tests offline without configurable credential
 /// destinations.
-pub trait Transport {
-    fn send(&mut self, request: &Value, deadline: Instant) -> Result<Value, EvaluationError>;
+pub trait Transport: Sync {
+    fn send(&self, request: &Value, deadline: Instant) -> Result<Value, EvaluationError>;
 }
 
 #[derive(Default)]
 pub struct JevClient {
-    client: Option<Client>,
+    client: OnceLock<Client>,
 }
 
 impl Transport for JevClient {
-    fn send(&mut self, request: &Value, deadline: Instant) -> Result<Value, EvaluationError> {
+    fn send(&self, request: &Value, deadline: Instant) -> Result<Value, EvaluationError> {
         let key = credentials::load_jev()
             .map_err(|_| EvaluationError::InvalidCredentialFile)?
             .ok_or(EvaluationError::MissingCredential)?;
@@ -58,7 +70,7 @@ impl Transport for JevClient {
 }
 
 impl JevClient {
-    pub fn verify_key(&mut self, key: &str) -> Result<(), EvaluationError> {
+    pub fn verify_key(&self, key: &str) -> Result<(), EvaluationError> {
         let request = json!({
             "model": MODEL,
             "state": "Nudge credential verification",
@@ -70,11 +82,14 @@ impl JevClient {
             &request,
             Instant::now() + Duration::from_secs(10),
         )?;
-        probabilities(&request, &response).map(|_| ())
+        probabilities(&request, &response)?
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map(|_| ())
     }
 
     fn send_authenticated(
-        &mut self,
+        &self,
         endpoint: &str,
         key: &str,
         request: &Value,
@@ -83,23 +98,22 @@ impl JevClient {
         let remaining = deadline
             .checked_duration_since(Instant::now())
             .ok_or(EvaluationError::Timeout)?;
-        if self.client.is_none() {
-            self.client = Some(
-                Client::builder()
+        let client = match self.client.get() {
+            Some(client) => client,
+            None => {
+                let client = Client::builder()
                     .redirect(Policy::none())
                     .retry(reqwest::retry::never())
                     .connect_timeout(remaining)
                     .build()
-                    .map_err(|_| EvaluationError::Unavailable)?,
-            );
-        }
+                    .map_err(|_| EvaluationError::Unavailable)?;
+                self.client.get_or_init(|| client)
+            }
+        };
         let remaining = deadline
             .checked_duration_since(Instant::now())
             .ok_or(EvaluationError::Timeout)?;
-        let response = self
-            .client
-            .as_ref()
-            .expect("client initialized")
+        let response = client
             .post(endpoint)
             .bearer_auth(key)
             .timeout(remaining)
@@ -127,7 +141,12 @@ fn transport_error(error: reqwest::Error) -> EvaluationError {
     }
 }
 
-pub fn probabilities(request: &Value, response: &Value) -> Result<Vec<f64>, EvaluationError> {
+/// Validate each answer independently so one malformed answer only affects
+/// its own question.
+pub fn probabilities(
+    request: &Value,
+    response: &Value,
+) -> Result<Vec<Result<f64, EvaluationError>>, EvaluationError> {
     if response.get("model").and_then(Value::as_str) != Some(MODEL) {
         return Err(EvaluationError::InvalidResponse);
     }
@@ -137,10 +156,7 @@ pub fn probabilities(request: &Value, response: &Value) -> Result<Vec<f64>, Eval
     let answers = response["answers"]
         .as_object()
         .ok_or(EvaluationError::InvalidResponse)?;
-    if answers.len() != questions.len() {
-        return Err(EvaluationError::InvalidResponse);
-    }
-    questions
+    Ok(questions
         .keys()
         .map(|id| {
             let answer = answers.get(id).ok_or(EvaluationError::InvalidResponse)?;
@@ -155,7 +171,7 @@ pub fn probabilities(request: &Value, response: &Value) -> Result<Vec<f64>, Eval
             }
             Ok(probability)
         })
-        .collect()
+        .collect())
 }
 
 #[cfg(test)]

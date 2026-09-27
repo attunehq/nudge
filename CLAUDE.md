@@ -126,12 +126,12 @@ When Nudge has something to share, it responds in one of several ways:
 - **Continue**: For UserPromptSubmit hooks, Nudge injects context as plain text
 - **Learned context**: For UserPromptSubmit hooks, Nudge searches `.nudge/learned/*.md` with BM25, or hybrid BM25 plus local embeddings when `learn.embeddings.enabled` is set in `.nudge.yaml` or `.nudge.yml`, and injects the most relevant incident notes when the prompt resembles a known scenario. For supported PreToolUse command surfaces, learned context can be surfaced as an allow-with-context warning.
 - **Interrupt**: For PreToolUse hooks, Nudge blocks the operation and explains what to fix
-- **Warning**: For uninspectable provider inputs and opt-in Jev semantic findings, uncertainty, or incomplete checks, Nudge allows the operation and returns model-visible context.
+- **Warning**: For uninspectable provider inputs and opt-in Jev semantic findings, uncertainty, or skipped checks, Nudge allows the operation and returns model-visible context.
 - **Substitute**: For deterministic PreToolUse Bash rules, Nudge rewrites the command and lets it proceed
 
 The response type is determined by the hook type:
 - `PreToolUse` block rules **interrupt** (block provider-supported Write/Edit/WebFetch/Bash operations)
-- `PreToolUse` semantic rules choose `warn` (**allow with context**) or `block` (**deny completed findings**). Uncertain or incomplete checks always allow with context.
+- `PreToolUse` semantic rules choose `warn` (**allow with context**) or `block` (**deny completed findings**). Uncertain judgments and skipped checks always allow with context.
 - `PreToolUse` substitute rules **allow with updated input** (Claude Code, Codex CLI, Grok Build, and Cursor Bash commands)
 - `UserPromptSubmit` rules always **continue** (inject guidance into the conversation)
 - `PermissionRequest` is parsed but always **passes through** until Nudge has a permission-specific rule surface
@@ -180,7 +180,7 @@ client reads `TYPESAFE_API_KEY`, falling back to user-level `credentials.json`
 saved by `nudge login typesafe.ai`, and uses a fixed TypeSafe endpoint.
 `src/semantic.rs` owns planning and policy; `src/semantic/` contains configuration,
 selection, exact edit snapshots, and the HTTP client. Tests inject a transport,
-without reading credentials or contacting Jev. Hooks allow uncertain/incomplete
-checks with warnings. Check mode exits 0 for warning-only findings, 1 for errors,
-and 2 for uncertain or incomplete semantic scans.
+without reading credentials or contacting Jev. Checks are best effort: retryable
+failures back off and retry, and uncertain judgments or checks that cannot run are
+warnings naming what was skipped. Only error findings block hooks or fail `nudge check`.
 See [the semantic rules guide](docs/semantic-rules.md) for the full contract.

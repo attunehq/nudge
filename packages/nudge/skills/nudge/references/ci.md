@@ -17,7 +17,6 @@ Exit behavior:
 
 - `0`: no checkable violations were found, or no file-based rules exist.
 - `1`: one or more checkable violations were found.
-- `2`: uncertain or incomplete semantic checks; takes precedence over findings.
 - Other non-zero exits can indicate configuration, argument, or runtime errors.
 
 With explicit operands, every path or glob must resolve to at least one file.
@@ -48,8 +47,9 @@ It does not evaluate live-hook surfaces:
 If the user wants CI coverage, prefer file-content rules for conventions that
 must be enforceable outside a live agent.
 
-Semantic warnings exit 0; error/block findings exit 1. Uncertain or incomplete
-semantic scans exit 2, taking precedence over errors.
+Semantic error/block findings exit 1. Warnings, uncertain judgments, and skipped
+semantic checks exit 0; skipped checks print a warning naming what was not
+evaluated.
 
 ## GitHub Actions Example
 
