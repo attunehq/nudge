@@ -80,7 +80,8 @@ For noisy, silent, or surprising rules, read
 
 Opt-in Rust-comment rules choose `action: warn` or `action: block`. Completed
 findings at or above `thresholds.violation` warn or block according to that action.
-Uncertain judgments and incomplete checks always allow the tool with model-visible
+Uncertain judgments and skipped checks always allow the tool with model-visible
 context. Treat uncertainty as a question to review, not an established violation.
-Missing credentials or service errors do not establish that code is clean.
+A skipped check names the comment or file that was not evaluated and why; it does
+not establish that the code is clean.
 Deterministic blocks still take priority, and warnings preserve substitutions.

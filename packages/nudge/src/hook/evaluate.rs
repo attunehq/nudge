@@ -43,14 +43,14 @@ pub fn evaluate_hooks_with_learnings(
         rules,
         learned_notes,
         learn_config,
-        &mut JevClient::default(),
+        &JevClient::default(),
     )
 }
 
 pub fn evaluate_hooks_with_transport(
     hooks: &[NudgeHook],
     rules: &[Rule],
-    transport: &mut impl Transport,
+    transport: &impl Transport,
 ) -> HookOutcome {
     evaluate_hooks_using(
         Path::new("."),
@@ -68,7 +68,7 @@ fn evaluate_hooks_using(
     rules: &[Rule],
     learned_notes: &[LearnedNote],
     learn_config: &LearnConfig,
-    transport: &mut impl Transport,
+    transport: &impl Transport,
 ) -> HookOutcome {
     let deadline = Instant::now() + semantic::HOOK_BUDGET;
     let mut pretooluse_warnings = Vec::new();

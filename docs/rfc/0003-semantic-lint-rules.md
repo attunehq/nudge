@@ -2,9 +2,11 @@
 
 Status: original warning-only design implemented on 2026-09-19. Research date: 2026-09-19.
 The design below is a historical record. The 2026-09-24 revision adds user-selected
-warning/block actions and saved credentials via `nudge login typesafe.ai`. Warning
-findings now exit 0 in check mode; errors exit 1 and uncertain/incomplete checks
-exit 2. The [public guide](../semantic-rules.md) is the current behavior contract.
+warning/block actions and saved credentials via `nudge login typesafe.ai`. Later
+revisions made semantic checks best effort: only error findings exit 1 in check
+mode, uncertain judgments and skipped checks are warnings, and retryable failures
+back off and retry. The [public guide](../semantic-rules.md) is the current
+behavior contract.
 Held-out quality evaluation, additional selectors, and prompt-intent rules remain
 future work.
 

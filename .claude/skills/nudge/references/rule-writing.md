@@ -523,10 +523,12 @@ rules:
 Add an equivalent `tool: Edit` matcher to check edits. On Edit, Nudge evaluates
 comments whose text or adjacent code changed in the resulting file. It does not
 interpret a replacement fragment as a complete file. Ambiguous replacements,
-missing source files, invalid Rust syntax, or comments without associated code
-produce incomplete-check warnings. Consecutive comments are grouped; doc comments
-and comment-like strings are excluded. Rust fences in Markdown are supported with
-`target: { kind: MarkdownCodeBlock, language: rust }`.
+missing source files, or invalid Rust syntax skip the file with a warning.
+Consecutive comments are grouped; doc comments and comment-like strings are
+excluded. A comment is judged with the code after it, the code before it when it
+closes a block, or its enclosing block when that block has no other code.
+Comments with no code in scope are not evaluated. Rust fences in Markdown are
+supported with `target: { kind: MarkdownCodeBlock, language: rust }`.
 
 Optional `content` (Write) or `new_content` (Edit) matchers act as deterministic
 preconditions on each selected target. With semantic Edit rules these conditions
@@ -535,8 +537,7 @@ apply to the resulting file or code block, not just the replacement string.
 Choose `action: warn` for warning-level findings or `action: block` for
 error-level findings that prevent the hook operation. Values at or below `clear`
 pass; values at or above `violation` trigger the chosen action. Values between
-them report uncertainty and allow the operation. API failures and incomplete
-checks also allow the operation with a warning, even for `action: block`.
+them are uncertain and reported as warnings, even for `action: block`.
 
 `thresholds.violation` is the probability that the violation statement is true,
 not a separate confidence score. For example, `violation: 0.95` triggers at 95%
@@ -544,19 +545,27 @@ or higher. The thresholds must satisfy `0 <= clear < violation <= 1`. Choose
 thresholds for each rule based on your code and tolerance for false positives.
 Semantic judgments are probabilistic; selecting `block` does not make them facts.
 
-The client pins `jev-1.13.0`, batches independent judgments, and uses a one-second
-semantic deadline for a hook invocation. It does not retry failures or follow
-HTTP redirects. Missing credentials, rate limiting, timeout, oversized context,
-or malformed responses produce explicit incomplete warnings. Check mode has a
-30-second network-evaluation budget for the scan. Source selection and Jev's
-network call are separate from deterministic checks; existing block rules still
-take priority in hooks.
+Semantic checks are best effort. The client pins `jev-1.13.0`, batches
+independent judgments, and sends up to eight batches concurrently. It retries
+rate limits (429), server errors including overload (5xx), and connection
+failures up to three times with jittered exponential backoff (about 200, 400,
+and 800 ms), never past the deadline. It does not retry other failures or follow
+HTTP redirects. Hooks have a one-second semantic deadline; `nudge check` has 30
+seconds for the whole scan.
 
-`nudge check` exits 0 for a complete scan with no errors, including warning-only
-findings; 1 for error-level semantic findings or deterministic violations; and 2
-for uncertain or incomplete semantic checks. Incomplete or uncertain takes
-precedence over errors, and never prints an all-clear result. Warnings are printed
-but do not fail CI.
+When a check cannot run, Nudge reports a skipped-check warning naming the file,
+line, and rule it did not evaluate, and why: for example, missing credentials,
+exhausted retries, timeout, oversized context, or a malformed answer. Failures
+are isolated. A failed request skips only its own batch, and a malformed answer
+skips only its own comment. Skipped checks never block a hook or fail CI; they
+mean Nudge cannot vouch for that code, not that it is clean.
+
+Source selection and Jev's network call are separate from deterministic checks;
+existing block rules still take priority in hooks.
+
+`nudge check` exits 1 for error-level semantic findings or deterministic
+violations and 0 otherwise. Warnings, uncertain judgments, and skipped checks
+are printed, with a count of skipped checks, but do not fail CI.
 
 Validate configuration offline with `nudge validate`. For a sample evaluation:
 

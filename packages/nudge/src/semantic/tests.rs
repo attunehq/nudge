@@ -1,6 +1,11 @@
 use std::{
     fs,
     path::Path,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    thread,
     time::{Duration, Instant},
 };
 
@@ -42,13 +47,28 @@ fn rules(yaml: &str) -> Vec<Rule> {
 #[derive(Default)]
 struct Fake {
     probability: f64,
-    requests: Vec<Value>,
+    requests: Mutex<Vec<Value>>,
+    /// Returned in order before falling back to `error` or success.
+    transient: Mutex<Vec<EvaluationError>>,
     error: Option<EvaluationError>,
 }
 
+impl Fake {
+    fn requests(&self) -> Vec<Value> {
+        self.requests.lock().expect("requests").clone()
+    }
+}
+
 impl Transport for Fake {
-    fn send(&mut self, request: &Value, _: Instant) -> Result<Value, EvaluationError> {
-        self.requests.push(request.clone());
+    fn send(&self, request: &Value, _: Instant) -> Result<Value, EvaluationError> {
+        self.requests
+            .lock()
+            .expect("requests")
+            .push(request.clone());
+        let mut transient = self.transient.lock().expect("transient");
+        if !transient.is_empty() {
+            return Err(transient.remove(0));
+        }
         if let Some(error) = &self.error {
             return Err(error.clone());
         }
@@ -109,7 +129,214 @@ fn extracts_grouped_comments_with_unicode_but_not_docs_or_strings() {
         0
     );
     assert!(select::comments("fn ada( {").is_err());
-    assert!(select::comments("// standalone").is_err());
+    assert!(select::comments("// standalone").expect("parse").is_empty());
+}
+
+#[test]
+fn comments_without_following_code_use_nearest_code_in_scope() {
+    let code = "// Section\n/// Docs\nfn ada(raw: &str) {\n    let x = parse(&raw);\n    // TODO: handle overflow\n}\n\nfn grace() {\n    // intentionally empty\n}\n";
+    let candidates = select::comments(code).expect("candidates");
+    let pairs = candidates
+        .iter()
+        .map(|c| {
+            (
+                c.state["comment"].as_str().expect("comment"),
+                c.state["code"].as_str().expect("code"),
+            )
+        })
+        .collect::<Vec<_>>();
+    pretty_assert_eq!(
+        pairs,
+        vec![
+            (
+                "// Section",
+                "fn ada(raw: &str) {\n    let x = parse(&raw);\n    // TODO: handle overflow\n}"
+            ),
+            ("// TODO: handle overflow", "let x = parse(&raw);"),
+            ("// intentionally empty", "{\n    // intentionally empty\n}"),
+        ]
+    );
+}
+
+/// Answers each question from its candidate's comment so batch boundaries
+/// cannot hide misattributed results. `FLAG` violates, `BROKEN` fails the
+/// whole request, and `DROP` omits only that answer.
+#[derive(Default)]
+struct Keyed {
+    delay: Duration,
+    requests: AtomicUsize,
+    in_flight: AtomicUsize,
+    max_in_flight: AtomicUsize,
+    failed_questions: AtomicUsize,
+}
+
+impl Transport for Keyed {
+    fn send(&self, request: &Value, _: Instant) -> Result<Value, EvaluationError> {
+        self.requests.fetch_add(1, Ordering::SeqCst);
+        let current = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+        self.max_in_flight.fetch_max(current, Ordering::SeqCst);
+        thread::sleep(self.delay);
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        let candidates = request["state"]["candidates"]
+            .as_array()
+            .expect("candidates");
+        let comment = |index: usize| candidates[index]["comment"].as_str().expect("comment");
+        let questions = request["questions"].as_object().expect("questions");
+        if (0..candidates.len()).any(|index| comment(index).contains("BROKEN")) {
+            self.failed_questions
+                .fetch_add(questions.len(), Ordering::SeqCst);
+            return Err(EvaluationError::Http(400));
+        }
+        let answers = questions
+            .iter()
+            .filter_map(|(id, question)| {
+                let instructions = question["instructions"].as_str().expect("instructions");
+                let index = instructions["Evaluate only candidates[".len()..]
+                    .split(']')
+                    .next()
+                    .and_then(|index| index.parse::<usize>().ok())
+                    .expect("candidate index");
+                let probability = if comment(index).contains("FLAG") {
+                    0.99
+                } else {
+                    0.0
+                };
+                (!comment(index).contains("DROP"))
+                    .then(|| (id.clone(), json!({"type":"noul", "noul": probability})))
+            })
+            .collect::<serde_json::Map<_, _>>();
+        Ok(json!({"model":client::MODEL,"answers":answers}))
+    }
+}
+
+/// Twenty-four padded comments, a few per request. Returns each comment's line.
+fn many_batches(
+    tag: impl Fn(usize) -> &'static str,
+) -> (Vec<NudgeHook>, Vec<(usize, &'static str)>) {
+    let padding = "x".repeat(8_000);
+    let mut code = String::new();
+    let mut lines = Vec::new();
+    for index in 0..24 {
+        lines.push((code.matches('\n').count() + 2, tag(index)));
+        let tag = tag(index);
+        code.push_str(&format!(
+            "fn f{index}() {{\n// {tag} {index} {padding}\nrun();\n}}\n"
+        ));
+    }
+    (write_hook(&code), lines)
+}
+
+fn every_third_flagged(index: usize) -> &'static str {
+    if index.is_multiple_of(3) {
+        "FLAG"
+    } else {
+        "keep"
+    }
+}
+
+#[test]
+fn concurrent_batches_attribute_results_in_job_order() {
+    let (hooks, lines) = many_batches(every_third_flagged);
+    let flagged = lines
+        .iter()
+        .filter(|(_, tag)| *tag == "FLAG")
+        .map(|(line, _)| *line)
+        .collect::<Vec<_>>();
+    let transport = Keyed {
+        delay: Duration::from_millis(50),
+        ..Keyed::default()
+    };
+    let diagnostics = Plan::from_hooks(&hooks, &rules(RULE))
+        .execute(&transport, Instant::now() + Duration::from_secs(30));
+    assert!(transport.requests.load(Ordering::SeqCst) > CONCURRENT_REQUESTS);
+    assert!(transport.max_in_flight.load(Ordering::SeqCst) > 1);
+    assert!(transport.max_in_flight.load(Ordering::SeqCst) <= CONCURRENT_REQUESTS);
+    assert!(diagnostics.iter().all(|d| d.status == Status::Finding));
+    pretty_assert_eq!(
+        diagnostics.iter().map(|d| d.line).collect::<Vec<_>>(),
+        flagged
+    );
+}
+
+#[test]
+fn failures_skip_only_their_own_batch_or_answer() {
+    let (hooks, lines) = many_batches(|index| match index {
+        4 => "BROKEN",
+        19 => "DROP",
+        index => every_third_flagged(index),
+    });
+    let transport = Keyed::default();
+    let diagnostics = Plan::from_hooks(&hooks, &rules(RULE))
+        .execute(&transport, Instant::now() + Duration::from_secs(30));
+    let skipped = diagnostics
+        .iter()
+        .filter(|d| d.status == Status::Skipped)
+        .map(|d| (d.line, d.render()))
+        .collect::<Vec<_>>();
+    let line = |index: usize| lines[index].0;
+    assert!(skipped.iter().any(|(l, message)| *l == line(4)
+        && message.contains("comment not evaluated: Jev returned HTTP 400")));
+    assert!(skipped.iter().any(|(l, message)| *l == line(19)
+        && message.contains("comment not evaluated: Jev returned an invalid response")));
+    // Only the failed request's comments and the dropped answer are skipped.
+    let failed = transport.failed_questions.load(Ordering::SeqCst);
+    assert!(failed < 24 / 2);
+    pretty_assert_eq!(skipped.len(), failed + 1);
+    for (line, tag) in lines {
+        if tag == "FLAG" && skipped.iter().all(|(l, _)| *l != line) {
+            assert!(
+                diagnostics
+                    .iter()
+                    .any(|d| d.line == line && d.status == Status::Finding)
+            );
+        }
+    }
+}
+
+#[test]
+fn retryable_errors_back_off_and_recover() {
+    let hooks = write_hook("fn ada() {\n// Call run\nrun();\n}");
+    let fake = Fake {
+        probability: 0.99,
+        transient: Mutex::new(vec![EvaluationError::Http(529), EvaluationError::Http(429)]),
+        ..Fake::default()
+    };
+    let started = Instant::now();
+    let diagnostics = Plan::from_hooks(&hooks, &rules(RULE))
+        .execute(&fake, Instant::now() + Duration::from_secs(30));
+    pretty_assert_eq!(fake.requests().len(), 3);
+    assert!(started.elapsed() >= (RETRY_DELAYS[0] + RETRY_DELAYS[1]) / 2);
+    pretty_assert_eq!(diagnostics[0].status, Status::Finding);
+}
+
+#[test]
+fn exhausted_and_permanent_failures_warn_about_the_skipped_comment() {
+    let hooks = write_hook("fn ada() {\n// Call run\nrun();\n}");
+    for (error, attempts) in [
+        (EvaluationError::Unavailable, RETRY_DELAYS.len() + 1),
+        (EvaluationError::Http(401), 1),
+        (EvaluationError::MissingCredential, 1),
+        (EvaluationError::InvalidResponse, 1),
+    ] {
+        let fake = Fake {
+            error: Some(error.clone()),
+            ..Fake::default()
+        };
+        let diagnostics = Plan::from_hooks(&hooks, &rules(RULE))
+            .execute(&fake, Instant::now() + Duration::from_secs(30));
+        pretty_assert_eq!(fake.requests().len(), attempts);
+        pretty_assert_eq!(diagnostics.len(), 1);
+        pretty_assert_eq!(diagnostics[0].status, Status::Skipped);
+        let rendered = diagnostics[0].render();
+        assert!(rendered.starts_with(
+            "src.rs:2 [explain-intent] semantic check skipped (warning): comment not evaluated: "
+        ));
+        assert!(rendered.contains(&error.to_string()));
+        pretty_assert_eq!(
+            rendered.contains(&format!("gave up after {attempts} attempts")),
+            attempts > 1
+        );
+    }
 }
 
 #[test]
@@ -120,15 +347,15 @@ fn warning_policy_and_batching_preserve_distinct_predicates() {
         (0.5, Some(Status::Uncertain)),
         (0.9, Some(Status::Finding)),
     ] {
-        let mut fake = Fake {
+        let fake = Fake {
             probability,
             ..Fake::default()
         };
         let diagnostics =
-            Plan::from_hooks(&hooks, &rules(RULE)).execute(&mut fake, Instant::now() + HOOK_BUDGET);
-        pretty_assert_eq!(fake.requests.len(), 1);
+            Plan::from_hooks(&hooks, &rules(RULE)).execute(&fake, Instant::now() + HOOK_BUDGET);
+        pretty_assert_eq!(fake.requests().len(), 1);
         pretty_assert_eq!(
-            fake.requests[0]["questions"]
+            fake.requests()[0]["questions"]
                 .as_object()
                 .expect("questions")
                 .len(),
@@ -142,12 +369,12 @@ fn warning_policy_and_batching_preserve_distinct_predicates() {
             }
         }
     }
-    let mut fake = Fake {
+    let fake = Fake {
         probability: 0.99,
         ..Fake::default()
     };
     assert!(matches!(
-        evaluate_hooks_with_transport(&hooks, &rules(RULE), &mut fake),
+        evaluate_hooks_with_transport(&hooks, &rules(RULE), &fake),
         HookOutcome::AllowPreToolUseWithContext { .. }
     ));
 }
@@ -164,12 +391,12 @@ fn semantic_severity_and_custom_thresholds_control_hook_decisions() {
                 "        content: [{kind: Regex, pattern: run}]\n        semantic:",
             );
         for probability in [0.0, 0.1, 0.1001, 0.7999, 0.8, 1.0] {
-            let mut fake = Fake {
+            let fake = Fake {
                 probability,
                 ..Fake::default()
             };
-            let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake);
-            pretty_assert_eq!(fake.requests.len(), 1);
+            let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &fake);
+            pretty_assert_eq!(fake.requests().len(), 1);
             if probability <= 0.1 {
                 pretty_assert_eq!(outcome, HookOutcome::Passthrough);
             } else if probability >= 0.8 && action == "block" {
@@ -187,12 +414,12 @@ fn semantic_severity_and_custom_thresholds_control_hook_decisions() {
             EvaluationError::Http(401),
             EvaluationError::Timeout,
         ] {
-            let mut fake = Fake {
+            let fake = Fake {
                 error: Some(error),
                 ..Fake::default()
             };
             assert!(matches!(
-                evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake),
+                evaluate_hooks_with_transport(&hooks, &rules(&yaml), &fake),
                 HookOutcome::AllowPreToolUseWithContext { .. }
             ));
         }
@@ -220,12 +447,12 @@ fn semantic_edit_preconditions_never_block_without_a_model_finding() {
     )
     .expect("edit");
     for probability in [0.0, 0.9] {
-        let mut fake = Fake {
+        let fake = Fake {
             probability,
             ..Fake::default()
         };
-        let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &mut fake);
-        pretty_assert_eq!(fake.requests.len(), 1);
+        let outcome = evaluate_hooks_with_transport(&hooks, &rules(&yaml), &fake);
+        pretty_assert_eq!(fake.requests().len(), 1);
         pretty_assert_eq!(
             matches!(outcome, HookOutcome::DenyPreToolUse { .. }),
             probability >= 0.9
@@ -242,46 +469,46 @@ fn mixed_warning_and_block_rules_keep_their_own_actions() {
             .replace("name: explain-intent", "name: error-intent"),
     ));
     let hooks = write_hook("fn grace() {\n// Call run\nrun();\n}\n");
-    let mut fake = Fake {
+    let fake = Fake {
         probability: 0.9,
         ..Fake::default()
     };
     let diagnostics =
-        Plan::from_hooks(&hooks, &loaded).execute(&mut fake, Instant::now() + HOOK_BUDGET);
+        Plan::from_hooks(&hooks, &loaded).execute(&fake, Instant::now() + HOOK_BUDGET);
     pretty_assert_eq!(diagnostics.len(), 2);
     assert!(!diagnostics[0].is_error());
     assert!(diagnostics[1].is_error());
     assert!(matches!(
-        evaluate_hooks_with_transport(&hooks, &loaded, &mut fake),
+        evaluate_hooks_with_transport(&hooks, &loaded, &fake),
         HookOutcome::DenyPreToolUse { .. }
     ));
 }
 
 #[test]
 fn missing_context_preconditions_and_no_candidates_do_not_call_jev() {
-    let mut fake = Fake::default();
+    let fake = Fake::default();
     let precondition = RULE.replace(
         "        semantic:",
         "        content:\n          - kind: Regex\n            pattern: NEVER\n        semantic:",
     );
     let hooks = write_hook("fn ada() {\n// Call run\nrun();\n}");
     pretty_assert_eq!(
-        evaluate_hooks_with_transport(&hooks, &rules(&precondition), &mut fake),
+        evaluate_hooks_with_transport(&hooks, &rules(&precondition), &fake),
         HookOutcome::Passthrough
     );
     pretty_assert_eq!(
-        evaluate_hooks_with_transport(&write_hook("fn ada() {}"), &rules(RULE), &mut fake),
+        evaluate_hooks_with_transport(&write_hook("fn ada() {}"), &rules(RULE), &fake),
         HookOutcome::Passthrough
     );
     assert!(matches!(
-        evaluate_hooks_with_transport(&write_hook("fn broken("), &rules(RULE), &mut fake),
+        evaluate_hooks_with_transport(&write_hook("fn broken("), &rules(RULE), &fake),
         HookOutcome::AllowPreToolUseWithContext { .. }
     ));
-    assert!(fake.requests.is_empty());
+    assert!(fake.requests().is_empty());
 }
 
 #[test]
-fn errors_and_expired_deadlines_remain_incomplete() {
+fn errors_and_expired_deadlines_are_skipped_within_the_hook_budget() {
     let hooks = write_hook("fn ada() {\n// Call run\nrun();\n}");
     for error in [
         EvaluationError::MissingCredential,
@@ -291,46 +518,59 @@ fn errors_and_expired_deadlines_remain_incomplete() {
         EvaluationError::Timeout,
         EvaluationError::InvalidResponse,
     ] {
-        let mut fake = Fake {
+        let retryable = error.is_retryable();
+        let fake = Fake {
             error: Some(error),
             ..Fake::default()
         };
+        let started = Instant::now();
         let diagnostics =
-            Plan::from_hooks(&hooks, &rules(RULE)).execute(&mut fake, Instant::now() + HOOK_BUDGET);
-        pretty_assert_eq!(diagnostics[0].status, Status::Incomplete);
-        pretty_assert_eq!(fake.requests.len(), 1);
+            Plan::from_hooks(&hooks, &rules(RULE)).execute(&fake, Instant::now() + HOOK_BUDGET);
+        assert!(started.elapsed() < HOOK_BUDGET);
+        pretty_assert_eq!(diagnostics[0].status, Status::Skipped);
+        pretty_assert_eq!(fake.requests().len() > 1, retryable);
     }
-    let mut fake = Fake::default();
+    let fake = Fake::default();
     let diagnostics = Plan::from_hooks(&hooks, &rules(RULE))
-        .execute(&mut fake, Instant::now() - Duration::from_secs(1));
-    assert!(fake.requests.is_empty());
-    pretty_assert_eq!(diagnostics[0].status, Status::Incomplete);
+        .execute(&fake, Instant::now() - Duration::from_secs(1));
+    assert!(fake.requests().is_empty());
+    pretty_assert_eq!(diagnostics[0].status, Status::Skipped);
 }
 
 #[test]
-fn validates_exact_answer_set_type_probability_and_model() {
+fn validates_model_per_response_and_answers_per_question() {
     let request = json!({"questions":{"q0":{},"q1":{}}});
     let good = json!({"model":client::MODEL,"answers":{"q1":{"type":"noul","noul":0.9},"q0":{"type":"noul","noul":0.1}}});
     pretty_assert_eq!(
         client::probabilities(&request, &good).expect("valid"),
-        vec![0.1, 0.9]
+        vec![Ok(0.1), Ok(0.9)]
     );
+    for (pointer, value) in [("/model", json!("jev-latest")), ("/answers", json!([]))] {
+        let mut response = good.clone();
+        *response.pointer_mut(pointer).expect("field") = value;
+        assert!(client::probabilities(&request, &response).is_err());
+    }
     for (pointer, value) in [
-        ("/model", json!("jev-latest")),
         ("/answers/q0/type", json!("choice")),
         ("/answers/q0/noul", json!(1.1)),
         ("/answers/q0/noul", json!(null)),
     ] {
         let mut response = good.clone();
         *response.pointer_mut(pointer).expect("field") = value;
-        assert!(client::probabilities(&request, &response).is_err());
+        pretty_assert_eq!(
+            client::probabilities(&request, &response).expect("response"),
+            vec![Err(EvaluationError::InvalidResponse), Ok(0.9)]
+        );
     }
     let mut response = good;
     response["answers"]
         .as_object_mut()
         .expect("answers")
         .remove("q1");
-    assert!(client::probabilities(&request, &response).is_err());
+    pretty_assert_eq!(
+        client::probabilities(&request, &response).expect("response"),
+        vec![Ok(0.1), Err(EvaluationError::InvalidResponse)]
+    );
 }
 
 #[test]
@@ -361,23 +601,23 @@ fn unrelated_old_comments_are_not_evaluated_on_edit_for_all_adapters() {
             "tool_input":{"file_path":"src.rs","old_string":"run();","new_string":"stop();"}}),
         )
         .expect("parse");
-        let mut fake = Fake::default();
+        let fake = Fake::default();
         assert!(
             Plan::from_hooks(&hooks, &rules(&yaml))
-                .execute(&mut fake, Instant::now() + HOOK_BUDGET)
+                .execute(&fake, Instant::now() + HOOK_BUDGET)
                 .is_empty()
         );
-        assert!(fake.requests.is_empty());
+        assert!(fake.requests().is_empty());
     }
     let hooks = codex::parse_hook(json!({"hook_event_name":"PreToolUse","tool_name":"apply_patch","cwd":dir.path(),
         "tool_input":{"command":"*** Begin Patch\n*** Update File: src.rs\n@@\n-run();\n+stop();\n*** End Patch"}})).expect("parse");
-    let mut fake = Fake::default();
+    let fake = Fake::default();
     assert!(
         Plan::from_hooks(&hooks, &rules(&yaml))
-            .execute(&mut fake, Instant::now() + HOOK_BUDGET)
+            .execute(&fake, Instant::now() + HOOK_BUDGET)
             .is_empty()
     );
-    assert!(fake.requests.is_empty());
+    assert!(fake.requests().is_empty());
     assert!(
         matches!(&hooks[0], NudgeHook::PreToolUse(p) if matches!(&p.tool, ToolUse::Edit(e) if e.semantic_snapshot.is_some()))
     );
@@ -401,14 +641,14 @@ fn changed_code_and_sequential_edits_use_final_snapshot() {
             ]}}),
         )
         .expect("parse multi edit");
-        let mut fake = Fake::default();
-        Plan::from_hooks(&hooks, &rules(&yaml)).execute(&mut fake, Instant::now() + HOOK_BUDGET);
-        pretty_assert_eq!(fake.requests.len(), 1);
+        let fake = Fake::default();
+        Plan::from_hooks(&hooks, &rules(&yaml)).execute(&fake, Instant::now() + HOOK_BUDGET);
+        pretty_assert_eq!(fake.requests().len(), 1);
         pretty_assert_eq!(
-            fake.requests[0]["state"]["candidates"][0]["code"],
+            fake.requests()[0]["state"]["candidates"][0]["code"],
             "final_call();"
         );
-        assert!(!fake.requests[0].to_string().contains("intermediate()"));
+        assert!(!fake.requests()[0].to_string().contains("intermediate()"));
     }
 }
 
@@ -434,11 +674,11 @@ fn markdown_spans_and_duplicate_write_edit_rules_are_stable() {
             matcher.semantic.as_ref().expect("semantic"),
         );
     }
-    let mut fake = Fake {
+    let fake = Fake {
         probability: 0.99,
         ..Fake::default()
     };
-    let diagnostics = plan.execute(&mut fake, Instant::now() + HOOK_BUDGET);
+    let diagnostics = plan.execute(&fake, Instant::now() + HOOK_BUDGET);
     pretty_assert_eq!(diagnostics.len(), 1);
     pretty_assert_eq!(diagnostics[0].line, 5);
 }
@@ -446,11 +686,11 @@ fn markdown_spans_and_duplicate_write_edit_rules_are_stable() {
 #[test]
 fn oversized_candidates_are_incomplete_without_network() {
     let code = format!("fn ada() {{\n// {}\nrun();\n}}", "x".repeat(40_000));
-    let mut fake = Fake::default();
+    let fake = Fake::default();
     let diagnostics = Plan::from_hooks(&write_hook(&code), &rules(RULE))
-        .execute(&mut fake, Instant::now() + HOOK_BUDGET);
-    pretty_assert_eq!(diagnostics[0].status, Status::Incomplete);
-    assert!(fake.requests.is_empty());
+        .execute(&fake, Instant::now() + HOOK_BUDGET);
+    pretty_assert_eq!(diagnostics[0].status, Status::Skipped);
+    assert!(fake.requests().is_empty());
 }
 
 #[test]
@@ -468,16 +708,12 @@ rules:
         content: [{kind: Regex, pattern: 'run'}]
 "#,
     ));
-    let mut fake = Fake::default();
+    let fake = Fake::default();
     assert!(matches!(
-        evaluate_hooks_with_transport(
-            &write_hook("fn ada() {\n// run\nrun();\n}"),
-            &loaded,
-            &mut fake
-        ),
+        evaluate_hooks_with_transport(&write_hook("fn ada() {\n// run\nrun();\n}"), &loaded, &fake),
         HookOutcome::DenyPreToolUse { .. }
     ));
-    assert!(fake.requests.is_empty());
+    assert!(fake.requests().is_empty());
     let loaded = rules(
         r#"
 version: 1
@@ -494,7 +730,7 @@ rules:
     hooks.push(NudgeHook::WarnPreToolUse {
         message: String::from("inspection incomplete"),
     });
-    match evaluate_hooks_with_transport(&hooks, &loaded, &mut fake) {
+    match evaluate_hooks_with_transport(&hooks, &loaded, &fake) {
         HookOutcome::UpdatePreToolUse {
             updated_input,
             additional_context,

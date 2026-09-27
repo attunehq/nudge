@@ -104,25 +104,21 @@ pub fn main(config: Config) -> Result<()> {
             }
             Err(_) => {
                 for rule in semantic_rules {
-                    plan.incomplete(file, rule.rule, "could not read file as UTF-8");
+                    plan.skip_file(file, rule.rule, "could not read file as UTF-8");
                 }
             }
         }
     }
     let diagnostics = plan.execute(
-        &mut JevClient::default(),
+        &JevClient::default(),
         Instant::now() + Duration::from_secs(30),
     );
     for diagnostic in &diagnostics {
         println!("{}", diagnostic.render());
     }
-    let exit_code = scan_exit_code(!issues.is_empty(), &diagnostics);
+    let failed = !issues.is_empty() || diagnostics.iter().any(Diagnostic::is_error);
     if !issues.is_empty() {
         print_failure(&issues, checked_files, total_rules);
-    }
-    if exit_code == 2 {
-        eprintln!("Semantic scan incomplete or uncertain; no all-clear result.");
-        process::exit(2);
     }
     if diagnostics.iter().any(|diagnostic| diagnostic.is_error()) {
         println!(
@@ -141,26 +137,19 @@ pub fn main(config: Config) -> Result<()> {
     if warnings > 0 {
         println!("Found {warnings} semantic warnings");
     }
-
-    if exit_code == 0 {
-        print_success(checked_files, total_rules, &rules_by_source);
-        Ok(())
-    } else {
-        process::exit(exit_code);
-    }
-}
-
-fn scan_exit_code(deterministic_errors: bool, diagnostics: &[Diagnostic]) -> i32 {
-    if diagnostics
+    let skipped = diagnostics
         .iter()
-        .any(|diagnostic| diagnostic.status != Status::Finding)
-    {
-        2
-    } else if deterministic_errors || diagnostics.iter().any(Diagnostic::is_error) {
-        1
-    } else {
-        0
+        .filter(|diagnostic| diagnostic.status == Status::Skipped)
+        .count();
+    if skipped > 0 {
+        println!("Semantic checks skipped: {skipped}; their results are unknown");
     }
+
+    if failed {
+        process::exit(1);
+    }
+    print_success(checked_files, total_rules, &rules_by_source);
+    Ok(())
 }
 
 fn collect_file_rules(rules_by_source: &[(PathBuf, Vec<Rule>)]) -> (Vec<FileRule<'_>>, usize) {
@@ -401,42 +390,4 @@ fn print_failure(issues: &[Issue], checked_files: usize, total_rules: usize) {
         "Checked {} files against {} rules",
         checked_files, total_rules
     );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pretty_assertions::assert_eq as pretty_assert_eq;
-    use std::slice;
-
-    #[test]
-    fn scan_status_preserves_severity_and_incomplete_precedence() {
-        let warning = Diagnostic {
-            file: PathBuf::from("ada.rs"),
-            line: 1,
-            rule: String::from("intent"),
-            status: Status::Finding,
-            action: RuleAction::Warn,
-            message: String::from("Explain intent"),
-        };
-        let error = Diagnostic {
-            action: RuleAction::Block,
-            ..warning.clone()
-        };
-        pretty_assert_eq!(scan_exit_code(false, &[]), 0);
-        pretty_assert_eq!(scan_exit_code(false, slice::from_ref(&warning)), 0);
-        pretty_assert_eq!(scan_exit_code(true, slice::from_ref(&warning)), 1);
-        pretty_assert_eq!(scan_exit_code(false, &[warning.clone(), error.clone()]), 1);
-        for status in [Status::Uncertain, Status::Incomplete] {
-            for action in [RuleAction::Warn, RuleAction::Block] {
-                let incomplete = Diagnostic {
-                    status,
-                    action,
-                    ..warning.clone()
-                };
-                pretty_assert_eq!(scan_exit_code(false, slice::from_ref(&incomplete)), 2);
-                pretty_assert_eq!(scan_exit_code(true, &[error.clone(), incomplete]), 2);
-            }
-        }
-    }
 }

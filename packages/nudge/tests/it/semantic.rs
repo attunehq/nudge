@@ -24,7 +24,7 @@ rules:
 "#;
 
 #[test]
-fn validate_stays_offline_and_check_reports_missing_credentials() {
+fn validate_stays_offline_and_check_warns_about_missing_credentials() {
     let dir = TempDir::new().expect("temp repo");
     fs::write(dir.path().join(".nudge.yaml"), RULE).expect("rule");
     fs::write(
@@ -34,19 +34,21 @@ fn validate_stays_offline_and_check_reports_missing_credentials() {
     .expect("source");
     for (args, expected) in [
         (vec!["validate", ".nudge.yaml"], 0),
-        (vec!["check", "src.rs"], 2),
+        (vec!["check", "src.rs"], 0),
     ] {
         let output = isolated_command(dir.path())
-            .args(args)
+            .args(&args)
             .current_dir(dir.path())
             .env_remove("TYPESAFE_API_KEY")
             .output()
             .expect("run");
         pretty_assert_eq!(output.status.code(), Some(expected));
-        if expected == 2 {
+        if args[0] == "check" {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            assert!(stdout.contains("Jev credential is missing"));
-            assert!(!stdout.contains("✓ Checked"));
+            assert!(stdout.contains(
+                "src.rs:2 [comments-explain-intent] semantic check skipped (warning): comment not evaluated: Jev credential is missing"
+            ));
+            assert!(stdout.contains("Semantic checks skipped: 1; their results are unknown"));
         }
     }
     fs::write(dir.path().join("src.rs"), "fn ada() {}\n").expect("source without comments");

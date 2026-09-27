@@ -2,8 +2,14 @@
 
 use std::{
     collections::HashSet,
+    fmt,
     ops::Range,
     path::{Path, PathBuf},
+    sync::{
+        OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
+    thread,
     time::{Duration, Instant},
 };
 
@@ -24,11 +30,24 @@ mod select;
 
 pub const HOOK_BUDGET: Duration = Duration::from_millis(1_000);
 
+/// TypeSafe publishes no concurrency limit; a small pool keeps large scans
+/// from opening one connection per batch.
+const CONCURRENT_REQUESTS: usize = 8;
+
+/// Exponential backoff before each retry. TypeSafe asks clients to back off
+/// on 429 and 529 responses; jitter keeps concurrent workers out of lockstep.
+const RETRY_DELAYS: [Duration; 3] = [
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Finding,
     Uncertain,
-    Incomplete,
+    /// The check could not run; Nudge cannot vouch for the skipped code.
+    Skipped,
 }
 
 #[derive(Debug, Clone)]
@@ -50,8 +69,8 @@ impl Diagnostic {
         let status = match self.status {
             Status::Finding if self.is_error() => "semantic finding (error)",
             Status::Finding => "semantic finding (warning)",
-            Status::Uncertain => "semantic judgment uncertain",
-            Status::Incomplete => "semantic check incomplete",
+            Status::Uncertain => "semantic judgment uncertain (warning)",
+            Status::Skipped => "semantic check skipped (warning)",
         };
         format!(
             "{}:{} [{}] {status}: {}",
@@ -77,14 +96,14 @@ pub struct Plan {
 }
 
 impl Plan {
-    pub fn incomplete(&mut self, file: &Path, rule: &Rule, message: &str) {
+    pub fn skip_file(&mut self, file: &Path, rule: &Rule, reason: &str) {
         self.diagnostics.push(Diagnostic {
             file: file.to_path_buf(),
             line: 1,
             rule: rule.name.clone(),
-            status: Status::Incomplete,
+            status: Status::Skipped,
             action: rule.action,
-            message: message.to_string(),
+            message: format!("file not evaluated: {reason}"),
         });
     }
 
@@ -109,7 +128,7 @@ impl Plan {
             let candidates = match select::comments(source) {
                 Ok(candidates) => candidates,
                 Err(error) => {
-                    self.incomplete(file, rule, error);
+                    self.skip_file(file, rule, error);
                     continue;
                 }
             };
@@ -191,7 +210,7 @@ impl Plan {
                                         &matcher.new_content,
                                         config,
                                     ),
-                                    None => plan.incomplete(
+                                    None => plan.skip_file(
                                         &input.file_path,
                                         rule,
                                         "could not reconstruct the exact resulting file",
@@ -207,13 +226,53 @@ impl Plan {
         plan
     }
 
-    pub fn execute(mut self, transport: &mut impl Transport, deadline: Instant) -> Vec<Diagnostic> {
+    pub fn execute(mut self, transport: &impl Transport, deadline: Instant) -> Vec<Diagnostic> {
+        let batches = self.batches();
+        let results = batches.iter().map(|_| OnceLock::new()).collect::<Vec<_>>();
+        let next = AtomicUsize::new(0);
+        thread::scope(|scope| {
+            for _ in 0..CONCURRENT_REQUESTS.min(batches.len()) {
+                scope.spawn(|| {
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some((_, request)) = batches.get(index) else {
+                            break;
+                        };
+                        let result = match request {
+                            Some(request) => send(transport, request, deadline),
+                            None => Err(Failure {
+                                error: EvaluationError::InputTooLarge,
+                                attempts: 0,
+                            }),
+                        };
+                        let _ = results[index].set(result);
+                    }
+                });
+            }
+        });
+        for ((jobs, _), result) in batches.into_iter().zip(results) {
+            match result.into_inner().expect("every batch evaluated") {
+                Ok(answers) => self.report(jobs, answers),
+                Err(failure) => {
+                    for job in jobs {
+                        self.skip_job(job, &failure);
+                    }
+                }
+            }
+        }
+        self.diagnostics
+    }
+
+    /// Group consecutive jobs into requests within the Jev budget. A job too
+    /// large to send alone has no request.
+    fn batches(&self) -> Vec<(Range<usize>, Option<Value>)> {
+        let mut batches = Vec::new();
         let mut start = 0;
         while start < self.jobs.len() {
             let mut end = start + 1;
             let mut request = build_request(&self.jobs[start..end]);
             if !within_budget(&request) {
-                self.fail_jobs(start..end, EvaluationError::InputTooLarge);
+                batches.push((start..end, None));
                 start = end;
                 continue;
             }
@@ -225,58 +284,102 @@ impl Plan {
                 request = expanded;
                 end += 1;
             }
-            let result = if Instant::now() >= deadline {
-                Err(EvaluationError::Timeout)
-            } else {
-                transport.send(&request, deadline).and_then(|response| {
-                    if Instant::now() >= deadline {
-                        Err(EvaluationError::Timeout)
-                    } else {
-                        client::probabilities(&request, &response)
-                    }
-                })
-            };
-            match result {
-                Ok(probabilities) => {
-                    for (job, probability) in self.jobs[start..end].iter().zip(probabilities) {
-                        if probability <= job.config.thresholds.clear {
-                            continue;
-                        }
-                        let mut diagnostic = job.diagnostic.clone();
-                        if probability < job.config.thresholds.violation {
-                            diagnostic.status = Status::Uncertain;
-                            diagnostic.message =
-                                format!("Review whether this rule applies: {}", diagnostic.message);
-                        }
-                        diagnostic.message = format!(
-                            "{} (Jev {}, probability {:.2})",
-                            diagnostic.message,
-                            client::MODEL,
-                            probability
-                        );
-                        self.diagnostics.push(diagnostic);
-                    }
-                }
-                Err(error) => {
-                    // Do not repeat a failed service call for every remaining
-                    // batch.
-                    self.fail_jobs(start..self.jobs.len(), error);
-                    break;
-                }
-            }
+            batches.push((start..end, Some(request)));
             start = end;
         }
-        self.diagnostics
+        batches
     }
 
-    fn fail_jobs(&mut self, range: Range<usize>, error: EvaluationError) {
-        for job in &self.jobs[range] {
+    fn report(&mut self, jobs: Range<usize>, answers: Vec<Result<f64, EvaluationError>>) {
+        for (index, answer) in jobs.zip(answers) {
+            let probability = match answer {
+                Ok(probability) => probability,
+                Err(error) => {
+                    self.skip_job(index, &Failure { error, attempts: 1 });
+                    continue;
+                }
+            };
+            let job = &self.jobs[index];
+            if probability <= job.config.thresholds.clear {
+                continue;
+            }
             let mut diagnostic = job.diagnostic.clone();
-            diagnostic.status = Status::Incomplete;
-            diagnostic.message = error.to_string();
+            if probability < job.config.thresholds.violation {
+                diagnostic.status = Status::Uncertain;
+                diagnostic.message =
+                    format!("Review whether this rule applies: {}", diagnostic.message);
+            }
+            diagnostic.message = format!(
+                "{} (Jev {}, probability {:.2})",
+                diagnostic.message,
+                client::MODEL,
+                probability
+            );
             self.diagnostics.push(diagnostic);
         }
     }
+
+    fn skip_job(&mut self, index: usize, failure: &Failure) {
+        let mut diagnostic = self.jobs[index].diagnostic.clone();
+        diagnostic.status = Status::Skipped;
+        diagnostic.message = format!("comment not evaluated: {failure}");
+        self.diagnostics.push(diagnostic);
+    }
+}
+
+/// Why a request produced no answers, and how many times it was sent.
+#[derive(Debug)]
+struct Failure {
+    error: EvaluationError,
+    attempts: usize,
+}
+
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.attempts {
+            0 | 1 => write!(f, "{}", self.error),
+            attempts => write!(f, "{} (gave up after {attempts} attempts)", self.error),
+        }
+    }
+}
+
+fn send(
+    transport: &impl Transport,
+    request: &Value,
+    deadline: Instant,
+) -> Result<Vec<Result<f64, EvaluationError>>, Failure> {
+    let mut attempts = 0;
+    loop {
+        attempts += 1;
+        let error = match attempt(transport, request, deadline) {
+            Ok(answers) => return Ok(answers),
+            Err(error) => error,
+        };
+        let delay = RETRY_DELAYS
+            .get(attempts - 1)
+            .map(|delay| delay.mul_f64(0.5 + fastrand::f64() * 0.5));
+        match delay {
+            Some(delay) if error.is_retryable() && Instant::now() + delay < deadline => {
+                thread::sleep(delay);
+            }
+            _ => return Err(Failure { error, attempts }),
+        }
+    }
+}
+
+fn attempt(
+    transport: &impl Transport,
+    request: &Value,
+    deadline: Instant,
+) -> Result<Vec<Result<f64, EvaluationError>>, EvaluationError> {
+    if Instant::now() >= deadline {
+        return Err(EvaluationError::Timeout);
+    }
+    let response = transport.send(request, deadline)?;
+    if Instant::now() >= deadline {
+        return Err(EvaluationError::Timeout);
+    }
+    client::probabilities(request, &response)
 }
 
 fn build_request(jobs: &[Job]) -> Value {
