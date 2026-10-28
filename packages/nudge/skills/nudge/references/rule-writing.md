@@ -257,6 +257,35 @@ referenced in suggestions. Use `nudge syntaxtree --language <language>
 <file-or-source>` to inspect node names while debugging.
 
 Use `SyntaxTree` when regex would match comments, strings, or unrelated syntax.
+
+A query can span several statements. Put `.` between two sibling patterns to
+require that they are adjacent, and use `(#eq? @a @b)` to require that two
+captures have the same text. This Rust query matches an `is_none()` guard
+followed immediately by an unwrap of the same value:
+
+```scheme
+(block
+  (expression_statement
+    (if_expression
+      condition: (call_expression
+        function: (field_expression
+          value: (identifier) @checked
+          field: (field_identifier) @check))))
+  .
+  (let_declaration
+    value: (call_expression
+      function: (field_expression
+        value: (identifier) @unwrapped
+        field: (field_identifier) @unwrap)))
+  (#eq? @check "is_none")
+  (#eq? @unwrap "unwrap")
+  (#eq? @checked @unwrapped))
+```
+
+The `prefer-let-else-over-check-unwrap` rule in `examples/rules/rust.yaml`
+extends this with negated checks, `Result` checks, and an early-exit
+requirement.
+
 If a parser cannot produce a tree, the matcher passes silently. Tree-sitter
 usually recovers from incomplete syntax, so useful matches can still fire while
 an agent is mid-edit.

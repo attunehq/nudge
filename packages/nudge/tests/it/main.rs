@@ -8,6 +8,7 @@
 mod bash;
 mod basic;
 mod check;
+mod check_then_unwrap;
 mod cli;
 mod codex;
 mod cursor;

@@ -164,3 +164,83 @@ rules:
                   field: (field_identifier) @method
                   (#eq? @method "unwrap"))
                 arguments: (arguments))
+
+  # Catch a state check with an early exit followed by an unwrap of the same value:
+  #   if value.is_none() { return ...; }  let value = value.unwrap();
+  # Also matches `is_err()`, `!is_some()`, `!is_ok()`, `.expect(...)`, and
+  # `break`/`continue` exits. The `.` anchor requires the `let` to be the next
+  # statement, and `#eq?` requires the checked and unwrapped values to match.
+  - name: prefer-let-else-over-check-unwrap
+    description: Use let-else instead of checking is_none/is_err and then unwrapping
+    message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with `let Some(..) = {{ $receiver }} else { ... };` (use `let Ok(..)` or `match` for a `Result`), then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (block
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)] .)
+                    !alternative))
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (block
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)] .)
+                    !alternative))
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped))
