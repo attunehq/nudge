@@ -52,7 +52,7 @@ fn run_rule(config: &str, tool: &str, content: &str) -> String {
 
 #[test_case(
     "fn f(value: Option<u8>) -> u8 {\n    if value.is_none() {\n        return 0;\n    }\n    let value = value.unwrap();\n    value\n}",
-    "let Some(..) = value else";
+    "with a let-else that binds the value of `value`";
     "is_none then unwrap"
 )]
 #[test_case(
@@ -72,13 +72,38 @@ fn run_rule(config: &str, tool: &str, content: &str) -> String {
 )]
 #[test_case(
     "fn f(&self) {\n    for _ in 0..3 {\n        if self.next.is_none() {\n            log();\n            continue;\n        }\n        let next = self.next.unwrap();\n    }\n}",
-    "let Some(..) = self.next else";
+    "the value of `self.next`";
     "field receiver with continue"
 )]
 #[test_case(
     "fn f(x: Option<u8>) {\n    loop {\n        if x.is_none() { break }\n        let x = x.unwrap();\n    }\n}",
     "`if x.is_none()`";
     "break without semicolon"
+)]
+#[test_case(
+    "if x.is_none() { return; }\nlet x = x.expect(\"checked\");",
+    "`if x.is_none()`";
+    "edit snippet without enclosing function"
+)]
+#[test_case(
+    "        if self.a.is_err() {\n            return Err(E);\n        }\n        // Checked above.\n        let a = self.a.unwrap();",
+    "`if self.a.is_err()`";
+    "indented edit snippet with comment"
+)]
+#[test_case(
+    "fn f(x: Option<u8>) {\n    if x.is_none() { return; }\n    // Already checked.\n    let x = x.unwrap();\n}",
+    "`if x.is_none()`";
+    "comment between guard and let"
+)]
+#[test_case(
+    "fn f(x: Option<u8>) {\n    if x.is_none() { return; /* unavailable */ }\n    let x = x.unwrap();\n}",
+    "`if x.is_none()`";
+    "comment after exit in guard"
+)]
+#[test_case(
+    "fn f(x: Option<u8>) {\n    if x.is_none() {\n        return; /* a */ // b\n        // c\n    }\n    // d\n    /* e */\n    /// f\n    let x = x.unwrap();\n}",
+    "`if x.is_none()`";
+    "several comments at both anchors"
 )]
 #[test]
 fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
@@ -92,6 +117,10 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
             assert!(
                 stdout.contains(expected_message),
                 "expected `{expected_message}` from {config} ({tool}), got: {stdout}"
+            );
+            assert!(
+                !stdout.contains("let Some") && !stdout.contains("let Ok"),
+                "message should not name a variant from {config} ({tool}), got: {stdout}"
             );
         }
     }
@@ -107,7 +136,15 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
 )]
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { if z { return 0; } log(); }\n    let a = a.unwrap();\n    a\n}";
+    "early exit is nested in another if"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; log(); }\n    let a = a.unwrap();\n    a\n}";
     "early exit is not the last statement"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; /* c */ log(); }\n    let a = a.unwrap();\n    a\n}";
+    "comment before a statement after the exit"
 )]
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; } else { log(); }\n    let a = a.unwrap();\n    a\n}";
@@ -116,6 +153,14 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    log();\n    let a = a.unwrap();\n    a\n}";
     "unwrap is not the next statement"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    // c\n    log();\n    // d\n    let a = a.unwrap();\n    a\n}";
+    "comments around a statement between guard and let"
+)]
+#[test_case(
+    "if a.is_none() { return; }\nlog();\nlet a = a.unwrap();";
+    "edit snippet with a statement between guard and let"
 )]
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() || z { return 0; }\n    let a = a.unwrap();\n    a\n}";
