@@ -177,10 +177,12 @@ fn build_tool_use_hook(config: &Config) -> Result<Vec<NudgeHook>> {
             "command": content,
             "description": "Test command"
         }),
-        other => bail!(
-            "Unknown tool '{}'. Supported tools: Write, Edit, WebFetch, Bash",
-            other
-        ),
+        other => {
+            bail!(
+                "Unknown tool '{}'. Supported tools: Write, Edit, WebFetch, Bash",
+                other
+            );
+        }
     };
 
     let payload = json!({
