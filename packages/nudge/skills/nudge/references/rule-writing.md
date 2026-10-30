@@ -258,6 +258,47 @@ referenced in suggestions. Use `nudge syntaxtree --language <language>
 <file-or-source>` to inspect node names while debugging.
 
 Use `SyntaxTree` when regex would match comments, strings, or unrelated syntax.
+
+A query can span several statements. Put `.` between two sibling patterns to
+require that they are adjacent, and use `(#eq? @a @b)` to require that two
+captures have the same text. This Rust query matches an `is_none()` guard
+followed immediately by an unwrap of the same value:
+
+```scheme
+(_
+  (expression_statement
+    (if_expression
+      condition: (call_expression
+        function: (field_expression
+          value: (identifier) @checked
+          field: (field_identifier) @check))))
+  .
+  (let_declaration
+    value: (call_expression
+      function: (field_expression
+        value: (identifier) @unwrapped
+        field: (field_identifier) @unwrap)))
+  (#eq? @check "is_none")
+  (#eq? @unwrap "unwrap")
+  (#eq? @checked @unwrapped))
+```
+
+The parent is `_` rather than `block` because an Edit's `new_content` is only
+the replacement text. A few lines taken from inside a function parse with
+`source_file` as their parent, so `(block ...)` would miss them.
+
+Comments are named nodes, so a comment between two statements breaks a `.`
+anchor. To allow them, put the comments between two anchors:
+`(expression_statement) . [(line_comment) (block_comment)]* . (let_declaration)`.
+To require that a pattern is the last statement in a block while allowing
+comments after it, anchor to the closing brace:
+`(block (return_expression) . [(line_comment) (block_comment)]* . "}")`.
+A quantifier followed by a bare trailing `.` does not enforce this.
+
+The `prefer-let-else-over-check-unwrap` rule in `examples/rules/rust.yaml`
+extends this with negated checks, `Result` checks, and an early-exit
+requirement.
+
 If a parser cannot produce a tree, the matcher passes silently. Tree-sitter
 usually recovers from incomplete syntax, so useful matches can still fire while
 an agent is mid-edit.

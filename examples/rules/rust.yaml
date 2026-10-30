@@ -164,3 +164,105 @@ rules:
                   field: (field_identifier) @method
                   (#eq? @method "unwrap"))
                 arguments: (arguments))
+
+  # Catch a state check with an early exit followed by an unwrap of the same value:
+  #   if value.is_none() { return ...; }  let value = value.unwrap();
+  # Also matches `is_err()`, `!is_some()`, `!is_ok()`, `.expect(...)`, and
+  # `break`/`continue` exits. The `.` anchor requires the `let` to be the next
+  # statement, and `#eq?` requires the checked and unwrapped values to match.
+  # Comments may sit after the exit and between the guard and the `let`; the
+  # `"}"` anchor still requires the exit to be the guard's last statement.
+  # The parent is `_` rather than `block` because an Edit's `new_content` is
+  # only the replacement text, which parses as a top-level `source_file`.
+  #
+  # Limits: this is a pattern match, not data-flow analysis. It does not match
+  # an unwrap that is not the whole `let` value (`let n = a.unwrap().len();`),
+  # an unwrap through an adapter (`let a = self.a.as_ref().unwrap();`), an
+  # unwrap outside a `let` (`foo(a.unwrap())`), other statements between the
+  # guard and the `let`, or exits through macros such as `bail!` or `panic!`.
+  - name: prefer-let-else-over-check-unwrap
+    description: Use let-else instead of checking is_none/is_err and then unwrapping
+    message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and keeps the early exit in its `else` block, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (_
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}")
+                    !alternative))
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (_
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}")
+                    !alternative))
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped))
