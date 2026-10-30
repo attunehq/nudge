@@ -448,7 +448,8 @@ fn evaluate_user_prompt(input: &UserPromptSubmit, matcher: &UserPromptSubmitMatc
 fn source_for_tool(tool: &ToolUse) -> Source {
     match tool {
         ToolUse::Write(input) => Source::from(&input.content),
-        // Edit matches render against each replacement in `evaluate_pretooluse`.
+        // Edit matches render against each replacement in
+        // `evaluate_pretooluse`.
         ToolUse::Edit(_) | ToolUse::Delete(_) | ToolUse::Other { .. } => Source::from(""),
         ToolUse::WebFetch(input) => Source::from(&input.url),
         ToolUse::Bash(input) => Source::from(&input.command),
