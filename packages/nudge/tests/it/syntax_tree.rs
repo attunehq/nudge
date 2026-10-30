@@ -402,6 +402,20 @@ rules:
         !output.contains("fn b()"),
         "expected the snippet to show only the matching replacement, got: {output}"
     );
+
+    let replacement = "if x.is_none() { return; }\nlet x = x.unwrap();";
+    let input = multi_edit_hook(
+        "src/lib.rs",
+        &[("let a = 1;", replacement), ("let b = 2;", replacement)],
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    pretty_assert_eq!(
+        output.matches("Found a let directly after an if.").count(),
+        1,
+        "expected identical replacements to be reported once, got: {output}"
+    );
 }
 
 #[test]

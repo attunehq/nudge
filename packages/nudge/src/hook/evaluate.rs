@@ -399,8 +399,16 @@ fn evaluate_write(input: &WriteInput, matcher: &PreToolUseWriteMatcher) -> Vec<M
 }
 
 /// Each replacement is its own source, so matches never span two replacements.
+/// Identical replacements are checked once so they report once.
 fn sources_for_edit<'a>(input: &'a EditInput, target: &FileContentTarget) -> Vec<&'a str> {
-    let replacements = || input.new_strings.iter().map(String::as_str).collect();
+    let replacements = || {
+        input
+            .new_strings
+            .iter()
+            .map(String::as_str)
+            .unique()
+            .collect()
+    };
     match target {
         FileContentTarget::Content => replacements(),
         FileContentTarget::MarkdownCodeBlock { .. } => match input.post_edit_content.as_deref() {
