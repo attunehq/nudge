@@ -363,15 +363,18 @@ fn edit_annotation_groups<'a>(
     rule.hooks_pretooluse_edit()
         .filter(|matcher| matcher.semantic.is_none())
         .filter(|matcher| matcher.file.is_match_path(&input.file_path))
-        .filter_map(move |matcher| {
-            let source = source_for_edit(input, &matcher.target);
-            let annotations = matcher
-                .target
-                .evaluate(source, &matcher.new_content)
+        .flat_map(move |matcher| {
+            sources_for_edit(input, &matcher.target)
                 .into_iter()
-                .pipe_matches(rule);
+                .filter_map(move |source| {
+                    let annotations = matcher
+                        .target
+                        .evaluate(source, &matcher.new_content)
+                        .into_iter()
+                        .pipe_matches(rule);
 
-            (!annotations.is_empty()).then_some((source, annotations))
+                    (!annotations.is_empty()).then_some((source, annotations))
+                })
         })
 }
 
@@ -395,13 +398,23 @@ fn evaluate_write(input: &WriteInput, matcher: &PreToolUseWriteMatcher) -> Vec<M
     }
 }
 
-fn source_for_edit<'a>(input: &'a EditInput, target: &FileContentTarget) -> &'a str {
+/// Each replacement is its own source, so matches never span two replacements.
+/// Identical replacements are checked once so they report once.
+fn sources_for_edit<'a>(input: &'a EditInput, target: &FileContentTarget) -> Vec<&'a str> {
+    let replacements = || {
+        input
+            .new_strings
+            .iter()
+            .map(String::as_str)
+            .unique()
+            .collect()
+    };
     match target {
-        FileContentTarget::Content => &input.new_string,
-        FileContentTarget::MarkdownCodeBlock { .. } => input
-            .post_edit_content
-            .as_deref()
-            .unwrap_or(&input.new_string),
+        FileContentTarget::Content => replacements(),
+        FileContentTarget::MarkdownCodeBlock { .. } => match input.post_edit_content.as_deref() {
+            Some(content) => vec![content],
+            None => replacements(),
+        },
     }
 }
 
@@ -435,8 +448,9 @@ fn evaluate_user_prompt(input: &UserPromptSubmit, matcher: &UserPromptSubmitMatc
 fn source_for_tool(tool: &ToolUse) -> Source {
     match tool {
         ToolUse::Write(input) => Source::from(&input.content),
-        ToolUse::Edit(input) => Source::from(&input.new_string),
-        ToolUse::Delete(_) | ToolUse::Other { .. } => Source::from(""),
+        // Edit matches render against each replacement in
+        // `evaluate_pretooluse`.
+        ToolUse::Edit(_) | ToolUse::Delete(_) | ToolUse::Other { .. } => Source::from(""),
         ToolUse::WebFetch(input) => Source::from(&input.url),
         ToolUse::Bash(input) => Source::from(&input.command),
     }
