@@ -121,6 +121,31 @@ fn edit_hook(file_path: &str, old_string: &str, new_string: &str) -> String {
     .to_string()
 }
 
+/// Build a PreToolUse hook JSON payload for a MultiEdit with the given
+/// `(old_string, new_string)` replacements.
+fn multi_edit_hook(file_path: &str, edits: &[(&str, &str)]) -> String {
+    let edits = edits
+        .iter()
+        .map(|(old_string, new_string)| {
+            serde_json::json!({ "old_string": old_string, "new_string": new_string })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test",
+        "transcript_path": "/tmp/test",
+        "permission_mode": "default",
+        "cwd": "/tmp",
+        "tool_name": "MultiEdit",
+        "tool_use_id": "123",
+        "tool_input": {
+            "file_path": file_path,
+            "edits": edits
+        }
+    })
+    .to_string()
+}
+
 #[test]
 fn test_syntax_tree_matches_use_in_function_body() {
     let config = r#"
@@ -311,6 +336,71 @@ rules:
     assert!(
         output.is_empty(),
         "expected passthrough for safe method call, got: {output}"
+    );
+}
+
+#[test]
+fn test_syntax_tree_multi_edit_checks_each_replacement_on_its_own() {
+    // An `if` statement directly followed by a `let`. Separate replacements
+    // in one MultiEdit must not look adjacent: in the file, other code can
+    // sit between them.
+    let config = r#"
+version: 1
+rules:
+  - name: no-let-after-if
+    description: Test rule spanning two sibling statements
+    message: "Found a let directly after an if."
+    on:
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (_
+                (expression_statement (if_expression))
+                .
+                (let_declaration))
+"#;
+
+    let dir = setup_config(config);
+
+    let input = multi_edit_hook(
+        "src/lib.rs",
+        &[
+            ("if x.is_some() { log(); }", "if x.is_none() { return; }"),
+            ("let x = x.unwrap_or(0);", "let x = x.unwrap();"),
+        ],
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0");
+    assert!(
+        output.is_empty(),
+        "expected passthrough for statements in separate replacements, got: {output}"
+    );
+
+    let input = multi_edit_hook(
+        "src/lib.rs",
+        &[
+            ("fn a() {}", "fn b() {}"),
+            (
+                "let x = x.unwrap_or(0);",
+                "if x.is_none() { return; }\nlet x = x.unwrap();",
+            ),
+        ],
+    );
+    let (exit_code, output) = run_hook_in_dir(&dir, &input);
+
+    pretty_assert_eq!(exit_code, 0, "expected exit 0, output: {output}");
+    assert!(
+        output.contains(r#""permissionDecision":"deny""#),
+        "expected interrupt for statements in one replacement, got: {output}"
+    );
+    assert!(
+        !output.contains("fn b()"),
+        "expected the snippet to show only the matching replacement, got: {output}"
     );
 }
 

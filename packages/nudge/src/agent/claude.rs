@@ -95,7 +95,7 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
                 ),
                 file_path,
                 old_string,
-                new_string,
+                new_strings: vec![new_string],
                 post_edit_content,
             }))
         }

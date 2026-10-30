@@ -59,7 +59,7 @@ pub fn parse(command: &str, cwd: &Path) -> Result<Vec<ToolUse>> {
                 file_path: update.move_to.unwrap_or_else(|| path.into()),
                 old_string: update.old_string,
                 post_edit_content: Some(new_string.clone()),
-                new_string,
+                new_strings: vec![new_string],
             }));
             index = next;
             continue;
@@ -230,7 +230,7 @@ mod tests {
         .expect("parse patch");
 
         assert!(
-            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == Path::new("src.rs") && input.new_string == "fn main() {\n    new();\n}\n")
+            matches!(parsed.as_slice(), [ToolUse::Edit(input)] if input.file_path == Path::new("src.rs") && input.new_strings == ["fn main() {\n    new();\n}\n"])
         );
     }
 

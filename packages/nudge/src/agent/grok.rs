@@ -116,7 +116,7 @@ fn tool_use(raw: &Value, context: &HookContext) -> Result<ToolUse> {
                 ),
                 file_path,
                 old_string,
-                new_string,
+                new_strings: vec![new_string],
                 post_edit_content,
             }))
         }
@@ -310,7 +310,7 @@ mod tests {
         };
         pretty_assert_eq!(input.file_path, PathBuf::from("src.rs"));
         pretty_assert_eq!(input.old_string, "fn old()");
-        pretty_assert_eq!(input.new_string, "fn new()");
+        pretty_assert_eq!(input.new_strings, ["fn new()"]);
     }
 
     #[test]
