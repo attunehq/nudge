@@ -165,6 +165,125 @@ rules:
                   (#eq? @method "unwrap"))
                 arguments: (arguments))
 
+  # Catch a state check with an early exit followed by an unwrap of the same value:
+  #   if value.is_none() { return ...; }  let value = value.unwrap();
+  # Also matches `is_err()`, `!is_some()`, `!is_ok()`, `.expect(...)`, and
+  # `break`/`continue` exits. The `.` anchor requires the `let` to be the next
+  # statement, and `#eq?` requires the checked and unwrapped values to match.
+  # Comments may sit after the exit; the `"}"` anchor still requires the exit
+  # to be the guard's last statement. Comments and attributes such as
+  # `#[allow(clippy::unwrap_used)]` may sit between the guard and the `let`.
+  # The guard and the `let` are a top-level sibling group with no parent node.
+  # For a single replacement, an Edit's `new_content` may be only the
+  # replacement text, a few lines from inside a function. Those lines parse
+  # under `source_file`, which `(block` misses, or under an `ERROR` node when
+  # they do not parse cleanly, which `(_` misses.
+  #
+  # Limits: this is a pattern match, not data-flow analysis. It does not match
+  # an unwrap that is not the whole `let` value (`let n = a.unwrap().len();`),
+  # an unwrap through an adapter (`let a = self.a.as_ref().unwrap();`), an
+  # unwrap outside a `let` (`foo(a.unwrap())`), other statements between the
+  # guard and the `let`, or exits through macros such as `bail!` or `panic!`.
+  # It also skips receivers whose path contains a call (`it.next().unwrap().v`),
+  # since the guard and the `let` may then read different values; receivers
+  # with raw or non-ASCII identifiers or whitespace inside the path; guards
+  # whose body contains an attribute, since `#[cfg(..)] return` may not exit;
+  # and `cfg` attributes between the guard and the `let`. A `#[cfg(..)]` on
+  # the guard statement itself still matches: a query cannot rule out a
+  # preceding sibling.
+  - name: prefer-let-else-over-check-unwrap
+    description: Use let-else instead of checking is_none/is_err and then unwrapping
+    message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and moves the guard's body into its `else` block, then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body
+                    !alternative))
+                .
+                [(line_comment) (block_comment) (attribute_item) @between_attribute]*
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped)
+                (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
+                (#not-match? @body "#!?\\[")
+                (#not-match? @between_attribute "cfg"))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (expression_statement
+                  (if_expression
+                    condition: [
+                      (call_expression
+                        function: (field_expression
+                          value: [(identifier) (field_expression)] @receiver
+                          field: (field_identifier) @check))
+                      (unary_expression "!"
+                        (call_expression
+                          function: (field_expression
+                            value: [(identifier) (field_expression)] @receiver
+                            field: (field_identifier) @negated_check)))
+                    ] @condition
+                    consequence: (block
+                      [(expression_statement [(return_expression) (break_expression) (continue_expression)])
+                       (return_expression) (break_expression) (continue_expression)]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body
+                    !alternative))
+                .
+                [(line_comment) (block_comment) (attribute_item) @between_attribute]*
+                .
+                (let_declaration
+                  value: (call_expression
+                    function: (field_expression
+                      value: (_) @unwrapped
+                      field: (field_identifier) @unwrap)))
+                (#any-of? @check "is_none" "is_err")
+                (#any-of? @negated_check "is_some" "is_ok")
+                (#any-of? @unwrap "unwrap" "expect")
+                (#eq? @receiver @unwrapped)
+                (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
+                (#not-match? @body "#!?\\[")
+                (#not-match? @between_attribute "cfg"))
+
   # Redirect docs.rs fetches to local cargo registry.
   # Demonstrates the WebFetch matcher with URL capture groups.
   - name: prefer-local-docs
