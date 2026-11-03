@@ -76,6 +76,11 @@ fn run_rule(config: &str, tool: &str, content: &str) -> String {
     "field receiver with continue"
 )]
 #[test_case(
+    "fn f(&self) {\n    if self.pair.0.is_none() { return; }\n    let first = self.pair.0.unwrap();\n}",
+    "the value of `self.pair.0`";
+    "tuple index receiver"
+)]
+#[test_case(
     "fn f(x: Option<u8>) {\n    loop {\n        if x.is_none() { break }\n        let x = x.unwrap();\n    }\n}",
     "`if x.is_none()`";
     "break without semicolon"
@@ -160,6 +165,14 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; /* c */ log(); }\n    let a = a.unwrap();\n    a\n}";
     "comment before a statement after the exit"
+)]
+#[test_case(
+    "fn f(items: &mut I) -> Option<u8> {\n    if items.next().unwrap().value.is_none() { return None; }\n    let value = items.next().unwrap().value.unwrap();\n    Some(value)\n}";
+    "receiver path contains a call"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() {\n        #[cfg(debug_assertions)]\n        return 0;\n    }\n    let a = a.unwrap();\n    a\n}";
+    "exit behind a cfg attribute"
 )]
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; } else { log(); }\n    let a = a.unwrap();\n    a\n}";

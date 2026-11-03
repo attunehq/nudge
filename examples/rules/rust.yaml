@@ -184,6 +184,9 @@ rules:
   # an unwrap through an adapter (`let a = self.a.as_ref().unwrap();`), an
   # unwrap outside a `let` (`foo(a.unwrap())`), other statements between the
   # guard and the `let`, or exits through macros such as `bail!` or `panic!`.
+  # It also skips receivers whose path contains a call (`it.next().unwrap().v`),
+  # since the guard and the `let` may then read different values, and guards
+  # whose body contains an attribute, since `#[cfg(..)] return` may not exit.
   - name: prefer-let-else-over-check-unwrap
     description: Use let-else instead of checking is_none/is_err and then unwrapping
     message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and moves the guard's body into its `else` block, then retry."
@@ -215,7 +218,7 @@ rules:
                       .
                       [(line_comment) (block_comment)]*
                       .
-                      "}")
+                      "}") @body
                     !alternative))
                 .
                 [(line_comment) (block_comment) (attribute_item)]*
@@ -228,7 +231,9 @@ rules:
                 (#any-of? @check "is_none" "is_err")
                 (#any-of? @negated_check "is_some" "is_ok")
                 (#any-of? @unwrap "unwrap" "expect")
-                (#eq? @receiver @unwrapped))
+                (#eq? @receiver @unwrapped)
+                (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
+                (#not-match? @body "#!?\\["))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
@@ -256,7 +261,7 @@ rules:
                       .
                       [(line_comment) (block_comment)]*
                       .
-                      "}")
+                      "}") @body
                     !alternative))
                 .
                 [(line_comment) (block_comment) (attribute_item)]*
@@ -269,4 +274,6 @@ rules:
                 (#any-of? @check "is_none" "is_err")
                 (#any-of? @negated_check "is_some" "is_ok")
                 (#any-of? @unwrap "unwrap" "expect")
-                (#eq? @receiver @unwrapped))
+                (#eq? @receiver @unwrapped)
+                (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
+                (#not-match? @body "#!?\\["))
