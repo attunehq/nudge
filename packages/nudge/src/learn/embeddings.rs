@@ -103,7 +103,7 @@ pub fn ensure_available() -> Result<()> {
     if is_available() {
         Ok(())
     } else {
-        bail!("{}", unavailable_message())
+        bail!("{}", unavailable_message());
     }
 }
 
@@ -197,7 +197,7 @@ pub fn build_index(
     _notes: &[LearnedNote],
     _config: &LearnConfig,
 ) -> Result<EmbeddingBuildReport> {
-    bail!("{}", unavailable_message())
+    bail!("{}", unavailable_message());
 }
 
 #[cfg(feature = "embeddings")]
@@ -215,7 +215,7 @@ pub fn ensure_model(root: &Path, config: &LearnConfig) -> Result<EmbeddingPaths>
 
 #[cfg(not(feature = "embeddings"))]
 pub fn ensure_model(_root: &Path, _config: &LearnConfig) -> Result<EmbeddingPaths> {
-    bail!("{}", unavailable_message())
+    bail!("{}", unavailable_message());
 }
 
 pub fn hybrid_search(

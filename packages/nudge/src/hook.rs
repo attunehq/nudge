@@ -145,8 +145,10 @@ pub struct EditInput {
     /// Replaced content or matched pre-patch content.
     pub old_string: String,
 
-    /// Replacement content supplied by the provider.
-    pub new_string: String,
+    /// Replacement content supplied by the provider, one entry per
+    /// replacement. Matchers see each entry on its own, so separate
+    /// replacements in one multi-edit never look adjacent.
+    pub new_strings: Vec<String>,
 
     /// Full post-edit file content, when the provider or adapter can recover
     /// it.

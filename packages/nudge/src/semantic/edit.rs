@@ -83,14 +83,14 @@ pub fn multi_input(cwd: &Path, path: &Path, input: &Value) -> crate::hook::EditI
                 edit.get(name)
                     .or_else(|| edit.get(alias))
                     .and_then(Value::as_str)
+                    .map(str::to_string)
             })
             .collect::<Vec<_>>()
-            .join("\n")
     };
     crate::hook::EditInput {
         file_path: path.to_path_buf(),
-        old_string: strings("old_string", "oldString"),
-        new_string: strings("new_string", "newString"),
+        old_string: strings("old_string", "oldString").join("\n"),
+        new_strings: strings("new_string", "newString"),
         post_edit_content: snapshot.as_ref().map(|snapshot| snapshot.content.clone()),
         semantic_snapshot: snapshot,
     }

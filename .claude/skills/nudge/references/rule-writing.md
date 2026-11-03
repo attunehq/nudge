@@ -93,7 +93,8 @@ Write and Edit hooks and in `nudge check`.
 Use `PreToolUse` when matching an attempted operation:
 
 - `tool: Write`: match content being written to a new file with `content:`
-- `tool: Edit`: match replacement text with `new_content:`
+- `tool: Edit`: match replacement text with `new_content:`; each replacement in
+  a multi-edit is matched on its own
 - `tool: WebFetch`: match fetched URLs with `url:`
 - `tool: Bash`: match shell commands with `command:`
 
