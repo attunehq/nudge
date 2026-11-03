@@ -185,8 +185,12 @@ rules:
   # unwrap outside a `let` (`foo(a.unwrap())`), other statements between the
   # guard and the `let`, or exits through macros such as `bail!` or `panic!`.
   # It also skips receivers whose path contains a call (`it.next().unwrap().v`),
-  # since the guard and the `let` may then read different values, and guards
-  # whose body contains an attribute, since `#[cfg(..)] return` may not exit.
+  # since the guard and the `let` may then read different values; receivers
+  # with raw or non-ASCII identifiers or whitespace inside the path; guards
+  # whose body contains an attribute, since `#[cfg(..)] return` may not exit;
+  # and `cfg` attributes between the guard and the `let`. A `#[cfg(..)]` on
+  # the guard statement itself still matches: a query cannot rule out a
+  # preceding sibling.
   - name: prefer-let-else-over-check-unwrap
     description: Use let-else instead of checking is_none/is_err and then unwrapping
     message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and moves the guard's body into its `else` block, then retry."
@@ -221,7 +225,7 @@ rules:
                       "}") @body
                     !alternative))
                 .
-                [(line_comment) (block_comment) (attribute_item)]*
+                [(line_comment) (block_comment) (attribute_item) @between_attribute]*
                 .
                 (let_declaration
                   value: (call_expression
@@ -233,7 +237,8 @@ rules:
                 (#any-of? @unwrap "unwrap" "expect")
                 (#eq? @receiver @unwrapped)
                 (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
-                (#not-match? @body "#!?\\["))
+                (#not-match? @body "#!?\\[")
+                (#not-match? @between_attribute "cfg"))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
@@ -264,7 +269,7 @@ rules:
                       "}") @body
                     !alternative))
                 .
-                [(line_comment) (block_comment) (attribute_item)]*
+                [(line_comment) (block_comment) (attribute_item) @between_attribute]*
                 .
                 (let_declaration
                   value: (call_expression
@@ -276,4 +281,5 @@ rules:
                 (#any-of? @unwrap "unwrap" "expect")
                 (#eq? @receiver @unwrapped)
                 (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
-                (#not-match? @body "#!?\\["))
+                (#not-match? @body "#!?\\[")
+                (#not-match? @between_attribute "cfg"))

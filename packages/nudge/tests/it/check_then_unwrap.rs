@@ -175,6 +175,14 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
     "exit behind a cfg attribute"
 )]
 #[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    #[cfg(debug_assertions)]\n    let a = a.unwrap();\n    a\n}";
+    "cfg attribute on the let"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    #[allow(clippy::unwrap_used)]\n    #[cfg(debug_assertions)]\n    let a = a.unwrap();\n    a\n}";
+    "cfg attribute after another attribute on the let"
+)]
+#[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; } else { log(); }\n    let a = a.unwrap();\n    a\n}";
     "guard has an else branch"
 )]
