@@ -105,6 +105,21 @@ fn run_rule(config: &str, tool: &str, content: &str) -> String {
     "`if x.is_none()`";
     "several comments at both anchors"
 )]
+#[test_case(
+    "fn f(x: Option<u8>) -> u8 {\n    if x.is_none() { return 0; }\n    let x = x.unwrap();",
+    "`if x.is_none()`";
+    "edit snippet cut off before the closing brace"
+)]
+#[test_case(
+    "Some(x) => {\n    if x.is_none() { return; }\n    let value = x.expect(\"checked\");",
+    "`if x.is_none()`";
+    "edit snippet starting inside a match arm"
+)]
+#[test_case(
+    "fn f(x: Option<u8>) {\n    if x.is_none() { return; }\n    #[allow(clippy::unwrap_used)]\n    let x = x.unwrap();\n}",
+    "`if x.is_none()`";
+    "attribute on the let"
+)]
 #[test]
 fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
     for config in CONFIGS {
@@ -161,6 +176,14 @@ fn test_check_then_unwrap_interrupts(content: &str, expected_message: &str) {
 #[test_case(
     "if a.is_none() { return; }\nlog();\nlet a = a.unwrap();";
     "edit snippet with a statement between guard and let"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    #[cfg(debug_assertions)]\n    log();\n    let a = a.unwrap();\n    a\n}";
+    "attribute on a statement between guard and let"
+)]
+#[test_case(
+    "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() { return 0; }\n    #[allow(dead_code)]\n    fn helper() {}\n    let a = a.unwrap();\n    a\n}";
+    "attribute on an item between guard and let"
 )]
 #[test_case(
     "fn f(a: Option<u8>) -> u8 {\n    if a.is_none() || z { return 0; }\n    let a = a.unwrap();\n    a\n}";
