@@ -170,10 +170,14 @@ rules:
   # Also matches `is_err()`, `!is_some()`, `!is_ok()`, `.expect(...)`, and
   # `break`/`continue` exits. The `.` anchor requires the `let` to be the next
   # statement, and `#eq?` requires the checked and unwrapped values to match.
-  # Comments may sit after the exit and between the guard and the `let`; the
-  # `"}"` anchor still requires the exit to be the guard's last statement.
-  # The parent is `_` rather than `block` because an Edit's `new_content` is
-  # only the replacement text, which parses as a top-level `source_file`.
+  # Comments may sit after the exit; the `"}"` anchor still requires the exit
+  # to be the guard's last statement. Comments and attributes such as
+  # `#[allow(clippy::unwrap_used)]` may sit between the guard and the `let`.
+  # The guard and the `let` are a top-level sibling group with no parent node.
+  # For a single replacement, an Edit's `new_content` may be only the
+  # replacement text, a few lines from inside a function. Those lines parse
+  # under `source_file`, which `(block` misses, or under an `ERROR` node when
+  # they do not parse cleanly, which `(_` misses.
   #
   # Limits: this is a pattern match, not data-flow analysis. It does not match
   # an unwrap that is not the whole `let` value (`let n = a.unwrap().len();`),
@@ -182,7 +186,7 @@ rules:
   # guard and the `let`, or exits through macros such as `bail!` or `panic!`.
   - name: prefer-let-else-over-check-unwrap
     description: Use let-else instead of checking is_none/is_err and then unwrapping
-    message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and keeps the early exit in its `else` block, then retry."
+    message: "Replace the `if {{ $condition }}` guard and the `.{{ $unwrap }}()` after it with a let-else that binds the value of `{{ $receiver }}` and moves the guard's body into its `else` block, then retry."
     on:
       - hook: PreToolUse
         tool: Write
@@ -191,7 +195,7 @@ rules:
           - kind: SyntaxTree
             language: rust
             query: |
-              (_
+              (
                 (expression_statement
                   (if_expression
                     condition: [
@@ -214,7 +218,7 @@ rules:
                       "}")
                     !alternative))
                 .
-                [(line_comment) (block_comment)]*
+                [(line_comment) (block_comment) (attribute_item)]*
                 .
                 (let_declaration
                   value: (call_expression
@@ -232,7 +236,7 @@ rules:
           - kind: SyntaxTree
             language: rust
             query: |
-              (_
+              (
                 (expression_statement
                   (if_expression
                     condition: [
@@ -255,7 +259,7 @@ rules:
                       "}")
                     !alternative))
                 .
-                [(line_comment) (block_comment)]*
+                [(line_comment) (block_comment) (attribute_item)]*
                 .
                 (let_declaration
                   value: (call_expression
