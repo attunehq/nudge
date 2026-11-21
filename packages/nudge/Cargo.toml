@@ -24,12 +24,12 @@ glob = "0.3.3"
 monostate = "1.0.2"
 regex = "1.12.2"
 reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-similar = "2.7.0"
+similar = "3.2.1"
 pulldown-cmark = "0.13.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.145", features = ["preserve_order"] }
 serde_yaml = "0.9.34"
-sha2 = "0.10.9"
+sha2 = "0.11.1"
 shell-words = "1.1"
 tap = "1.0.1"
 tracing = "0.1.41"
@@ -48,7 +48,7 @@ tree-sitter-c-sharp = "0.23.1"
 tree-sitter-kotlin-ng = "1.1.0"
 tree-sitter-haskell = "0.23.1"
 derive_more = { version = "2.1.0", features = ["full"] }
-itertools = "0.14.0"
+itertools = "0.15.0"
 indoc = "2.0.7"
 ignore = "0.4.25"
 rpassword = "7.5.4"
