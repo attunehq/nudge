@@ -101,12 +101,7 @@ impl JevClient {
         let client = match self.client.get() {
             Some(client) => client,
             None => {
-                let client = Client::builder()
-                    .redirect(Policy::none())
-                    .retry(reqwest::retry::never())
-                    .connect_timeout(remaining)
-                    .build()
-                    .map_err(|_| EvaluationError::Unavailable)?;
+                let client = build_client(remaining).map_err(|_| EvaluationError::Unavailable)?;
                 self.client.get_or_init(|| client)
             }
         };
@@ -131,6 +126,20 @@ impl JevClient {
             }
         })
     }
+}
+
+fn build_client(connect_timeout: Duration) -> reqwest::Result<Client> {
+    // reqwest's `rustls-no-provider` feature uses the process-wide rustls
+    // crypto provider and panics without one. Install ring, which the model
+    // downloader already links, so the binary carries one crypto library
+    // instead of adding aws-lc-rs. This fails only when a provider is already
+    // installed, which is fine.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    Client::builder()
+        .redirect(Policy::none())
+        .retry(reqwest::retry::never())
+        .connect_timeout(connect_timeout)
+        .build()
 }
 
 fn transport_error(error: reqwest::Error) -> EvaluationError {
