@@ -107,6 +107,14 @@ omits local semantic embeddings. Keep that split for Intel macOS, musl Linux,
 arm64 GNU Linux, and Windows GNU unless `ort`/FastEmbed support changes or
 Nudge grows a different embedding backend.
 
+The x64 GNU Linux target builds natively, so it inherits the runner's glibc.
+It builds on `ubuntu-22.04` (glibc 2.35), the oldest image GitHub hosts, and
+the Release workflow runs the binary in an `ubuntu:22.04` container before
+packaging it. The Installers workflow repeats that check against the published
+release. When GitHub retires the runner image, move the target and both checks
+to the next oldest image together, and update the glibc floor in the README and
+user guide.
+
 Useful focused commands:
 
 ```bash

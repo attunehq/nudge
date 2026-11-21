@@ -36,7 +36,9 @@ curl -sSfL https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install
 Release binaries support macOS, Linux, and Windows x64. BM25 learned-note
 search is always available. Local semantic embeddings are included on Apple
 Silicon macOS and x64 GNU Linux; Intel macOS, musl Linux, arm64 GNU Linux, and
-Windows GNU builds omit local semantic embeddings.
+Windows GNU builds omit local semantic embeddings. GNU Linux builds need glibc
+2.35 or newer (Debian 12, Ubuntu 22.04, RHEL 10, or later); the installer
+picks the musl build on Alpine.
 
 Windows PowerShell:
 
