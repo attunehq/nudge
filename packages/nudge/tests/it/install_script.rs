@@ -103,7 +103,7 @@ fn release_workflow_checks_out_repo_before_generating_release_notes() {
     let release_job = release_job(&workflow).expect("release job");
 
     let checkout = release_job
-        .find("- uses: actions/checkout@v4")
+        .find("- uses: actions/checkout@")
         .expect("release job should checkout the repository");
     let generated_notes = release_job
         .find("--generate-notes")
