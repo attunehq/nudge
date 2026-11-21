@@ -154,6 +154,7 @@ Nudge has several documentation sources that must stay aligned. When updating on
 | **README.md** | Humans evaluating or contributing | Landing page and quick orientation | What Nudge is, why it exists, where to start |
 | **docs/user-guide.md** | Users installing and configuring Nudge | How to install, configure, and use Nudge | Setup, expectations, examples, troubleshooting |
 | **docs/developer-guide.md** | Contributors changing Nudge | How to develop and dogfood Nudge | Architecture, tests, live-agent validation |
+| **docs/maintenance.md** | The daily maintenance agent, and Jess | Maintenance policy the daily run follows | Upgrades, issue triage, escalation, merge bar |
 | **packages/nudge/skills/nudge/** | Agents using Nudge | How to respond to Nudge, set it up locally, and write/debug rules | Setup, rule syntax, hook responses, validation, CI |
 | **packages/nudge/skills/nudge-learnings/** | Agents debugging repo-specific issues | How to search, apply, and record learned incident notes | Proactive debugging memory, BM25/embeddings, recording learnings |
 
@@ -164,6 +165,8 @@ Nudge has several documentation sources that must stay aligned. When updating on
 **README.md** is the front door: a concise landing page that explains what Nudge is and points to the deeper guides.
 
 **docs/user-guide.md** and **docs/developer-guide.md** are the durable guides for users and contributors.
+
+**docs/maintenance.md** is the policy for the daily maintenance run: what it upgrades and fixes on its own, what it escalates to Jess, and when it merges. Change the policy there, not in the scheduled task prompt.
 
 **packages/nudge/skills/nudge/** is the self-contained agent-facing Nudge router. It should stay scannable, copy-pasteable, and complete enough for modern agents to set up local hooks when needed, understand hook responses, write rules, debug rules, validate changes, and add CI gates without relying on CLI docs subcommands.
 

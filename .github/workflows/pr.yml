@@ -33,9 +33,10 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Install Rust
-              run: rustup show
             - uses: actions/checkout@v4
+            # Installs the toolchain pinned in rust-toolchain.toml.
+            - name: Install Rust
+              run: rustup toolchain install
             - uses: Swatinem/rust-cache@v2
               with:
                   shared-key: clippy
@@ -46,9 +47,10 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Install Rust
-              run: rustup show
             - uses: actions/checkout@v4
+            # Installs the toolchain pinned in rust-toolchain.toml.
+            - name: Install Rust
+              run: rustup toolchain install
             - uses: Swatinem/rust-cache@v2
               with:
                   shared-key: test
@@ -59,9 +61,10 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - name: Install Rust
-              run: rustup show
             - uses: actions/checkout@v4
+            # Installs the toolchain pinned in rust-toolchain.toml.
+            - name: Install Rust
+              run: rustup toolchain install
             - uses: Swatinem/rust-cache@v2
               with:
                   shared-key: build

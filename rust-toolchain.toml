@@ -1,0 +1,8 @@
+# Pinned so Rust upgrades land as deliberate PRs (with any new clippy lints
+# fixed in the same change) instead of breaking unrelated PRs when stable moves.
+# The daily maintenance run bumps this to each new stable release; see
+# docs/maintenance.md. Formatting uses nightly rustfmt separately (`cargo +nightly fmt`).
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["clippy"]
