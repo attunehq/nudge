@@ -120,13 +120,14 @@ jobs:
                     # omits semantic embeddings.
                     #
                     # The x64 target builds natively, so it requires the
-                    # runner's glibc. Build it on the oldest supported Ubuntu
-                    # image (glibc 2.35) so it runs on Debian 12+, Ubuntu
-                    # 22.04+ and RHEL 10. When GitHub retires this image, move
-                    # to the next oldest one and keep MIN_GLIBC_IMAGE below in
-                    # step with it.
+                    # runner's glibc. ONNX Runtime's prebuilt library needs
+                    # glibc 2.38 and GCC 13's libstdc++, so ubuntu-24.04
+                    # (glibc 2.39) is the oldest image that links it. That
+                    # covers Debian 13+, Ubuntu 24.04+ and RHEL 10. Pin it
+                    # rather than ubuntu-latest, whose newer glibc would raise
+                    # the floor, and keep MIN_GLIBC_IMAGE below in step.
                     - target: x86_64-unknown-linux-gnu
-                      runner: ubuntu-22.04
+                      runner: ubuntu-24.04
                       cross: false
                       embeddings: true
                     - target: aarch64-unknown-linux-gnu
@@ -244,7 +245,7 @@ jobs:
             - name: Check the GNU binary runs on the oldest supported glibc
               if: matrix.target == 'x86_64-unknown-linux-gnu'
               env:
-                  MIN_GLIBC_IMAGE: ubuntu:22.04
+                  MIN_GLIBC_IMAGE: ubuntu:24.04
                   TARGET: ${{ matrix.target }}
               run: |
                   docker run --rm \

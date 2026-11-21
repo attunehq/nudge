@@ -209,9 +209,9 @@ jobs:
     # The Linux job above runs on ubuntu-latest, whose glibc is always new
     # enough to hide a raised floor.
     installer-older-glibc:
-        name: Test Linux installer on glibc 2.35 (ubuntu:22.04)
+        name: Test Linux installer on glibc 2.39 (ubuntu:24.04)
         runs-on: ubuntu-latest
-        container: ubuntu:22.04
+        container: ubuntu:24.04
 
         steps:
             - name: Install installer prerequisites
