@@ -25,7 +25,7 @@ jobs:
               run: |
                   rustup toolchain install nightly
                   rustup component add --toolchain nightly rustfmt
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             - run: cargo +nightly fmt --all --check
 
     clippy:
@@ -33,7 +33,7 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             # Installs the toolchain pinned in rust-toolchain.toml.
             - name: Install Rust
               run: rustup toolchain install
@@ -47,7 +47,7 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             # Installs the toolchain pinned in rust-toolchain.toml.
             - name: Install Rust
               run: rustup toolchain install
@@ -61,7 +61,7 @@ jobs:
         runs-on: ubuntu-latest
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v7
             # Installs the toolchain pinned in rust-toolchain.toml.
             - name: Install Rust
               run: rustup toolchain install
