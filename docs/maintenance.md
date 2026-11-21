@@ -28,7 +28,8 @@ through these steps in order, skipping any with nothing to do:
    GitHub Actions.
 6. **Issues and external PRs.** Triage what is new, fix bugs, and implement
    routine feature requests.
-7. **Report.** End with a short summary in the thread, and message Jess only
+7. **Release.** Cut a release when the Releases section below says one is due.
+8. **Report.** End with a short summary in the thread, and message Jess only
    when something needs her.
 
 Keep each run bounded: at most one new feature PR per run, and stop opening new
@@ -131,8 +132,7 @@ Ask before merging, or before starting, when a change:
 - adds a product capability nobody asked for, or comes from an external
   request that Jess has not endorsed and that is more than a small fit with the
   existing design;
-- needs releasing. Never push a release tag; mention in the report when
-  unreleased fixes have piled up on `main`.
+- is a minor release, or a release the Releases section holds for review.
 
 To ask, open the PR as a draft with the `needs-decision` label (or put the label
 on the issue), and say in it what needs deciding, the options, and what you
@@ -153,10 +153,73 @@ Merge with `gh pr merge --squash`. `main` requires signed commits, which local
 commits already are. After merging, check that the `main` run of the Release
 workflow passes.
 
+## Releases
+
+Users only get fixes once they ship, so releasing is part of maintenance.
+
+### When
+
+- **Security fix:** release the same day it merges.
+- **Otherwise:** release when the last release is at least seven days old and
+  `main` has changes users would notice since it: bug fixes, new rules or
+  features, changes to the bundled skills or commands, or updates to runtime
+  dependencies.
+- Internal-only changes (CI, docs outside the bundled skills,
+  dev-dependencies, toolchain bumps with no behavior change) never trigger a
+  release on their own; they ship with the next one.
+
+### Version
+
+- **Patch** (`v0.7.1` to `v0.7.2`) for fixes, dependency updates, and other
+  maintenance.
+- **Minor** (`v0.7.x` to `v0.8.0`) when the release includes any new feature
+  or behavior change. Nudge is pre-1.0, so a breaking change is also a minor
+  bump, and it already needed Jess's sign-off to merge.
+
+### Who Publishes
+
+- **Patch releases:** the run publishes them itself once the draft passes
+  verification.
+- **Minor releases:** the run prepares and verifies the draft, rewrites the
+  notes, then messages Jess to review and publish it.
+- **`v0.7.2` is held for Jess** whatever its type: it is the first release
+  built with cross-rs and MinGW-w64 instead of cargo-cross. Prepare and verify
+  the draft, then ask her to publish.
+- Leave old unpublished drafts (such as `v0.5.2`) alone.
+
+### Steps
+
+1. Confirm the latest Release workflow run on `main` passed. Then tag the tip
+   of `origin/main` with a signed annotated tag and push it:
+   `git tag -s vX.Y.Z -m vX.Y.Z origin/main && git push origin vX.Y.Z`.
+   Never move or delete a pushed tag; a bad release is fixed by the next one.
+2. Wait for the tag's Release run. It builds every target and creates a draft
+   release with eight archives and `checksums.txt`.
+3. Verify the draft in a scratch directory:
+   - `gh release download vX.Y.Z` and check `shasum -a 256 -c checksums.txt`
+     passes for all eight archives.
+   - Run `nudge --version` from both macOS archives (the x86_64 one through
+     Rosetta) and from the Linux archives in Docker through Colima
+     (`colima start` if it is not running; x86_64 images with
+     `--platform linux/amd64`). Each must print the tag's version. A platform
+     the machine cannot run is noted in the report, not skipped silently.
+   - Run `nudge validate` with one of them in a checkout of the repo.
+4. Replace the generated notes with a short list of what changed for users,
+   grouped as Fixes, Features, and Under the hood, each linking its PR:
+   `gh release edit vX.Y.Z --notes-file <file>`.
+5. Publish patch releases with `gh release edit vX.Y.Z --draft=false --latest`.
+6. Right after publishing, run the Installers workflow
+   (`gh workflow run installers.yml`), which installs the published release
+   on Linux, Intel macOS, and Windows, and check that it passes.
+7. If a published release is broken, mark the previous release as latest
+   (`gh release edit vPREV --latest`) so installers fall back to it, fix
+   forward with the next patch, and tell Jess.
+
 ## Reporting
 
 End each run with a short summary in the thread: what merged, what is open and
 why, and what needs Jess. When something needs her, send one Slack message to
 her Tuna DM (`tuna messages send D0AE5N604RE`) that names each decision, links
 the PR or issue, and gives your recommendation. A quiet day with nothing to
-decide sends no message.
+decide sends no message. A published patch release goes in the thread summary,
+not a message, unless something went wrong with it.

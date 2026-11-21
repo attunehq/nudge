@@ -416,6 +416,9 @@ truth comes from git tags, `packages/nudge/build.rs`, and GitHub release assets.
 Do not treat the Cargo package version as stale metadata unless the project
 decides to publish crates.io artifacts.
 
+When and how releases are cut, and who publishes them, is in
+[Maintenance](maintenance.md#releases).
+
 ## Before Opening A PR
 
 Run the checks that match the change:
