@@ -91,6 +91,8 @@ workflow.
   tests, dogfooding, live-agent testing, and PR expectations.
 - [CI and Programmatic Checks](docs/ci.md): using `nudge check` in CI,
   pre-commit hooks, and scripts.
+- [Maintenance](docs/maintenance.md): how upgrades, issues, and routine
+  requests are handled, and what gets escalated.
 
 The bundled `nudge` skill is the agent-facing rule reference. The bundled
 `nudge-learnings` skill is the proactive debugging-memory workflow for searching,

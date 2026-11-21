@@ -153,7 +153,8 @@ jobs:
 
             - name: Install Rust toolchain
               run: |
-                  rustup toolchain install stable
+                  # Installs the toolchain pinned in rust-toolchain.toml.
+                  rustup toolchain install
                   rustup target add ${{ matrix.target }}
 
             # Rust's x86_64-pc-windows-gnu target links with

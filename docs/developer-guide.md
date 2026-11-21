@@ -386,6 +386,7 @@ Keep these sources aligned when behavior changes:
 - `docs/user-guide.md`: user workflow and examples.
 - `docs/developer-guide.md`: development, tests, dogfood, and live-agent checks.
 - `docs/ci.md`: `nudge check` contract.
+- `docs/maintenance.md`: daily maintenance run policy and escalation rules.
 - `AGENTS.md`: Codex-facing repository guidance.
 - `CLAUDE.md`: Claude-facing repository guidance.
 - `packages/nudge/skills/nudge/`: bundled agent-facing Nudge router skill and
@@ -399,6 +400,13 @@ Keep these sources aligned when behavior changes:
 
 When updating docs, preserve plain ASCII quotes and punctuation. The project
 expects straight quotes in chat, docs, and code.
+
+## Toolchain
+
+`rust-toolchain.toml` pins an exact stable Rust release; rustup installs it on
+first use. Formatting uses nightly rustfmt (`cargo +nightly fmt`). The daily
+maintenance run bumps the pin to each new stable release; see
+[Maintenance](maintenance.md).
 
 ## Release Version Contract
 
