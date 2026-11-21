@@ -151,8 +151,10 @@ jobs:
               run: |
                   switch ("${{ matrix.scenario }}") {
                       "help" {
-                          # Exercises -Help without installing.
-                          $help = ./scripts/install.ps1 -Help | Out-String
+                          # Exercises -Help without installing. Show-Help uses Write-Host,
+                          # which writes to the information stream (6), so redirect it into
+                          # the pipeline before capturing.
+                          $help = ./scripts/install.ps1 -Help 6>&1 | Out-String
                           $help | Write-Host
                           if ($help -notmatch "Version" -or $help -notmatch "BinDir" -or $help -notmatch "Help") {
                               throw "Installer help did not list expected options"
