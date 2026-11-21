@@ -139,13 +139,13 @@ jobs:
                       cross: true
                       embeddings: false
 
-                    # Windows build using cross (simpler than native MinGW
-                    # setup). ONNX Runtime does not publish binaries for this
-                    # GNU target, so this artifact keeps BM25 learn search and
+                    # Windows build using Ubuntu's MinGW-w64 cross compiler.
+                    # ONNX Runtime does not publish binaries for this GNU
+                    # target, so this artifact keeps BM25 learn search and
                     # omits semantic embeddings.
                     - target: x86_64-pc-windows-gnu
                       runner: ubuntu-latest
-                      cross: true
+                      cross: false
                       embeddings: false
 
         steps:
@@ -156,11 +156,23 @@ jobs:
                   rustup toolchain install stable
                   rustup target add ${{ matrix.target }}
 
-            - name: Install cargo-cross
+            # Rust's x86_64-pc-windows-gnu target links with
+            # x86_64-w64-mingw32-gcc, which the cc crate also picks up for C
+            # dependencies such as the tree-sitter grammars.
+            - name: Install MinGW-w64
+              if: matrix.target == 'x86_64-pc-windows-gnu'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y gcc-mingw-w64-x86-64
+
+            # cross-rs builds non-native targets inside its published Docker
+            # images. It replaced zijiren233's cargo-cross, whose toolchain
+            # downloads disappeared from GitHub in November 2026.
+            - name: Install cross
               if: matrix.cross
               uses: taiki-e/install-action@v2
               with:
-                  tool: cargo-cross
+                  tool: cross
                   checksum: true
 
             # The cc/ort build scripts bake the active Xcode clang-runtime path
@@ -192,7 +204,7 @@ jobs:
                   # restoring a build that links against a stale clang path.
                   env-vars: "MACOS_TOOLCHAIN_KEY"
 
-            - name: Build with cargo cross
+            - name: Build with cross
               if: matrix.cross
               env:
                   EMBEDDINGS: ${{ matrix.embeddings }}
@@ -202,7 +214,7 @@ jobs:
                   if [[ "$EMBEDDINGS" == "false" ]]; then
                     args+=(--no-default-features)
                   fi
-                  cargo cross "${args[@]}"
+                  cross "${args[@]}"
 
             - name: Build native
               if: ${{ !matrix.cross }}
