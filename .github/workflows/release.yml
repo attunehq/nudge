@@ -156,11 +156,14 @@ jobs:
                   rustup toolchain install stable
                   rustup target add ${{ matrix.target }}
 
-            - name: Install cargo-cross
+            # cross-rs builds non-native targets inside its published Docker
+            # images. It replaced zijiren233's cargo-cross, whose toolchain
+            # downloads disappeared from GitHub in November 2026.
+            - name: Install cross
               if: matrix.cross
               uses: taiki-e/install-action@v2
               with:
-                  tool: cargo-cross
+                  tool: cross
                   checksum: true
 
             # The cc/ort build scripts bake the active Xcode clang-runtime path
@@ -192,7 +195,7 @@ jobs:
                   # restoring a build that links against a stale clang path.
                   env-vars: "MACOS_TOOLCHAIN_KEY"
 
-            - name: Build with cargo cross
+            - name: Build with cross
               if: matrix.cross
               env:
                   EMBEDDINGS: ${{ matrix.embeddings }}
@@ -202,7 +205,7 @@ jobs:
                   if [[ "$EMBEDDINGS" == "false" ]]; then
                     args+=(--no-default-features)
                   fi
-                  cargo cross "${args[@]}"
+                  cross "${args[@]}"
 
             - name: Build native
               if: ${{ !matrix.cross }}
