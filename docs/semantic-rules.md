@@ -111,3 +111,7 @@ hook process reads it when needed, so saved credentials work without restarting
 the agent. A non-empty `TYPESAFE_API_KEY` overrides the saved credential; use this
 for CI secrets or a temporary account override. An agent using an environment
 override must inherit it from its launching process.
+
+Nudge connects to TypeSafe over HTTPS and checks its certificate against the
+operating system's trust store, so a corporate proxy that inspects TLS works
+once its root certificate is installed on the machine.
