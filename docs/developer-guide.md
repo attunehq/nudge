@@ -107,6 +107,15 @@ omits local semantic embeddings. Keep that split for Intel macOS, musl Linux,
 arm64 GNU Linux, and Windows GNU unless `ort`/FastEmbed support changes or
 Nudge grows a different embedding backend.
 
+The x64 GNU Linux target builds natively, so it inherits the runner's glibc.
+ONNX Runtime's prebuilt library needs glibc 2.38 and GCC 13's libstdc++, so the
+target builds on `ubuntu-24.04` (glibc 2.39), the oldest image that links it,
+instead of `ubuntu-latest`. The Release workflow runs the binary in an
+`ubuntu:24.04` container before packaging it, and the Installers workflow
+repeats that check against the published release. When `ort` raises its floor
+or GitHub retires the image, move the target and both checks together, and
+update the glibc floor in the README and user guide.
+
 Useful focused commands:
 
 ```bash

@@ -203,3 +203,30 @@ jobs:
                           throw "Unknown installer scenario: ${{ matrix.scenario }}"
                       }
                   }
+
+    # The installer picks the glibc archive on every non-Alpine Linux host, so
+    # the published x64 GNU binary must start on the oldest glibc we support.
+    # The Linux job above runs on ubuntu-latest, whose glibc is always new
+    # enough to hide a raised floor.
+    installer-older-glibc:
+        name: Test Linux installer on glibc 2.39 (ubuntu:24.04)
+        runs-on: ubuntu-latest
+        container: ubuntu:24.04
+
+        steps:
+            - name: Install installer prerequisites
+              run: |
+                  apt-get update
+                  apt-get install -y --no-install-recommends ca-certificates curl tar coreutils
+
+            - uses: actions/checkout@v7
+
+            - name: Run shell installer
+              shell: bash
+              run: |
+                  bin_dir="$RUNNER_TEMP/nudge-bin-older-glibc"
+                  tmp_dir="$RUNNER_TEMP/nudge-installer-older-glibc"
+                  mkdir -p "$bin_dir" "$tmp_dir"
+
+                  bash scripts/install.sh --bin-dir "$bin_dir" --tmp-dir "$tmp_dir"
+                  "$bin_dir/nudge" --version
