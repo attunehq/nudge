@@ -74,11 +74,11 @@ Upgrade aggressively. Stale dependencies are a bigger long-run risk than new
 ones.
 
 - **Compatible updates:** `cargo update`, verify, one PR.
-- **Major updates:** list them with
-  `cargo +nightly -Zunstable-options update --breaking --dry-run`, then
-  upgrade each by editing `packages/nudge/Cargo.toml`. Read the changelog,
-  adapt the code, and keep the requirement at the exact new version
-  (`"x.y.z"`), as the manifest already does.
+- **Major updates:** list them with `cargo upgrade --incompatible --dry-run`
+  (from `cargo-edit`; `cargo install cargo-edit` if it is missing), then
+  upgrade each with `cargo upgrade -p <crate>@<version> --incompatible`.
+  Read the changelog, adapt the code, and keep the requirement at the exact
+  new version (`"x.y.z"`), as the manifest already does.
 - **Pre-release dependencies** (such as `ort` through `fastembed`) move with
   their parent crate; do not pin them separately.
 - **GitHub Actions:** bump action major versions (`actions/checkout`,
@@ -149,9 +149,13 @@ all of these hold:
   dry-run builds;
 - it has no unresolved review comments.
 
-Merge with `gh pr merge --squash`. `main` requires signed commits, which local
-commits already are. After merging, check that the `main` run of the Release
-workflow passes.
+Merge with `gh pr merge --squash`. `main` requires branches to be up to date,
+so merge maintenance PRs one at a time: after each merge, update the next
+branch and wait for its checks again. When an earlier merge changed
+`Cargo.lock`, rebuild the next upgrade branch on `origin/main` and rerun its
+`cargo upgrade` instead of resolving lockfile conflicts by hand. `main`
+requires signed commits, which local commits already are. After merging, check
+that the `main` run of the Release workflow passes.
 
 ## Releases
 
