@@ -107,15 +107,18 @@ pub(super) fn lock_parser<T>(parser: &Mutex<T>) -> MutexGuard<'_, T> {
 
 /// Compute the union span of all captures in a tree-sitter match.
 pub(super) fn union_of_captures(m: &tree_sitter::QueryMatch) -> Span {
-    if m.captures.is_empty() {
+    if m.captures().is_empty() {
         tracing::warn!("tree-sitter match has no captures");
         return Span { start: 0, end: 0 };
     }
 
-    let (start, end) = m.captures.iter().fold((usize::MAX, 0), |(start, end), c| {
-        let range = c.node.byte_range();
-        (start.min(range.start), end.max(range.end))
-    });
+    let (start, end) = m
+        .captures()
+        .iter()
+        .fold((usize::MAX, 0), |(start, end), c| {
+            let range = c.node.byte_range();
+            (start.min(range.start), end.max(range.end))
+        });
 
     if start > end {
         tracing::warn!("tree-sitter match produced invalid byte ranges");
