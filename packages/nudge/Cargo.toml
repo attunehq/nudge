@@ -37,7 +37,7 @@ tracing = "0.1.41"
 tracing-error = "0.2.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 walkdir = "2.5.0"
-annotate-snippets = "0.11"
+annotate-snippets = "0.12.18"
 tree-sitter = "0.25.10"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"

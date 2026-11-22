@@ -5,7 +5,7 @@
 
 use std::ops::Range;
 
-use annotate_snippets::{Level, Renderer, Snippet};
+use annotate_snippets::{AnnotationKind, Level, Renderer, Snippet};
 use bon::Builder;
 use derive_more::AsRef;
 
@@ -27,17 +27,15 @@ impl Source {
     ///    |
     ///  5 |     let foo = bar.unwrap();
     ///    |               ^^^^^^^^^^^^ Do not use `.unwrap()`.
-    ///    |
     /// ```
     pub fn annotate(&self, annotations: impl IntoIterator<Item = impl Into<Annotation>>) -> String {
-        // We have to double iterate here because the `annotate_snippets` API
-        // requires a `&'a str` for the label; if we just iterate once and don't
-        // hang on to the labels as a `Vec` the labels don't live long enough
-        // because they're dropped before we can render them.
-        let annotations = annotations.into_iter().map(Into::into).collect::<Vec<_>>();
         let annotations = annotations
-            .iter()
-            .map(|Annotation { span, label }| Level::Error.span(span.range()).label(label));
+            .into_iter()
+            .map(Into::into)
+            .map(|Annotation { span, label }| {
+                AnnotationKind::Primary.span(span.range()).label(label)
+            })
+            .collect::<Vec<_>>();
 
         let title = if annotations.len() == 1 {
             "Rule violation. Fix this error and immediately retry."
@@ -45,11 +43,11 @@ impl Source {
             "Rule violations. Fix these errors and immediately retry."
         };
 
-        let snippet = Snippet::source(self.0.as_ref())
+        let snippet = Snippet::source(self.0.as_str())
             .annotations(annotations)
             .fold(true);
-        let message = Level::Error.title(title).snippet(snippet);
-        Renderer::plain().render(message).to_string()
+        let report = [Level::ERROR.primary_title(title).element(snippet)];
+        Renderer::plain().render(&report)
     }
 }
 
@@ -255,5 +253,24 @@ mod tests {
         assert!(result.contains("25 | let second = right.unwrap();"));
         assert!(result.contains("..."));
         assert!(!result.contains("// filler line 15"));
+    }
+
+    #[test]
+    fn test_render_snippet_aligns_underline_after_tabs() {
+        let source = "fn f() {\n\tlet x = y.unwrap();\n}";
+        let start = source.find("y.unwrap()").expect("source contains match");
+        let end = start + "y.unwrap()".len();
+
+        let result = super::Source::from(source).annotate([(start..end, "tabbed")]);
+
+        let code = result
+            .lines()
+            .find(|line| line.contains("y.unwrap()"))
+            .expect("rendered code line");
+        let underline = result
+            .lines()
+            .find(|line| line.contains('^'))
+            .expect("rendered underline");
+        assert_eq!(code.find("y.unwrap()"), underline.find('^'), "{result}");
     }
 }
