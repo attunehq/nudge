@@ -281,7 +281,7 @@ fn syntax_tree_matches(language: Language, query: &TreeSitterQuery, source: &str
         let span = union_of_captures(m);
         let mut captures = Captures::new();
 
-        for capture in m.captures {
+        for capture in m.captures() {
             if let Some(name) = capture_names.get(capture.index as usize) {
                 let text = capture
                     .node
