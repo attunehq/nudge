@@ -67,6 +67,10 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/attunehq/nudge/main/scripts/install.ps1 | iex
 ```
 
+The installer adds its directory to your user PATH and checks that `nudge`
+resolves to the copy it installed. Terminals, editors, and launchers that were
+already open keep their old PATH, so restart them if `nudge` is not found there.
+
 From source:
 
 ```bash

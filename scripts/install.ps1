@@ -38,6 +38,45 @@ function Write-Warning-Message {
     Write-Host "Warning: $Message" -ForegroundColor Yellow
 }
 
+function Get-NormalizedPathEntry {
+    param([string]$Entry)
+
+    if ([string]::IsNullOrWhiteSpace($Entry)) {
+        return $null
+    }
+
+    $expanded = [Environment]::ExpandEnvironmentVariables($Entry.Trim().Trim('"'))
+    try {
+        $expanded = [System.IO.Path]::GetFullPath($expanded)
+    }
+    catch {
+        # Keep the entry as written; it still compares by text.
+    }
+
+    return $expanded.TrimEnd('\', '/')
+}
+
+function Test-PathContainsDirectory {
+    param(
+        [string]$PathValue,
+        [string]$Directory
+    )
+
+    if ([string]::IsNullOrEmpty($PathValue)) {
+        return $false
+    }
+
+    $target = Get-NormalizedPathEntry $Directory
+    foreach ($entry in $PathValue.Split(';')) {
+        $normalized = Get-NormalizedPathEntry $entry
+        if ($normalized -and [string]::Equals($normalized, $target, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Show-Help {
     Write-Host @"
 nudge installer for Windows
@@ -183,22 +222,31 @@ function Install-Binary {
     # Cleanup
     Remove-Item -Recurse -Force $tempExtractDir
 
-    # Add to PATH if not already present
+    # Compare PATH entries one by one, so a directory that only shares a prefix
+    # with another entry (C:\Tools vs C:\Tools2) does not count as present.
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -notlike "*$InstallDir*") {
-        Write-Info "Adding $InstallDir to PATH..."
+    if (-not (Test-PathContainsDirectory $userPath $InstallDir)) {
+        Write-Info "Adding $InstallDir to your user PATH..."
 
-        # Add to PATH (remove trailing semicolon if present, then add directory with semicolon)
-        $newPath = $userPath.TrimEnd(';') + ";$InstallDir"
+        if ([string]::IsNullOrEmpty($userPath)) {
+            $newPath = $InstallDir
+        }
+        else {
+            $newPath = $userPath.TrimEnd(';') + ";$InstallDir"
+        }
+
+        # Setting a User variable also broadcasts WM_SETTINGCHANGE, so Explorer
+        # and the Start menu hand the new PATH to programs they launch from now on.
         [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-
-        # Update current session PATH
-        $env:Path += ";$InstallDir"
-
         Write-Info "Added to PATH"
-        Write-Host ""
-        Write-Warning-Message "You may need to restart your PowerShell session for PATH changes to take effect in other terminals."
-        Write-Host ""
+    }
+
+    # Programs that were already running keep the PATH they started with. If
+    # this session's PATH lacked the install directory, the terminals, editors,
+    # and launchers that were open before the install most likely lack it too.
+    $sessionHadInstallDir = Test-PathContainsDirectory $env:Path $InstallDir
+    if (-not $sessionHadInstallDir) {
+        $env:Path = "$env:Path".TrimEnd(';') + ";$InstallDir"
     }
 
     # Display version
@@ -208,6 +256,23 @@ function Install-Binary {
     }
     else {
         Write-Info "Installed to '$targetPath'"
+    }
+
+    # Check what `nudge` resolves to now, so a stale or shadowed install is
+    # reported here instead of surprising the user later.
+    $resolved = Get-Command nudge -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $resolved) {
+        Write-Host ""
+        Write-Warning-Message "'nudge' does not resolve in this session. Run it by full path: & '$targetPath'"
+    }
+    elseif (-not [string]::Equals((Get-NormalizedPathEntry $resolved.Source), (Get-NormalizedPathEntry $targetPath), [StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host ""
+        Write-Warning-Message "'nudge' resolves to '$($resolved.Source)', which comes before '$InstallDir' on PATH. Remove that copy, or move '$InstallDir' earlier in PATH, to use the version you just installed."
+    }
+
+    if (-not $sessionHadInstallDir) {
+        Write-Host ""
+        Write-Warning-Message "Terminals, editors, and launchers that were already open keep their old PATH, so 'nudge' may not be found in them until you restart them. New terminals started from the Start menu or Explorer will find it. To use it in another open PowerShell window now, run: `$env:Path += ';$InstallDir'"
     }
 
     Write-Host ""
