@@ -92,12 +92,7 @@ fn repo_root() -> Result<String, String> {
 fn changed_files() -> Result<Vec<StatusEntry>, String> {
     let output = run("git", &["status", "--porcelain"])?;
 
-    let mut files = Vec::new();
-    for line in output.lines() {
-        files.push(line.parse::<StatusEntry>()?);
-    }
-
-    Ok(files)
+    output.lines().map(str::parse::<StatusEntry>).collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
