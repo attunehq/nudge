@@ -283,3 +283,189 @@ rules:
                 (#match? @receiver "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)*$")
                 (#not-match? @body "#!?\\[")
                 (#not-match? @between_attribute "cfg"))
+
+  # Catch a fresh Vec filled by a `for` loop that only pushes to it:
+  #   let mut results = Vec::new();  for x in xs { results.push(f(x)); }
+  # Also matches `Vec::with_capacity(..)` and `vec![]`, and a loop body that
+  # is a single `if` or `if let` (without `else`) whose block only pushes;
+  # those become `.filter(..)` and `.filter_map(..)`. The `.` anchors require
+  # the loop to be the statement right after the `let`, and the `"{"` and
+  # `"}"` anchors require the push to be the only statement in each block.
+  # Comments may sit between the `let` and the loop and around the push.
+  # Like the let-else rule, the `let` and the loop are a top-level sibling
+  # group, so the query also matches an Edit snippet without a function.
+  #
+  # Limits: this is a pattern match, not data-flow analysis. It does not match
+  # loops with other statements, several pushes, `while`/`loop`, an `else`
+  # branch, other collections (`String`, `HashMap`), or other statements
+  # between the `let` and the loop. It skips loop bodies with `.await`, which
+  # an iterator chain cannot express, and with attributes, since `#[cfg(..)]`
+  # may remove the push. It still matches when the Vec is pushed to again
+  # after the loop; the message says to keep `mut` then. It also matches a
+  # loop whose iterable reads the Vec (`for _ in 0..v.capacity()`), which a
+  # query cannot see into, and a push loop kept on purpose; a sweep of 604
+  # crates found 113 matches, and a 30-match sample had one of each.
+  - name: prefer-collect-over-push-loop
+    description: Collect an iterator chain instead of pushing to a new Vec in a for loop
+    message: "Build `{{ $collection }}` by collecting an iterator over `{{ $iterable }}` instead of pushing to it in a `for` loop (`.map(..)`, `.filter(..)`, or `.filter_map(..)`, then `.collect::<Vec<_>>()`, or `.collect::<Result<Vec<_>, _>>()?` when the pushed value uses `?`; keep `mut` only if you push to it again later), then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @collection
+                  value: [
+                    (call_expression
+                      function: (scoped_identifier
+                        path: (identifier) @vec_type
+                        name: (identifier) @constructor))
+                    (macro_invocation
+                      macro: (identifier) @vec_macro
+                      (token_tree) @vec_tokens)
+                  ])
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      [
+                        (expression_statement
+                          (call_expression
+                            function: (field_expression
+                              value: (identifier) @pushed
+                              field: (field_identifier) @push)
+                            arguments: (arguments (_))))
+                        (call_expression
+                          function: (field_expression
+                            value: (identifier) @pushed
+                            field: (field_identifier) @push)
+                          arguments: (arguments (_)))
+                        (expression_statement
+                          (if_expression
+                            consequence: (block
+                              "{"
+                              .
+                              [(line_comment) (block_comment)]*
+                              .
+                              [
+                                (expression_statement
+                                  (call_expression
+                                    function: (field_expression
+                                      value: (identifier) @pushed
+                                      field: (field_identifier) @push)
+                                    arguments: (arguments (_))))
+                                (call_expression
+                                  function: (field_expression
+                                    value: (identifier) @pushed
+                                    field: (field_identifier) @push)
+                                  arguments: (arguments (_)))
+                              ]
+                              .
+                              [(line_comment) (block_comment)]*
+                              .
+                              "}")
+                            !alternative))
+                      ]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @vec_type "Vec")
+                (#any-of? @constructor "new" "with_capacity")
+                (#eq? @vec_macro "vec")
+                (#eq? @vec_tokens "[]")
+                (#eq? @push "push")
+                (#eq? @pushed @collection)
+                (#not-match? @body "\\.await|#!?\\["))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @collection
+                  value: [
+                    (call_expression
+                      function: (scoped_identifier
+                        path: (identifier) @vec_type
+                        name: (identifier) @constructor))
+                    (macro_invocation
+                      macro: (identifier) @vec_macro
+                      (token_tree) @vec_tokens)
+                  ])
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      [
+                        (expression_statement
+                          (call_expression
+                            function: (field_expression
+                              value: (identifier) @pushed
+                              field: (field_identifier) @push)
+                            arguments: (arguments (_))))
+                        (call_expression
+                          function: (field_expression
+                            value: (identifier) @pushed
+                            field: (field_identifier) @push)
+                          arguments: (arguments (_)))
+                        (expression_statement
+                          (if_expression
+                            consequence: (block
+                              "{"
+                              .
+                              [(line_comment) (block_comment)]*
+                              .
+                              [
+                                (expression_statement
+                                  (call_expression
+                                    function: (field_expression
+                                      value: (identifier) @pushed
+                                      field: (field_identifier) @push)
+                                    arguments: (arguments (_))))
+                                (call_expression
+                                  function: (field_expression
+                                    value: (identifier) @pushed
+                                    field: (field_identifier) @push)
+                                  arguments: (arguments (_)))
+                              ]
+                              .
+                              [(line_comment) (block_comment)]*
+                              .
+                              "}")
+                            !alternative))
+                      ]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @vec_type "Vec")
+                (#any-of? @constructor "new" "with_capacity")
+                (#eq? @vec_macro "vec")
+                (#eq? @vec_tokens "[]")
+                (#eq? @push "push")
+                (#eq? @pushed @collection)
+                (#not-match? @body "\\.await|#!?\\["))

@@ -167,11 +167,10 @@ fn install_command_files(
 }
 
 pub fn install_bundled_skills(skills_dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut installed = Vec::new();
-    for skill in bundled_skills() {
-        installed.push(install_skill(skills_dir, skill)?);
-    }
-    Ok(installed)
+    bundled_skills()
+        .iter()
+        .map(|skill| install_skill(skills_dir, skill))
+        .collect()
 }
 
 pub fn install_nudge_skill(skills_dir: &Path) -> Result<PathBuf> {

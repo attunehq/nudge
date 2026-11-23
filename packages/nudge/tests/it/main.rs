@@ -24,6 +24,7 @@ mod message_content;
 mod multiple_rules;
 mod non_rust_files;
 mod path_exclusions;
+mod push_loop;
 mod semantic;
 mod setup;
 mod skills;

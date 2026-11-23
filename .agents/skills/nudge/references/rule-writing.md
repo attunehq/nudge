@@ -299,10 +299,15 @@ allow it. To require that a pattern is the last statement in a block while
 allowing comments after it, anchor to the closing brace:
 `(block (return_expression) . [(line_comment) (block_comment)]* . "}")`.
 A quantifier followed by a bare trailing `.` does not enforce this.
+Anchor to the opening brace the same way to require the first statement:
+`(block "{" . [(line_comment) (block_comment)]* . (expression_statement) ...)`.
+Use both to require that a pattern is the only statement in a block.
 
 The `prefer-let-else-over-check-unwrap` rule in `examples/rules/rust.yaml`
 extends this with negated checks, `Result` checks, and an early-exit
-requirement.
+requirement. The `prefer-collect-over-push-loop` rule in the same file uses
+both brace anchors to match a `for` loop whose only statement pushes to the
+`Vec` declared right before it.
 
 If a parser cannot produce a tree, the matcher passes silently. Tree-sitter
 usually recovers from incomplete syntax, so useful matches can still fire while
