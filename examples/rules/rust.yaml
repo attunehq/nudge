@@ -295,19 +295,27 @@ rules:
   # Like the let-else rule, the `let` and the loop are a top-level sibling
   # group, so the query also matches an Edit snippet without a function.
   #
-  # Limits: this is a pattern match, not data-flow analysis. It does not match
-  # loops with other statements, several pushes, `while`/`loop`, an `else`
-  # branch, other collections (`String`, `HashMap`), or other statements
-  # between the `let` and the loop. It skips loop bodies with `.await`, which
-  # an iterator chain cannot express, and with attributes, since `#[cfg(..)]`
-  # may remove the push. It still matches when the Vec is pushed to again
-  # after the loop; the message says to keep `mut` then. It also matches a
-  # loop whose iterable reads the Vec (`for _ in 0..v.capacity()`), which a
-  # query cannot see into, and a push loop kept on purpose; a sweep of 604
-  # crates found 113 matches, and a 30-match sample had one of each.
+  # Limits: this is a pattern match, not data-flow analysis, so it trades
+  # missed loops for no false blocks. It does not match loops with other
+  # statements, several pushes, `while`/`loop`, an `else` branch, other
+  # collections (`String`, `HashMap`), or other statements between the `let`
+  # and the loop. It skips loop bodies an iterator chain cannot express:
+  # `.await`, `break`/`continue`/`return` (closures cannot exit the loop), a
+  # `?` in the `if` condition (a `filter` closure returns `bool`), and
+  # attributes, since `#[cfg(..)]` may remove the push. A query cannot tell
+  # whether the body reads the Vec it builds (`if !seen.contains(&x)`,
+  # `sums.last()`), so it skips any body calling a common read method
+  # (`contains`, `first`, `last`, `len`, `is_empty`, `get`, `iter`,
+  # `binary_search`), on any receiver. It still matches when the Vec is pushed
+  # to again after the loop (the message says to keep `mut`), when the
+  # iterable reads the Vec (`for _ in 0..v.capacity()`), when an `if let`
+  # shadows the Vec's name, and when a push loop is kept on purpose. A sweep
+  # of 604 crates found 113 matches before the read-method and exit
+  # exclusions; a 30-match sample had one deliberate loop and one loop whose
+  # iterable read the Vec.
   - name: prefer-collect-over-push-loop
     description: Collect an iterator chain instead of pushing to a new Vec in a for loop
-    message: "Build `{{ $collection }}` by collecting an iterator over `{{ $iterable }}` instead of pushing to it in a `for` loop (`.map(..)`, `.filter(..)`, or `.filter_map(..)`, then `.collect::<Vec<_>>()`, or `.collect::<Result<Vec<_>, _>>()?` when the pushed value uses `?`; keep `mut` only if you push to it again later), then retry."
+    message: "Build `{{ $collection }}` by collecting an iterator over `{{ $iterable }}` instead of pushing to it in a `for` loop (`.map(..)`, `.filter(..)`, or `.filter_map(..)`, then `.collect::<Vec<_>>()`, or `.collect::<Result<Vec<_>, _>>()?` (`Option<Vec<_>>` for an `Option`) when the pushed value uses `?`; keep `mut` only if you push to it again later), then retry."
     on:
       - hook: PreToolUse
         tool: Write
@@ -354,6 +362,7 @@ rules:
                           arguments: (arguments (_)))
                         (expression_statement
                           (if_expression
+                            condition: (_) @condition
                             consequence: (block
                               "{"
                               .
@@ -388,7 +397,9 @@ rules:
                 (#eq? @vec_tokens "[]")
                 (#eq? @push "push")
                 (#eq? @pushed @collection)
-                (#not-match? @body "\\.await|#!?\\["))
+                (#not-match? @body "\\.await|#!?\\[|\\b(break|continue|return)\\b")
+                (#not-match? @body "\\.(contains|first|last|last_mut|len|is_empty|get|iter|binary_search)\\(")
+                (#not-match? @condition "\\?"))
       - hook: PreToolUse
         tool: Edit
         file: "**/*.rs"
@@ -434,6 +445,7 @@ rules:
                           arguments: (arguments (_)))
                         (expression_statement
                           (if_expression
+                            condition: (_) @condition
                             consequence: (block
                               "{"
                               .
@@ -468,4 +480,6 @@ rules:
                 (#eq? @vec_tokens "[]")
                 (#eq? @push "push")
                 (#eq? @pushed @collection)
-                (#not-match? @body "\\.await|#!?\\["))
+                (#not-match? @body "\\.await|#!?\\[|\\b(break|continue|return)\\b")
+                (#not-match? @body "\\.(contains|first|last|last_mut|len|is_empty|get|iter|binary_search)\\(")
+                (#not-match? @condition "\\?"))

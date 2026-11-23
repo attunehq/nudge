@@ -77,8 +77,13 @@ fn run_rule(config: &str, tool: &str, content: &str) -> String {
 )]
 #[test_case(
     "fn f(lines: &str) -> Result<Vec<Entry>, String> {\n    let mut entries = Vec::new();\n    for line in lines.lines() {\n        entries.push(line.parse::<Entry>()?);\n    }\n    Ok(entries)\n}",
-    "`.collect::<Result<Vec<_>, _>>()?`";
+    "`.collect::<Result<Vec<_>, _>>()?` (`Option<Vec<_>>` for an `Option`)";
     "push with question mark"
+)]
+#[test_case(
+    "fn f(items: &[Item]) {\n    let mut kept = Vec::new();\n    for item in items {\n        if item.ok { kept.push(item.id); }\n    }\n}",
+    "Build `kept`";
+    "if condition on a field"
 )]
 #[test_case(
     "fn f(items: Vec<u8>) {\n    let mut kept = Vec::new();\n    // Keep the positive ones.\n    for item in items {\n        // Only positives.\n        if item > 0 {\n            kept.push(item); // keep\n        }\n        /* done */\n    }\n}",
@@ -180,6 +185,34 @@ fn test_push_loop_interrupts(content: &str, expected_message: &str) {
 #[test_case(
     "fn f(mut queue: Vec<u8>) {\n    let mut v = Vec::new();\n    while let Some(x) = queue.pop() { v.push(x); }\n}";
     "while loop"
+)]
+#[test_case(
+    "fn f(xs: Vec<u8>) {\n    let mut seen = Vec::new();\n    for x in xs {\n        if !seen.contains(&x) { seen.push(x); }\n    }\n}";
+    "order-preserving dedup reads the vec"
+)]
+#[test_case(
+    "fn f(xs: Vec<u8>) {\n    let mut out = Vec::new();\n    for x in xs {\n        if out.last() != Some(&x) { out.push(x); }\n    }\n}";
+    "consecutive dedup reads the vec"
+)]
+#[test_case(
+    "fn f(xs: Vec<u32>) {\n    let mut sums = Vec::new();\n    for x in xs {\n        sums.push(sums.last().copied().unwrap_or(0) + x);\n    }\n}";
+    "running total reads the vec"
+)]
+#[test_case(
+    "fn f(xs: Vec<u8>) {\n    let mut v = Vec::new();\n    for _ in xs { v.push(v.len() * 2); }\n}";
+    "push reads the vec length"
+)]
+#[test_case(
+    "fn f(xs: Vec<Option<u8>>) {\n    let mut v = Vec::new();\n    for x in xs {\n        v.push(match x { Some(y) => y, None => break });\n    }\n}";
+    "break inside the pushed value"
+)]
+#[test_case(
+    "fn f(xs: Vec<u8>) -> Result<Vec<u8>, E> {\n    let mut v = Vec::new();\n    for x in xs {\n        if check(x)? { v.push(x); }\n    }\n    Ok(v)\n}";
+    "question mark in the if condition"
+)]
+#[test_case(
+    "fn f(xs: Vec<Option<u8>>) {\n    let mut v = Vec::new();\n    for x in xs {\n        if let Some(y) = x { v.push(match y { 0 => continue, n => n }); }\n    }\n}";
+    "continue inside the pushed value"
 )]
 #[test]
 fn test_push_loop_passes(content: &str) {
