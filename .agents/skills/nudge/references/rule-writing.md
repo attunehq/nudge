@@ -303,11 +303,17 @@ Anchor to the opening brace the same way to require the first statement:
 `(block "{" . [(line_comment) (block_comment)]* . (expression_statement) ...)`.
 Use both to require that a pattern is the only statement in a block.
 
+Text predicates such as `#not-match?` see a capture's full source, comments
+included. To exclude `?` or `return` from a loop, run the predicate on the
+narrowest captures that matter, such as the `if` condition, not the whole
+body, or a comment like `// done?` will skip a valid match.
+
 The `prefer-let-else-over-check-unwrap` rule in `examples/rules/rust.yaml`
 extends this with negated checks, `Result` checks, and an early-exit
 requirement. The `prefer-collect-over-push-loop` rule in the same file uses
 both brace anchors to match a `for` loop whose only statement pushes to the
-`Vec` declared right before it.
+`Vec` declared right before it, and `prefer-find-over-search-loop` matches a
+loop whose only statement is an `if` that assigns and breaks.
 
 If a parser cannot produce a tree, the matcher passes silently. Tree-sitter
 usually recovers from incomplete syntax, so useful matches can still fire while

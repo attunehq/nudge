@@ -483,3 +483,164 @@ rules:
                 (#not-match? @body "\\.await|#!?\\[|\\b(break|continue|return)\\b")
                 (#not-match? @body "\\.(contains|first|last|last_mut|len|is_empty|get|iter|binary_search)\\(")
                 (#not-match? @condition "\\?"))
+
+  # Catch a `for` loop that searches for one item by assigning it and breaking:
+  #   let mut found = None;  for x in xs { if p(x) { found = Some(x); break; } }
+  # Also matches the `bool` form (`let mut found = false;` and
+  # `found = true;`), and `if let` conditions. Those become `.find(..)`,
+  # `.find_map(..)`, `.position(..)`, or `.any(..)`. As in the push-loop rule,
+  # the `.` anchors require the loop to be the statement right after the
+  # `let`, the loop body to be only the `if`, and the `if` block to be only the
+  # assignment followed by a plain `break`. Comments may sit between them, and
+  # the query also matches an Edit snippet without a function.
+  #
+  # Limits: it does not match `while`/`loop`, an `else` branch, other
+  # statements in the loop or the `if` block, `break 'label`, or other
+  # statements between the `let` and the loop. It skips loops a closure cannot
+  # express: `.await`, `continue`/`return`, or `?` in the condition or the
+  # assigned value (a `find` closure returns `bool`), and attributes in the
+  # body, since `#[cfg(..)]` may remove the assignment. Those checks are text
+  # matches, so a string literal containing `?` also skips the loop. It still
+  # matches when the variable is assigned again after the loop (the message
+  # says to keep `mut`). A sweep of 604 crates found 3 matches, all clean
+  # rewrites.
+  - name: prefer-find-over-search-loop
+    description: Search with find, find_map, position, or any instead of a for loop that assigns and breaks
+    message: "Set `{{ $found }}` with an iterator search over `{{ $iterable }}` instead of a `for` loop that assigns it and breaks (`.find(..)` to keep the item, `.find_map(..)` for a derived value, `.position(..)` for an index, or `.any(..)` for a `bool`; keep `mut` only if you assign it again later), then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @found
+                  value: [
+                    (identifier) @none
+                    (boolean_literal) @false
+                  ])
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      (expression_statement
+                        (if_expression
+                          condition: (_) @condition
+                          consequence: (block
+                            "{"
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            (expression_statement
+                              (assignment_expression
+                                left: (identifier) @assigned
+                                right: [
+                                  (call_expression
+                                    function: (identifier) @some
+                                    arguments: (arguments (_) @value))
+                                  (boolean_literal) @true
+                                ]))
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            [
+                              (expression_statement (break_expression) @break)
+                              (break_expression) @break
+                            ]
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            "}")
+                          !alternative))
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @none "None")
+                (#eq? @false "false")
+                (#eq? @some "Some")
+                (#eq? @true "true")
+                (#eq? @break "break")
+                (#eq? @assigned @found)
+                (#not-match? @body "#!?\\[")
+                (#not-match? @condition "\\.await|\\b(continue|return)\\b|\\?")
+                (#not-match? @value "\\.await|\\b(continue|return)\\b|\\?"))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @found
+                  value: [
+                    (identifier) @none
+                    (boolean_literal) @false
+                  ])
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      (expression_statement
+                        (if_expression
+                          condition: (_) @condition
+                          consequence: (block
+                            "{"
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            (expression_statement
+                              (assignment_expression
+                                left: (identifier) @assigned
+                                right: [
+                                  (call_expression
+                                    function: (identifier) @some
+                                    arguments: (arguments (_) @value))
+                                  (boolean_literal) @true
+                                ]))
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            [
+                              (expression_statement (break_expression) @break)
+                              (break_expression) @break
+                            ]
+                            .
+                            [(line_comment) (block_comment)]*
+                            .
+                            "}")
+                          !alternative))
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @none "None")
+                (#eq? @false "false")
+                (#eq? @some "Some")
+                (#eq? @true "true")
+                (#eq? @break "break")
+                (#eq? @assigned @found)
+                (#not-match? @body "#!?\\[")
+                (#not-match? @condition "\\.await|\\b(continue|return)\\b|\\?")
+                (#not-match? @value "\\.await|\\b(continue|return)\\b|\\?"))
