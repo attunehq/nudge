@@ -308,12 +308,20 @@ included. To exclude `?` or `return` from a loop, run the predicate on the
 narrowest captures that matter, such as the `if` condition, not the whole
 body, or a comment like `// done?` will skip a valid match.
 
+`#eq?` behaves differently when a capture is missing from a match, such as a
+capture that only one branch of an alternation sets. `(#eq? @a "text")` passes
+when `@a` is missing, but `(#eq? @a @b)` fails unless both captures are
+present. When an alternation branch has no node to compare, capture a node
+that trivially satisfies the check, as in `left: (identifier) @assigned @operand`.
+
 The `prefer-let-else-over-check-unwrap` rule in `examples/rules/rust.yaml`
 extends this with negated checks, `Result` checks, and an early-exit
 requirement. The `prefer-collect-over-push-loop` rule in the same file uses
 both brace anchors to match a `for` loop whose only statement pushes to the
-`Vec` declared right before it, and `prefer-find-over-search-loop` matches a
-loop whose only statement is an `if` that assigns and breaks.
+`Vec` declared right before it, `prefer-find-over-search-loop` matches a
+loop whose only statement is an `if` that assigns and breaks, and
+`prefer-fold-over-accumulator-loop` matches a loop whose only statement
+updates the variable declared right before it.
 
 If a parser cannot produce a tree, the matcher passes silently. Tree-sitter
 usually recovers from incomplete syntax, so useful matches can still fire while

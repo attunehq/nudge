@@ -15,6 +15,7 @@ mod cursor;
 mod edit_tool;
 mod external;
 mod find_loop;
+mod fold_loop;
 mod grok;
 mod inline_imports;
 mod install_script;
