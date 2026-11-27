@@ -645,6 +645,174 @@ rules:
                 (#not-match? @condition "\\.await|\\b(continue|return)\\b|\\?")
                 (#not-match? @value "\\.await|\\b(continue|return)\\b|\\?"))
 
+  # Catch a `for` loop that accumulates into the variable declared right
+  # before it:
+  #   let mut total = 0;  for x in xs { total += x.len(); }
+  #   let mut acc = init; for x in xs { acc = combine(acc, x); }
+  # Those become `.sum()`, `.product()`, `.count()`, `.max()`/`.min()`,
+  # `.collect::<String>()`, or `.fold(..)`. The loop body must be only that
+  # update: a compound assignment (`+=`, `*=`, `|=`, ...) of the variable, or a
+  # plain assignment whose right side uses it directly as the left operand
+  # (`acc = acc + x`), a call argument (`acc = combine(acc, x)`), or a method
+  # receiver (`acc = acc.max(x)`). As in the find-loop rule, the `.` anchors
+  # require the loop to be the statement right after the `let` and the update
+  # to be the only statement in the loop. Comments may sit between them, and
+  # the query also matches an Edit snippet without a function.
+  #
+  # Limits: it does not match `while`/`loop`, `for _ in` (a repeat count, not
+  # a fold over items), other statements in the loop or between the `let` and
+  # the loop, an update inside an `if` (that is `.filter(..)` first, left for a
+  # later rule), a plain assignment that uses the variable only deeper inside
+  # the right side (`acc = acc * 10 + d`, `h = h.rotate_left(5) ^ x`), or a
+  # plain assignment that ignores it (that keeps the last item, not a fold).
+  # It skips updates a closure cannot express: `.await`, `?`,
+  # `break`/`continue`/`return`, or a macro call (which may hide an early
+  # return, like `try!`) in the right side, and attributes in the body, since
+  # `#[cfg(..)]` may remove the update. It skips loops over `&mut` or
+  # `.iter_mut()`, whose element writes would hide inside the closure. It
+  # still matches when the variable changes again after the loop (the message
+  # says to keep `mut`). Constant-time comparisons (`tmp |= a[i] ^ b[i]`) also
+  # match; `.fold(..)` does not short-circuit, so the rewrite keeps them
+  # constant-time. A sweep of 604 crates found 92 matches: mostly sums,
+  # counts, bitmask ORs, and builders threaded through a loop, all of which
+  # rewrite cleanly. This is a higher-volume rule than the find-loop rule.
+  - name: prefer-fold-over-accumulator-loop
+    description: Accumulate with sum, product, count, max, min, or fold instead of a for loop that updates a variable
+    message: "Compute `{{ $acc }}` with an iterator over `{{ $iterable }}` instead of a `for` loop that updates it (`.sum()` or `.product()` for `+=` or `*=`, `.count()` for `+= 1`, `.max()` or `.min()` for a running extreme, `.collect::<String>()` for a string, otherwise `.fold(init, |acc, item| ..)`; add `.map(..)` to transform items first, and keep `mut` only if you change it again later), then retry."
+    on:
+      - hook: PreToolUse
+        tool: Write
+        file: "**/*.rs"
+        content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @acc
+                  value: (_))
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    pattern: (_)
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      [
+                        (expression_statement
+                          [
+                            (assignment_expression
+                              left: (identifier) @assigned
+                              right: [
+                                (binary_expression
+                                  left: (identifier) @operand)
+                                (call_expression
+                                  arguments: (arguments (identifier) @operand))
+                                (call_expression
+                                  function: (field_expression
+                                    value: (identifier) @operand))
+                              ] @value)
+                            (compound_assignment_expr
+                              left: (identifier) @assigned @operand
+                              right: (_) @value)
+                          ])
+                        (assignment_expression
+                          left: (identifier) @assigned
+                          right: [
+                            (binary_expression
+                              left: (identifier) @operand)
+                            (call_expression
+                              arguments: (arguments (identifier) @operand))
+                            (call_expression
+                              function: (field_expression
+                                value: (identifier) @operand))
+                          ] @value)
+                        (compound_assignment_expr
+                          left: (identifier) @assigned @operand
+                          right: (_) @value)
+                      ]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @assigned @acc)
+                (#eq? @operand @acc)
+                (#not-match? @body "#!?\\[")
+                (#not-match? @iterable "^&\\s*mut\\b|\\.iter_mut\\(")
+                (#not-match? @value "\\.await|\\b(break|continue|return)\\b|\\?|\\w!\\s*[(\\[{]"))
+      - hook: PreToolUse
+        tool: Edit
+        file: "**/*.rs"
+        new_content:
+          - kind: SyntaxTree
+            language: rust
+            query: |
+              (
+                (let_declaration
+                  (mutable_specifier)
+                  pattern: (identifier) @acc
+                  value: (_))
+                .
+                [(line_comment) (block_comment)]*
+                .
+                (expression_statement
+                  (for_expression
+                    pattern: (_)
+                    value: (_) @iterable
+                    body: (block
+                      "{"
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      [
+                        (expression_statement
+                          [
+                            (assignment_expression
+                              left: (identifier) @assigned
+                              right: [
+                                (binary_expression
+                                  left: (identifier) @operand)
+                                (call_expression
+                                  arguments: (arguments (identifier) @operand))
+                                (call_expression
+                                  function: (field_expression
+                                    value: (identifier) @operand))
+                              ] @value)
+                            (compound_assignment_expr
+                              left: (identifier) @assigned @operand
+                              right: (_) @value)
+                          ])
+                        (assignment_expression
+                          left: (identifier) @assigned
+                          right: [
+                            (binary_expression
+                              left: (identifier) @operand)
+                            (call_expression
+                              arguments: (arguments (identifier) @operand))
+                            (call_expression
+                              function: (field_expression
+                                value: (identifier) @operand))
+                          ] @value)
+                        (compound_assignment_expr
+                          left: (identifier) @assigned @operand
+                          right: (_) @value)
+                      ]
+                      .
+                      [(line_comment) (block_comment)]*
+                      .
+                      "}") @body))
+                (#eq? @assigned @acc)
+                (#eq? @operand @acc)
+                (#not-match? @body "#!?\\[")
+                (#not-match? @iterable "^&\\s*mut\\b|\\.iter_mut\\(")
+                (#not-match? @value "\\.await|\\b(break|continue|return)\\b|\\?|\\w!\\s*[(\\[{]"))
+
   # Redirect docs.rs fetches to local cargo registry.
   # Demonstrates the WebFetch matcher with URL capture groups.
   - name: prefer-local-docs
