@@ -702,7 +702,7 @@ mod tests {
             language: rust
             query: "(function_item)"
         "#;
-        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid yaml");
+        let matcher = yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid yaml");
         assert!(matches!(matcher, ContentMatcher::SyntaxTree { .. }));
     }
 
@@ -716,7 +716,7 @@ mod tests {
                 function: (variable) @fn
                 (#eq? @fn "head"))
         "#;
-        let matcher = serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid haskell yaml");
+        let matcher = yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid haskell yaml");
         assert!(matches!(
             matcher,
             ContentMatcher::SyntaxTree {
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn regex_replace_interpolates_captures() {
-        let matcher = serde_yaml::from_str::<ContentMatcher>(
+        let matcher = yaml_serde::from_str::<ContentMatcher>(
             r#"
             kind: Regex
             pattern: "^npm install(?: (?P<args>.*))?$"
@@ -805,7 +805,7 @@ mod tests {
 
         for (name, yaml) in cases {
             assert!(
-                serde_yaml::from_str::<ContentMatcher>(yaml).is_err(),
+                yaml_serde::from_str::<ContentMatcher>(yaml).is_err(),
                 "{name} should reject fields from another matcher variant"
             );
         }
@@ -818,7 +818,7 @@ mod tests {
             language: rust
             query: "(not_a_real_node)"
         "#;
-        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        let result = yaml_serde::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());
     }
 
@@ -829,7 +829,7 @@ mod tests {
             language: haskell
             query: "(not_a_real_node)"
         "#;
-        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        let result = yaml_serde::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());
     }
 
@@ -914,7 +914,7 @@ mod tests {
             command: ["grep", "-q", "error"]
         "#;
         let matcher =
-            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+            yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(matcher, ContentMatcher::External { .. }));
     }
 
@@ -926,7 +926,7 @@ mod tests {
             timeout_ms: 100
         "#;
         let matcher =
-            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+            yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(
             matcher,
             ContentMatcher::External {
@@ -942,7 +942,7 @@ mod tests {
             kind: External
             command: []
         "#;
-        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        let result = yaml_serde::from_str::<ContentMatcher>(yaml);
         assert!(result.is_err());
     }
 
@@ -954,7 +954,7 @@ mod tests {
             timeout_ms: 0
         "#;
         let matcher =
-            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+            yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(
             matcher,
             ContentMatcher::External { timeout_ms: 0, .. }
@@ -969,7 +969,7 @@ mod tests {
             timeout_ms: 60000
         "#;
         let matcher =
-            serde_yaml::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
+            yaml_serde::from_str::<ContentMatcher>(yaml).expect("valid external matcher yaml");
         assert!(matches!(
             matcher,
             ContentMatcher::External {

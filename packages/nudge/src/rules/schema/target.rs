@@ -187,7 +187,7 @@ mod tests {
     use super::*;
 
     fn regex(pattern: &str) -> ContentMatcher {
-        serde_yaml::from_str(&format!(
+        yaml_serde::from_str(&format!(
             r#"
 kind: Regex
 pattern: "{pattern}"

@@ -8,7 +8,7 @@ use std::{
 use clap::{Args, Subcommand};
 use color_eyre::eyre::{Context, OptionExt, Result, bail};
 use nudge::learn::{self, AddNote, LearnConfig};
-use serde_yaml::{Mapping, Value};
+use yaml_serde::{Mapping, Value};
 
 #[derive(Args, Clone, Debug)]
 pub struct Config {
@@ -270,7 +270,7 @@ fn rebuild_embeddings(config: &LearnConfig) -> Result<()> {
 fn write_project_learn_config(config: &LearnConfig) -> Result<PathBuf> {
     let path = project_config_path();
     let mut value = if path.exists() {
-        serde_yaml::from_str::<Value>(
+        yaml_serde::from_str::<Value>(
             &fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?,
         )
         .with_context(|| format!("parse {}", path.display()))?
@@ -283,16 +283,16 @@ fn write_project_learn_config(config: &LearnConfig) -> Result<PathBuf> {
         .ok_or_eyre("project Nudge config must be a YAML mapping")?;
     mapping
         .entry(Value::String(String::from("version")))
-        .or_insert(serde_yaml::to_value(1)?);
+        .or_insert(yaml_serde::to_value(1)?);
     mapping
         .entry(Value::String(String::from("rules")))
         .or_insert(Value::Sequence(Vec::new()));
     mapping.insert(
         Value::String(String::from("learn")),
-        serde_yaml::to_value(config).context("serialize learn config")?,
+        yaml_serde::to_value(config).context("serialize learn config")?,
     );
 
-    fs::write(&path, serde_yaml::to_string(&value)?)
+    fs::write(&path, yaml_serde::to_string(&value)?)
         .with_context(|| format!("write {}", path.display()))?;
     Ok(path)
 }

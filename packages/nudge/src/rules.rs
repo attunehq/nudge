@@ -129,7 +129,7 @@ pub fn load_config_from(path: &Path) -> Result<Option<RuleConfig>> {
         Err(e) => return Err(e).context(format!("read config file: {path:?}")),
     };
 
-    serde_yaml::from_str::<RuleConfig>(&content)
+    yaml_serde::from_str::<RuleConfig>(&content)
         .with_context(|| format!("parse config file: {path:?}"))
         .with_context(|| content.header("File content:"))
         .tap(|config| tracing::debug!(?config, "parsed config file"))
