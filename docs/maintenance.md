@@ -198,10 +198,10 @@ Users only get fixes once they ship, so releasing is part of maintenance.
    `git tag -s vX.Y.Z -m vX.Y.Z origin/main && git push origin vX.Y.Z`.
    Never move or delete a pushed tag; a bad release is fixed by the next one.
 2. Wait for the tag's Release run. It builds every target and creates a draft
-   release with eight archives and `checksums.txt`.
+   release with seven archives (one per target) and `checksums.txt`.
 3. Verify the draft in a scratch directory:
    - `gh release download vX.Y.Z` and check `shasum -a 256 -c checksums.txt`
-     passes for all eight archives.
+     passes for all seven archives.
    - Run `nudge --version` from both macOS archives (the x86_64 one through
      Rosetta) and from the Linux archives in Docker through Colima
      (`colima start` if it is not running; x86_64 images with
