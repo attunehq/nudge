@@ -3,6 +3,6 @@
 # The daily maintenance run bumps this to each new stable release; see
 # docs/maintenance.md. Formatting uses nightly rustfmt separately (`cargo +nightly fmt`).
 [toolchain]
-channel = "1.100.0"
+channel = "1.100.1"
 profile = "minimal"
 components = ["clippy"]
