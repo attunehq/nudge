@@ -84,9 +84,9 @@ ones.
 - **GitHub Actions:** bump action major versions (`actions/checkout`,
   `Swatinem/rust-cache`, and so on) in one PR after reading their release
   notes.
-- **Deprecated crates:** when a dependency is deprecated or unmaintained (for
-  example `serde_yaml`), choosing a replacement is an escalation; the migration
-  after Jess picks is routine.
+- **Deprecated crates:** when a dependency is deprecated or unmaintained (as
+  `serde_yaml` was before Nudge moved to `yaml_serde`), choosing a replacement
+  is an escalation; the migration after Jess picks is routine.
 
 ## Issues And Pull Requests
 

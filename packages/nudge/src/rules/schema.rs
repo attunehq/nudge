@@ -464,7 +464,7 @@ mod tests {
                 pattern: "git\\s+push"
         "#;
         let matcher =
-            serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
+            yaml_serde::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         assert!(matcher.project_state.is_empty());
     }
@@ -484,7 +484,7 @@ mod tests {
                     pattern: "^main$"
         "#;
         let matcher =
-            serde_yaml::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
+            yaml_serde::from_str::<PreToolUseBashMatcher>(yaml).expect("valid bash matcher yaml");
         pretty_assert_eq!(matcher.command.len(), 1);
         pretty_assert_eq!(matcher.project_state.len(), 1);
     }
@@ -497,7 +497,7 @@ mod tests {
             workflows: []
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "unknown top-level fields must fail");
     }
@@ -512,7 +512,7 @@ mod tests {
                 model: BAAI/bge-small-en-v1.5
         "#;
 
-        let config = serde_yaml::from_str::<RuleConfig>(yaml).expect("valid learn config");
+        let config = yaml_serde::from_str::<RuleConfig>(yaml).expect("valid learn config");
 
         assert!(config.rules.is_empty());
         pretty_assert_eq!(
@@ -536,7 +536,7 @@ mod tests {
                         pattern: test
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "unknown rule fields must fail");
     }
@@ -558,7 +558,7 @@ mod tests {
                     typo: true
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "unknown matcher fields must fail");
     }
@@ -571,7 +571,7 @@ mod tests {
             typo: true
         "#;
 
-        let result = serde_yaml::from_str::<ContentMatcher>(yaml);
+        let result = yaml_serde::from_str::<ContentMatcher>(yaml);
 
         assert!(result.is_err(), "unknown content matcher fields must fail");
     }
@@ -590,7 +590,7 @@ mod tests {
                     content: []
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "empty content matcher lists must fail");
     }
@@ -608,7 +608,7 @@ mod tests {
                     command: []
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "empty command matcher lists must fail");
     }
@@ -623,7 +623,7 @@ mod tests {
                 on: []
         "#;
 
-        let result = serde_yaml::from_str::<RuleConfig>(yaml);
+        let result = yaml_serde::from_str::<RuleConfig>(yaml);
 
         assert!(result.is_err(), "rules without hook matchers must fail");
     }

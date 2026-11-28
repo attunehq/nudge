@@ -6,7 +6,7 @@ use super::GlobMatcher;
 
 #[test]
 fn scalar_glob_preserves_literal_leading_bang() {
-    let matcher = serde_yaml::from_str::<GlobMatcher>("'!important.ts'").expect("valid glob");
+    let matcher = yaml_serde::from_str::<GlobMatcher>("'!important.ts'").expect("valid glob");
 
     assert!(matcher.is_match("!important.ts"));
     assert!(!matcher.is_match("important.ts"));
@@ -14,7 +14,7 @@ fn scalar_glob_preserves_literal_leading_bang() {
 
 #[test]
 fn ordered_patterns_exclude_and_reinclude_paths() {
-    let matcher = serde_yaml::from_str::<GlobMatcher>(
+    let matcher = yaml_serde::from_str::<GlobMatcher>(
         r#"
             - "**/*.ts"
             - "!**/*.gen.ts"
@@ -33,7 +33,7 @@ fn ordered_patterns_exclude_and_reinclude_paths() {
 
 #[test]
 fn later_positive_pattern_overrides_earlier_exclusion() {
-    let matcher = serde_yaml::from_str::<GlobMatcher>(
+    let matcher = yaml_serde::from_str::<GlobMatcher>(
         r#"
             - "!vendor/**"
             - "**/*.ts"
@@ -46,15 +46,15 @@ fn later_positive_pattern_overrides_earlier_exclusion() {
 
 #[test]
 fn empty_and_all_negative_lists_are_rejected() {
-    let empty = serde_yaml::from_str::<GlobMatcher>("[]").expect_err("empty list must fail");
-    let all_negative = serde_yaml::from_str::<GlobMatcher>(
+    let empty = yaml_serde::from_str::<GlobMatcher>("[]").expect_err("empty list must fail");
+    let all_negative = yaml_serde::from_str::<GlobMatcher>(
         r#"
             - "!**/*.gen.ts"
         "#,
     )
     .expect_err("all-negative list must fail");
     let bare_exclusion =
-        serde_yaml::from_str::<GlobMatcher>("- '!' ").expect_err("bare exclusion must fail");
+        yaml_serde::from_str::<GlobMatcher>("- '!' ").expect_err("bare exclusion must fail");
 
     assert!(empty.to_string().contains("must not be empty"));
     assert!(
@@ -71,8 +71,8 @@ fn empty_and_all_negative_lists_are_rejected() {
 
 #[test]
 fn invalid_patterns_are_rejected() {
-    let scalar = serde_yaml::from_str::<GlobMatcher>("'['").expect_err("invalid scalar must fail");
-    let list = serde_yaml::from_str::<GlobMatcher>(
+    let scalar = yaml_serde::from_str::<GlobMatcher>("'['").expect_err("invalid scalar must fail");
+    let list = yaml_serde::from_str::<GlobMatcher>(
         r#"
             - "**/*.ts"
             - "!["
@@ -86,8 +86,8 @@ fn invalid_patterns_are_rejected() {
 
 #[test]
 fn serialization_keeps_scalars_and_ordered_lists() {
-    let scalar = serde_yaml::from_str::<GlobMatcher>("'**/*.rs'").expect("valid scalar glob");
-    let list = serde_yaml::from_str::<GlobMatcher>(
+    let scalar = yaml_serde::from_str::<GlobMatcher>("'**/*.rs'").expect("valid scalar glob");
+    let list = yaml_serde::from_str::<GlobMatcher>(
         r#"
             - "**/*.ts"
             - "!**/*.gen.ts"
@@ -96,11 +96,11 @@ fn serialization_keeps_scalars_and_ordered_lists() {
     .expect("valid glob list");
 
     pretty_assert_eq!(
-        serde_yaml::to_string(&scalar).expect("serialize scalar"),
+        yaml_serde::to_string(&scalar).expect("serialize scalar"),
         "'**/*.rs'\n"
     );
     pretty_assert_eq!(
-        serde_yaml::to_string(&list).expect("serialize list"),
+        yaml_serde::to_string(&list).expect("serialize list"),
         "- '**/*.ts'\n- '!**/*.gen.ts'\n"
     );
 }

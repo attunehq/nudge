@@ -482,7 +482,7 @@ mod tests {
     };
 
     fn rules(yaml: &str) -> Vec<crate::rules::Rule> {
-        serde_yaml::from_str::<RuleConfig>(yaml)
+        yaml_serde::from_str::<RuleConfig>(yaml)
             .expect("rules parse")
             .rules
     }

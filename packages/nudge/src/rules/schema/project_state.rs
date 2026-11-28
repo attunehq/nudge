@@ -70,7 +70,7 @@ mod tests {
               - kind: Regex
                 pattern: "^main$"
         "#;
-        let matcher = serde_yaml::from_str::<ProjectStateMatcher>(yaml)
+        let matcher = yaml_serde::from_str::<ProjectStateMatcher>(yaml)
             .expect("valid project state matcher yaml");
         assert!(matches!(matcher, ProjectStateMatcher::Git { .. }));
     }
@@ -81,7 +81,7 @@ mod tests {
             kind: Git
             branch: []
         "#;
-        let matcher = serde_yaml::from_str::<ProjectStateMatcher>(yaml)
+        let matcher = yaml_serde::from_str::<ProjectStateMatcher>(yaml)
             .expect("valid project state matcher yaml");
         let ProjectStateMatcher::Git { branch } = matcher;
         assert!(branch.is_empty());
@@ -92,7 +92,7 @@ mod tests {
         let yaml = r#"
             kind: InvalidKind
         "#;
-        let result = serde_yaml::from_str::<ProjectStateMatcher>(yaml);
+        let result = yaml_serde::from_str::<ProjectStateMatcher>(yaml);
         assert!(result.is_err());
     }
 }

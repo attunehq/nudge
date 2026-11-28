@@ -39,7 +39,7 @@ rules:
 "#;
 
 fn rules(yaml: &str) -> Vec<Rule> {
-    serde_yaml::from_str::<RuleConfig>(yaml)
+    yaml_serde::from_str::<RuleConfig>(yaml)
         .expect("valid rules")
         .rules
 }
@@ -109,7 +109,7 @@ fn validates_semantic_rules_without_credentials() {
         ),
     ] {
         assert!(
-            serde_yaml::from_str::<RuleConfig>(&invalid).is_err(),
+            yaml_serde::from_str::<RuleConfig>(&invalid).is_err(),
             "accepted {invalid}"
         );
     }

@@ -24,7 +24,7 @@ pub fn main(config: Config) -> Result<()> {
 fn validate_all() -> Result<()> {
     let rules = rules::load_all_attributed().context("load rules")?;
     for (path, rules) in rules {
-        let yaml = serde_yaml::to_string(&rules).context("serialize rules")?;
+        let yaml = yaml_serde::to_string(&rules).context("serialize rules")?;
         println!("Config file: {path:?}");
         println!("{yaml}");
         print_codex_warnings(&rules);
@@ -46,7 +46,7 @@ fn validate_file(path: &Path) -> Result<()> {
     }
 
     let rules = rules::load_from(path).context("parse rules file")?;
-    let yaml = serde_yaml::to_string(&rules).context("serialize rules")?;
+    let yaml = yaml_serde::to_string(&rules).context("serialize rules")?;
     println!("{yaml}");
     print_codex_warnings(&rules);
     Ok(())
